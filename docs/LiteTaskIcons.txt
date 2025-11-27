@@ -1,0 +1,288 @@
+import React, { useState, useRef } from 'react';
+import { Download, Moon, Sun, Check, Grid } from 'lucide-react';
+
+const IconGenerator = () => {
+  const [bgMode, setBgMode] = useState('grid'); // 'white', 'black', 'grid'
+  
+  // -----------------------------------------------------------------------
+  // SVG 数据定义 (核心设计)
+  // -----------------------------------------------------------------------
+  
+  const icons = [
+    {
+      id: 'feather-check',
+      name: '轻羽对钩 (Feather Check)',
+      desc: '象征“如羽毛般轻盈的任务管理”。结合了对钩与羽毛的流线形态。',
+      svgContent: (
+        <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" fill="none">
+          <defs>
+            <linearGradient id="grad1" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#0ea5e9" />
+              <stop offset="100%" stopColor="#34d399" />
+            </linearGradient>
+          </defs>
+          {/* 羽毛的主干也是对钩的主体 */}
+          <path 
+            d="M85 280 C 85 280, 180 380, 210 410 C 240 440, 420 120, 440 80 C 450 60, 400 100, 380 130 C 340 190, 250 350, 210 350 C 190 350, 140 300, 140 300" 
+            stroke="url(#grad1)" 
+            strokeWidth="45" 
+            strokeLinecap="round" 
+            strokeLinejoin="round"
+          />
+          {/* 羽毛的分叉细节，暗示轻盈 */}
+          <path 
+            d="M390 110 Q 350 160 360 200" 
+            stroke="url(#grad1)" 
+            strokeWidth="20" 
+            strokeLinecap="round" 
+            opacity="0.6"
+          />
+           <path 
+            d="M420 95 Q 400 120 410 150" 
+            stroke="url(#grad1)" 
+            strokeWidth="15" 
+            strokeLinecap="round" 
+            opacity="0.4"
+          />
+        </svg>
+      )
+    },
+    {
+      id: 'neural-clock',
+      name: '智能时环 (Neural Clock)',
+      desc: '圆环代表时间/日程，右侧的缺口迸发出AI的火花，寓意“AI打破常规，重组时间”。',
+      svgContent: (
+        <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" fill="none">
+          <defs>
+            <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#6366f1" />
+              <stop offset="100%" stopColor="#ec4899" />
+            </linearGradient>
+          </defs>
+          {/* 主时间环，留出缺口 */}
+          <circle 
+            cx="256" 
+            cy="256" 
+            r="180" 
+            stroke="url(#grad2)" 
+            strokeWidth="45" 
+            strokeLinecap="round"
+            strokeDasharray="850"
+            strokeDashoffset="200"
+            transform="rotate(-45 256 256)"
+          />
+          {/* 中心点 */}
+          <circle cx="256" cy="256" r="35" fill="url(#grad2)" opacity="0.8" />
+          
+          {/* AI Sparkle (右上角缺口处) */}
+          <g transform="translate(380, 130)">
+             <path d="M0 -30 L10 -10 L30 0 L10 10 L0 30 L-10 10 L-30 0 L-10 -10 Z" fill="#ec4899" />
+             <circle cx="25" cy="-25" r="8" fill="#6366f1" />
+             <circle cx="-20" cy="25" r="6" fill="#6366f1" />
+          </g>
+        </svg>
+      )
+    },
+    {
+      id: 'gantt-flow',
+      name: '流光日程 (Gantt Flow)',
+      desc: '三条不同长度的圆角矩形，既像甘特图的进度条，又像语音输入的波形，体现APP的两大核心。',
+      svgContent: (
+        <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" fill="none">
+          <defs>
+            <linearGradient id="grad3a" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#f59e0b" />
+              <stop offset="100%" stopColor="#ef4444" />
+            </linearGradient>
+            <linearGradient id="grad3b" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#3b82f6" />
+              <stop offset="100%" stopColor="#8b5cf6" />
+            </linearGradient>
+             <linearGradient id="grad3c" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#10b981" />
+              <stop offset="100%" stopColor="#06b6d4" />
+            </linearGradient>
+            <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="4" stdDeviation="8" floodColor="#000" floodOpacity="0.15"/>
+            </filter>
+          </defs>
+          
+          {/* 顶部短条 (Voice/Input) */}
+          <rect x="126" y="120" width="160" height="70" rx="35" fill="url(#grad3a)" filter="url(#shadow)"/>
+          
+          {/* 中间长条 (Main Task) */}
+          <rect x="86" y="220" width="340" height="70" rx="35" fill="url(#grad3b)" filter="url(#shadow)"/>
+          
+          {/* 底部中条 (Schedule) */}
+          <rect x="206" y="320" width="220" height="70" rx="35" fill="url(#grad3c)" filter="url(#shadow)"/>
+          
+          {/* 连接线示意 (AI Analysis) */}
+          <path d="M200 190 L200 220" stroke="#cbd5e1" strokeWidth="4" strokeDasharray="8 4"/>
+          <path d="M310 290 L310 320" stroke="#cbd5e1" strokeWidth="4" strokeDasharray="8 4"/>
+        </svg>
+      )
+    },
+    {
+      id: 'lite-box',
+      name: '极简方块 (Lite Box)',
+      desc: '由两个简单的几何形状构成抽象的 "L" (Lite)。简单、稳重，符合 Material Design 风格。',
+      svgContent: (
+        <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" fill="none">
+           <defs>
+            <linearGradient id="grad4" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#a855f7" />
+              <stop offset="100%" stopColor="#7c3aed" />
+            </linearGradient>
+             <linearGradient id="grad4b" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#c084fc" />
+              <stop offset="100%" stopColor="#a855f7" />
+            </linearGradient>
+          </defs>
+          
+          {/* 竖条 */}
+          <rect x="120" y="100" width="110" height="312" rx="40" fill="url(#grad4)" />
+          
+          {/* 横条 (悬浮感，稍微错位) */}
+          <rect x="170" y="302" width="222" height="110" rx="40" fill="url(#grad4b)" stroke="white" strokeWidth="8"/>
+          
+          {/* 点缀：右上角的任务圆点 */}
+          <circle cx="360" cy="140" r="30" fill="#fbbf24" />
+        </svg>
+      )
+    }
+  ];
+
+  // -----------------------------------------------------------------------
+  // 导出逻辑 (SVG -> Canvas -> PNG)
+  // -----------------------------------------------------------------------
+  
+  const downloadIcon = (iconId, iconName) => {
+    const svgElement = document.getElementById(`svg-${iconId}`);
+    if (!svgElement) return;
+
+    // 1. 获取 SVG 字符串
+    const serializer = new XMLSerializer();
+    let source = serializer.serializeToString(svgElement);
+
+    // 2. 确保 SVG 有正确的命名空间，否则图片可能加载失败
+    if(!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)){
+        source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+    }
+    if(!source.match(/^<svg[^>]+"http\:\/\/www\.w3\.org\/1999\/xlink"/)){
+        source = source.replace(/^<svg/, '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
+    }
+
+    // 3. 创建 Blob URL
+    const svgBlob = new Blob([source], {type: "image/svg+xml;charset=utf-8"});
+    const url = URL.createObjectURL(svgBlob);
+
+    // 4. 使用 Canvas 绘制
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024; // 导出高清图
+    canvas.height = 1024;
+    const ctx = canvas.getContext('2d');
+    
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      
+      // 5. 触发下载
+      const pngUrl = canvas.toDataURL("image/png");
+      const downloadLink = document.createElement("a");
+      downloadLink.href = pngUrl;
+      downloadLink.download = `LiteTask_${iconName}.png`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  };
+
+  // -----------------------------------------------------------------------
+  // 渲染界面
+  // -----------------------------------------------------------------------
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-8 font-sans text-gray-800">
+      <div className="max-w-5xl mx-auto">
+        
+        {/* Header */}
+        <div className="mb-10 text-center">
+          <h1 className="text-4xl font-bold text-slate-800 mb-2 tracking-tight">LiteTask <span className="font-light text-slate-400">Icon Concepts</span></h1>
+          <p className="text-slate-500">轻量化 · 智能 · 日程管理</p>
+        </div>
+
+        {/* Control Bar */}
+        <div className="flex justify-center gap-4 mb-10">
+           <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+             <button 
+              onClick={() => setBgMode('white')}
+              className={`p-2 rounded-lg flex gap-2 items-center ${bgMode === 'white' ? 'bg-gray-100 text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
+             >
+               <Sun size={18} /> <span className="text-sm font-medium">浅色</span>
+             </button>
+             <button 
+              onClick={() => setBgMode('grid')}
+              className={`p-2 rounded-lg flex gap-2 items-center ${bgMode === 'grid' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
+             >
+               <Grid size={18} /> <span className="text-sm font-medium">透明</span>
+             </button>
+             <button 
+              onClick={() => setBgMode('black')}
+              className={`p-2 rounded-lg flex gap-2 items-center ${bgMode === 'black' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-600'}`}
+             >
+               <Moon size={18} /> <span className="text-sm font-medium">深色</span>
+             </button>
+           </div>
+        </div>
+
+        {/* Icon Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {icons.map((icon) => (
+            <div key={icon.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col items-center transition-all hover:shadow-md">
+              
+              {/* Icon Canvas Area */}
+              <div 
+                className={`
+                  w-48 h-48 rounded-3xl mb-6 flex items-center justify-center transition-colors duration-300 relative
+                  ${bgMode === 'white' ? 'bg-white border border-gray-100' : ''}
+                  ${bgMode === 'black' ? 'bg-slate-900' : ''}
+                  ${bgMode === 'grid' ? 'bg-[url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYGAQYcAP3uCTZhw1gGGYhAGBZIA/nYDCgBDAm9BGDWAAJyRCgLaBCAAgXwixzAS0pgAAAABJRU5ErkJggg==")] bg-repeat' : ''}
+                `}
+              >
+                 {/* 这里直接渲染 SVG，同时给它一个 ID 方便 Canvas 抓取 */}
+                 <div className="w-32 h-32 drop-shadow-xl transform hover:scale-105 transition-transform duration-300">
+                   {/* 克隆 SVG 并添加 ID */}
+                   {React.cloneElement(icon.svgContent, { id: `svg-${icon.id}` })}
+                 </div>
+              </div>
+
+              {/* Text Info */}
+              <div className="text-center w-full">
+                <h3 className="text-lg font-bold text-slate-800 mb-1">{icon.name}</h3>
+                <p className="text-sm text-slate-500 mb-5 px-4 h-10">{icon.desc}</p>
+                
+                <button 
+                  onClick={() => downloadIcon(icon.id, icon.name)}
+                  className="w-full py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Download size={18} />
+                  下载 PNG (1024x1024)
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        <div className="mt-12 text-center text-sm text-gray-400">
+          提示：点击下载按钮即可获取背景透明的高清 PNG 图片，可直接用作 Android App 图标。
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+export default IconGenerator;

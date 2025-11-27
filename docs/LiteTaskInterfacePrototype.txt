@@ -1,0 +1,311 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Mic, Plus, Calendar, ChevronLeft, ChevronRight, Clock, Check, X, MapPin, MoreHorizontal, BarChart3, List, Activity } from 'lucide-react';
+
+// 模拟当前时间
+const CURRENT_HOUR = 14; // 2:00 PM
+const CURRENT_MINUTE = 30;
+
+// 初始模拟数据
+const INITIAL_TASKS = [
+  { id: 1, title: '团队早会', type: 'WORK', startTime: '09:00', endTime: '10:00', color: 'bg-blue-100 border-blue-300 text-blue-800' },
+  { id: 2, title: 'UI 设计评审', type: 'WORK', startTime: '10:30', endTime: '12:00', color: 'bg-indigo-100 border-indigo-300 text-indigo-800' },
+  { id: 3, title: '午休 & 吃饭', type: 'LIFE', startTime: '12:00', endTime: '13:30', color: 'bg-green-100 border-green-300 text-green-800' },
+  { id: 4, title: '开发 Android 原型', type: 'DEV', startTime: '14:00', endTime: '16:00', color: 'bg-purple-100 border-purple-300 text-purple-800' },
+];
+
+const App = () => {
+  const [tasks, setTasks] = useState(INITIAL_TASKS);
+  const [viewMode, setViewMode] = useState('timeline'); // 'timeline' or 'list'
+  const [isRecording, setIsRecording] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showAiResult, setShowAiResult] = useState(false);
+  const [aiResult, setAiResult] = useState(null);
+
+  // 模拟 AI 分析出的结果
+  const MOCK_AI_RESULT = {
+    originalText: "今晚7点去健身房跑一个小时步，然后8点半记得给家里打个电话。",
+    tasks: [
+      {
+        title: "健身房跑步",
+        startTime: "19:00",
+        endTime: "20:00",
+        type: "HEALTH",
+        location: "健身房",
+        description: "目标：5公里",
+        color: "bg-orange-100 border-orange-300 text-orange-800"
+      },
+      {
+        title: "给家里打电话",
+        startTime: "20:30",
+        endTime: "21:00",
+        type: "LIFE",
+        location: "家",
+        description: "问候父母",
+        color: "bg-green-100 border-green-300 text-green-800"
+      }
+    ]
+  };
+
+  const handleMicClick = () => {
+    if (isRecording) return;
+    setIsRecording(true);
+    
+    // 模拟录音 2秒后结束
+    setTimeout(() => {
+      setIsRecording(false);
+      setIsAnalyzing(true);
+      
+      // 模拟 AI 分析 1.5秒
+      setTimeout(() => {
+        setIsAnalyzing(false);
+        setAiResult(MOCK_AI_RESULT);
+        setShowAiResult(true);
+      }, 1500);
+    }, 2000);
+  };
+
+  const confirmAddTasks = () => {
+    const newTasks = aiResult.tasks.map((t, idx) => ({
+      ...t,
+      id: Date.now() + idx
+    }));
+    setTasks([...tasks, ...newTasks]);
+    setShowAiResult(false);
+    setAiResult(null);
+  };
+
+  // 时间转换辅助函数 (将 "09:30" 转为分钟数，基准为 8:00)
+  const timeToPixels = (timeStr) => {
+    const [h, m] = timeStr.split(':').map(Number);
+    const startHour = 8; // 日程表从早上8点开始
+    const minutesFromStart = (h - startHour) * 60 + m;
+    return minutesFromStart * 1.2; // 1分钟 = 1.2px高度
+  };
+
+  const durationToPixels = (start, end) => {
+    const [h1, m1] = start.split(':').map(Number);
+    const [h2, m2] = end.split(':').map(Number);
+    const durationMinutes = (h2 * 60 + m2) - (h1 * 60 + m1);
+    return durationMinutes * 1.2;
+  };
+
+  return (
+    <div className="w-full h-screen bg-gray-50 font-sans overflow-hidden flex flex-col relative select-none">
+      
+      {/* 顶部导航 */}
+      <header className="px-6 pt-12 pb-4 bg-white shadow-sm z-10 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">11月20日</h1>
+          <p className="text-sm text-gray-500 font-medium">星期四 · 4个待办</p>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => setViewMode(viewMode === 'timeline' ? 'list' : 'timeline')}
+            className="p-2 bg-gray-100 rounded-full text-gray-600 hover:bg-gray-200 transition-colors"
+          >
+            {viewMode === 'timeline' ? <List size={20}/> : <BarChart3 size={20}/>}
+          </button>
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-md">
+            <span className="font-bold text-sm">S</span>
+          </div>
+        </div>
+      </header>
+
+      {/* 日历条 */}
+      <div className="bg-white pb-4 px-4 flex justify-between items-center text-center border-b border-gray-100 shadow-[0_4px_10px_-5px_rgba(0,0,0,0.05)] z-10">
+        {['一', '二', '三', '四', '五', '六', '日'].map((day, index) => (
+          <div key={index} className={`flex flex-col items-center gap-1 p-2 rounded-xl min-w-[44px] ${index === 3 ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-gray-400 hover:bg-gray-50'}`}>
+            <span className="text-xs font-medium">{day}</span>
+            <span className={`text-sm font-bold ${index === 3 ? 'text-white' : 'text-gray-800'}`}>{17 + index}</span>
+            {index === 3 && <div className="w-1 h-1 bg-white rounded-full mt-1"></div>}
+          </div>
+        ))}
+      </div>
+
+      {/* 主内容区：时间轴视图 (伪甘特图) */}
+      <div className="flex-1 overflow-y-auto relative bg-white scroll-smooth" style={{backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '20px 20px'}}>
+        
+        {/* 时间刻度线 */}
+        <div className="relative min-h-[1000px] pt-4 pb-20">
+          {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].map((hour) => (
+            <div key={hour} className="flex items-start w-full h-[72px] relative group">
+              <div className="w-16 text-right pr-4 text-xs text-gray-400 font-medium transform -translate-y-2 sticky left-0">
+                {hour}:00
+              </div>
+              <div className="flex-1 border-t border-dashed border-gray-200 h-full relative"></div>
+            </div>
+          ))}
+
+          {/* 当前时间红线 */}
+          <div 
+            className="absolute w-full flex items-center z-20 pointer-events-none"
+            style={{ top: `${timeToPixels(`${CURRENT_HOUR}:${CURRENT_MINUTE}`) + 16}px` }}
+          >
+            <div className="w-16 text-right pr-2">
+              <span className="text-xs font-bold text-red-500 bg-white px-1 rounded">{CURRENT_HOUR}:{CURRENT_MINUTE}</span>
+            </div>
+            <div className="flex-1 h-[2px] bg-red-500 relative">
+              <div className="absolute -left-[3px] -top-[3px] w-2 h-2 bg-red-500 rounded-full"></div>
+            </div>
+          </div>
+
+          {/* 任务卡片渲染 */}
+          {tasks.map((task) => (
+            <div
+              key={task.id}
+              className={`absolute left-16 right-4 rounded-xl p-3 border-l-4 shadow-sm flex flex-col justify-center hover:shadow-md transition-all cursor-pointer active:scale-95 ${task.color}`}
+              style={{
+                top: `${timeToPixels(task.startTime) + 16}px`,
+                height: `${durationToPixels(task.startTime, task.endTime)}px`,
+                minHeight: '40px'
+              }}
+            >
+              <div className="flex justify-between items-start">
+                <span className="text-sm font-bold leading-tight">{task.title}</span>
+                {task.type === 'HEALTH' && <Activity size={14} className="opacity-50" />}
+              </div>
+              {durationToPixels(task.startTime, task.endTime) > 50 && (
+                <div className="flex items-center gap-2 mt-1 opacity-80 text-xs">
+                  <Clock size={10} />
+                  <span>{task.startTime} - {task.endTime}</span>
+                  {task.location && (
+                    <>
+                      <span className="mx-1">·</span>
+                      <MapPin size={10} />
+                      <span>{task.location}</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 底部悬浮按钮 FAB */}
+      <div className="absolute bottom-8 left-0 right-0 flex justify-center items-center z-30 pointer-events-none">
+        {/* 辅助按钮：手动添加 */}
+        <button className="pointer-events-auto absolute right-8 bottom-2 w-12 h-12 bg-white text-gray-600 rounded-full shadow-lg flex items-center justify-center border border-gray-100 active:bg-gray-50">
+          <Plus size={24} />
+        </button>
+
+        {/* 核心按钮：语音 */}
+        <button 
+          onClick={handleMicClick}
+          className={`pointer-events-auto w-16 h-16 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 transform 
+            ${isRecording ? 'bg-red-500 scale-110' : isAnalyzing ? 'bg-indigo-400 animate-pulse' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}
+          `}
+        >
+          {isRecording ? (
+            <div className="flex gap-1 h-4 items-center">
+              <div className="w-1 bg-white h-2 animate-[bounce_1s_infinite]"></div>
+              <div className="w-1 bg-white h-4 animate-[bounce_1s_infinite_100ms]"></div>
+              <div className="w-1 bg-white h-3 animate-[bounce_1s_infinite_200ms]"></div>
+            </div>
+          ) : (
+            <Mic size={28} className={isAnalyzing ? 'animate-spin' : ''} />
+          )}
+        </button>
+      </div>
+
+      {/* 录音状态覆盖层 */}
+      {isRecording && (
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-20 flex flex-col items-center justify-end pb-28 animate-in fade-in duration-200">
+          <div className="bg-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3">
+            <div className="w-2 h-2 bg-red-500 rounded-full animate-ping"></div>
+            <span className="text-gray-700 font-medium">正在聆听...</span>
+          </div>
+          <p className="text-white mt-4 text-shadow text-sm opacity-90">说完请再次点击</p>
+        </div>
+      )}
+
+      {/* AI 分析中覆盖层 */}
+      {isAnalyzing && (
+        <div className="absolute inset-0 bg-white/60 backdrop-blur-md z-40 flex flex-col items-center justify-center">
+          <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
+          <h3 className="text-lg font-bold text-gray-800">AI 正在分析日程</h3>
+          <p className="text-gray-500 text-sm mt-2">解析时间、地点与意图...</p>
+        </div>
+      )}
+
+      {/* 结果确认弹窗 (Bottom Sheet) */}
+      {showAiResult && aiResult && (
+        <div className="absolute inset-0 z-50 flex items-end bg-black/30 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full rounded-t-3xl shadow-2xl p-6 animate-in slide-in-from-bottom duration-300 max-h-[80vh] overflow-y-auto">
+            
+            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6"></div>
+            
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h2 className="text-xl font-bold text-indigo-900 flex items-center gap-2">
+                  <span className="bg-indigo-100 p-1 rounded text-indigo-600"><Activity size={18}/></span>
+                  识别结果
+                </h2>
+                <p className="text-xs text-gray-400 mt-1">基于您的语音输入</p>
+              </div>
+              <button onClick={() => setShowAiResult(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                <X size={20} className="text-gray-400"/>
+              </button>
+            </div>
+
+            {/* 原始语音 */}
+            <div className="bg-gray-50 p-3 rounded-lg mb-6 border border-gray-100">
+              <p className="text-sm text-gray-600 italic">"{aiResult.originalText}"</p>
+            </div>
+
+            {/* 识别出的卡片列表 */}
+            <div className="space-y-3 mb-8">
+              {aiResult.tasks.map((task, idx) => (
+                <div key={idx} className="flex gap-4 p-4 border border-gray-200 rounded-xl shadow-sm bg-white relative overflow-hidden">
+                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${task.type === 'HEALTH' ? 'bg-orange-500' : 'bg-green-500'}`}></div>
+                  
+                  <div className="flex flex-col items-center justify-center min-w-[60px] border-r border-gray-100 pr-4">
+                    <span className="text-lg font-bold text-gray-800">{task.startTime}</span>
+                    <span className="text-xs text-gray-400">{task.endTime}</span>
+                  </div>
+                  
+                  <div className="flex-1">
+                    <h3 className="font-bold text-gray-800">{task.title}</h3>
+                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                      <span className="flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded">
+                        <MapPin size={10}/> {task.location}
+                      </span>
+                      {task.type === 'HEALTH' && <span className="text-orange-500 font-medium">运动健康</span>}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center">
+                    <button className="text-gray-400 hover:text-indigo-600">
+                       <MoreHorizontal size={20}/>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 操作按钮 */}
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowAiResult(false)} 
+                className="flex-1 py-3.5 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50"
+              >
+                修改
+              </button>
+              <button 
+                onClick={confirmAddTasks}
+                className="flex-[2] py-3.5 rounded-xl bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 flex justify-center items-center gap-2"
+              >
+                <Check size={18} strokeWidth={3} />
+                确认添加 (2)
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};
+
+export default App;

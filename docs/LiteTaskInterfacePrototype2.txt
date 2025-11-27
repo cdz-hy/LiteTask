@@ -1,0 +1,539 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Mic, Plus, Calendar, Clock, Check, X, 
+  Menu, Search, ArrowLeft, ArrowRight,
+  LayoutList, GanttChartSquare, Flag, 
+  Sparkles, CalendarClock, MapPin, AlertCircle,
+  Timer, CheckCircle2
+} from 'lucide-react';
+
+// --- 1. M3 样式系统与配置 ---
+const THEME = {
+  bg: 'bg-[#F2F6FC]', // 整体背景更灰一点，突显白色卡片
+  surface: 'bg-white',
+  surfaceContainer: 'bg-[#EEF2F6]', // 次级容器
+  primary: 'bg-[#0B57D0] text-white', // Google Blue
+  primaryContainer: 'bg-[#D3E3FD] text-[#041E49]',
+  secondaryContainer: 'bg-[#C2E7FF] text-[#001D35]',
+  tertiaryContainer: 'bg-[#FFD8E4] text-[#31111D]',
+  errorContainer: 'bg-[#F9DEDC] text-[#410E0B]',
+  textMain: 'text-[#1F1F1F]',
+  textSub: 'text-[#444746]',
+  outline: 'border-[#747775]',
+  outlineVariant: 'border-[#C4C7C5]',
+};
+
+// 辅助函数：计算时间偏移量 (用于甘特图)
+const getHoursFromStr = (timeStr) => {
+  const [h, m] = timeStr.split(':').map(Number);
+  return h + m / 60;
+};
+
+// --- 2. 模拟数据 ---
+const INITIAL_TASKS = [
+  { 
+    id: 1, 
+    title: '产品需求评审', 
+    type: 'work',
+    startTime: '09:00', 
+    endTime: '11:30', 
+    duration: 2.5, 
+    deadline: null,
+    progress: 100, // 已完成
+    location: '会议室 A',
+    status: 'done' 
+  },
+  { 
+    id: 2, 
+    title: 'UI 组件库搭建', 
+    type: 'work',
+    startTime: '13:00', 
+    endTime: '16:00', 
+    duration: 3, 
+    deadline: '2025-11-21T18:00:00', 
+    progress: 45,
+    location: '研发中心',
+    status: 'todo'
+  },
+  { 
+    id: 3, 
+    title: '紧急修复 Bug #402', 
+    type: 'urgent',
+    startTime: '16:30', 
+    endTime: '18:30', 
+    duration: 2, 
+    deadline: '2025-11-21T19:00:00', // 非常紧急
+    progress: 10,
+    location: '工位',
+    status: 'todo'
+  },
+  { 
+    id: 4, 
+    title: '健身房有氧', 
+    type: 'life',
+    startTime: '19:30', 
+    endTime: '21:00', 
+    duration: 1.5, 
+    deadline: null,
+    progress: 0,
+    location: 'PowerGym',
+    status: 'todo'
+  }
+];
+
+// --- 3. 组件：顶部栏 ---
+const TopAppBar = ({ dateStr, taskCount }) => (
+  <div className={`sticky top-0 z-10 ${THEME.bg} px-4 pt-12 pb-2 flex flex-col`}>
+    <div className="flex items-center justify-between mb-4">
+       <button className="p-2 -ml-2 rounded-full hover:bg-black/5 transition-colors">
+        <Menu size={24} className={THEME.textMain} />
+      </button>
+      <div className="w-10 h-10 rounded-full bg-[#C2E7FF] flex items-center justify-center text-[#001D35] font-bold text-sm border border-white shadow-sm">
+         L
+      </div>
+    </div>
+    <div className="flex items-end justify-between">
+      <div>
+        <h1 className={`text-3xl font-normal ${THEME.textMain}`}>LiteTask</h1>
+        <div className="flex items-center gap-2 mt-1 opacity-80">
+           <span className={`text-sm font-medium ${THEME.textSub}`}>{dateStr}</span>
+           <div className="w-1 h-1 rounded-full bg-slate-400"></div>
+           <span className={`text-sm font-medium ${THEME.textSub}`}>{taskCount} 个任务</span>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+// --- 4. 组件：视图切换器 ---
+const ViewSwitcher = ({ currentView, setView }) => {
+  const options = [
+    { id: 'timeline', icon: LayoutList, label: '列表' },
+    { id: 'gantt', icon: GanttChartSquare, label: '甘特' },
+    { id: 'deadline', icon: Flag, label: '截止' },
+  ];
+  return (
+    <div className="px-4 my-6">
+      <div className="bg-[#EEF2F6] p-1 rounded-full flex relative">
+        {/* 滑动背景块模拟 (简化版) */}
+        {options.map((opt) => {
+          const isActive = currentView === opt.id;
+          return (
+            <button
+              key={opt.id}
+              onClick={() => setView(opt.id)}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-medium transition-all duration-200 z-10
+                ${isActive ? 'bg-white shadow-sm text-[#0B57D0]' : 'text-[#444746] hover:bg-white/50'}
+              `}
+            >
+              <opt.icon size={16} strokeWidth={2.5} />
+              <span>{opt.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// --- 5. 视图实现 ---
+
+// 视图 A: 时间流 (Timeline) - 经典列表
+const TimelineView = ({ tasks }) => (
+  <div className="px-4 pb-32 space-y-3">
+    {tasks.map((task) => {
+      const isUrgent = task.type === 'urgent';
+      const isDone = task.status === 'done';
+      
+      return (
+        <div key={task.id} className={`group relative bg-white p-4 rounded-[20px] border border-transparent hover:border-[#C2E7FF] shadow-sm transition-all active:scale-[0.98] ${isDone ? 'opacity-60' : ''}`}>
+           {/* 左侧时间轴指示器 */}
+           <div className={`absolute left-0 top-6 w-1 h-8 rounded-r-full ${isUrgent ? 'bg-rose-500' : 'bg-[#0B57D0]'}`}></div>
+
+           <div className="flex justify-between items-start pl-3">
+              <div>
+                <h3 className={`text-lg font-medium ${isDone ? 'line-through text-gray-400' : THEME.textMain}`}>{task.title}</h3>
+                <div className="flex items-center gap-2 mt-1 text-xs font-medium text-gray-500">
+                   <Clock size={12} />
+                   <span>{task.startTime} - {task.endTime}</span>
+                   {task.location && (
+                     <>
+                      <span>•</span>
+                      <span>{task.location}</span>
+                     </>
+                   )}
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                {task.deadline && (
+                  <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${isUrgent ? 'bg-rose-100 text-rose-700' : 'bg-blue-50 text-blue-700'}`}>
+                    今天截止
+                  </span>
+                )}
+                {isDone && <CheckCircle2 size={20} className="text-green-600" />}
+              </div>
+           </div>
+        </div>
+      );
+    })}
+  </div>
+);
+
+// 视图 B: 甘特图 (Gantt Chart) - 强化的时间管理
+const GanttView = ({ tasks }) => {
+  const startHour = 8; // 8:00
+  const endHour = 24; // 24:00
+  const pxPerHour = 100; // 每一小时占用的像素宽度
+  const totalWidth = (endHour - startHour) * pxPerHour;
+
+  // 当前时间红线 (假设现在是 15:30)
+  const currentHour = 15.5; 
+  const currentPos = (currentHour - startHour) * pxPerHour;
+
+  return (
+    <div className="flex-1 flex flex-col bg-white rounded-t-[32px] shadow-[0_-4px_20px_rgba(0,0,0,0.05)] overflow-hidden mt-2">
+      <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-white z-10">
+        <h3 className="font-bold text-gray-800 flex items-center gap-2">
+          <GanttChartSquare size={18} className="text-[#0B57D0]"/> 今日时间分布
+        </h3>
+        <span className="text-xs bg-[#D3E3FD] text-[#041E49] px-2 py-1 rounded-md font-bold">Now: 15:30</span>
+      </div>
+      
+      <div className="flex-1 overflow-x-auto overflow-y-auto relative scrollbar-hide">
+        <div style={{ width: `${totalWidth + 60}px`, height: '100%' }} className="relative pb-32">
+          
+          {/* 1. 背景网格 (时间刻度) */}
+          <div className="flex absolute inset-0 h-full">
+            {Array.from({ length: endHour - startHour + 1 }).map((_, i) => (
+              <div key={i} className="border-r border-dashed border-gray-200 h-full relative" style={{ width: `${pxPerHour}px` }}>
+                <span className="absolute top-2 left-2 text-xs font-mono text-gray-400 select-none">
+                  {(startHour + i).toString().padStart(2, '0')}:00
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* 2. 当前时间红线 */}
+          <div 
+            className="absolute top-0 bottom-0 w-[2px] bg-rose-500 z-20 shadow-[0_0_10px_rgba(244,63,94,0.5)]"
+            style={{ left: `${currentPos}px` }}
+          >
+            <div className="absolute -top-1 -translate-x-1/2 w-3 h-3 bg-rose-500 rounded-full"></div>
+          </div>
+
+          {/* 3. 任务条块 */}
+          <div className="pt-12 px-0 space-y-6 relative z-10">
+            {tasks.map((task, idx) => {
+              const taskStart = getHoursFromStr(task.startTime);
+              const offset = (taskStart - startHour) * pxPerHour;
+              const width = task.duration * pxPerHour;
+              
+              // 样式区分
+              let bgClass = 'bg-[#C2E7FF] text-[#001D35] border border-[#7FCFFF]'; // Work
+              if (task.type === 'urgent') bgClass = 'bg-[#FFD8E4] text-[#31111D] border border-[#FFB0C8]'; // Urgent
+              if (task.type === 'life') bgClass = 'bg-[#E7F3E8] text-[#144419] border border-[#BDE3C0]'; // Life
+              if (task.status === 'done') bgClass = 'bg-gray-100 text-gray-400 border border-gray-200 grayscale'; // Done
+
+              return (
+                <div 
+                  key={task.id}
+                  className={`h-16 rounded-2xl absolute flex flex-col justify-center px-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] cursor-pointer overflow-hidden whitespace-nowrap ${bgClass}`}
+                  style={{ 
+                    left: `${offset}px`, 
+                    width: `${width}px`,
+                    top: `${12 + idx * 76}px` // 错行排列
+                  }}
+                >
+                  <div className="font-bold text-sm flex items-center gap-2">
+                    {task.title}
+                  </div>
+                  <div className="text-xs opacity-80 mt-1 flex items-center gap-2">
+                    <Clock size={10}/> {task.duration}h ({task.startTime}-{task.endTime})
+                  </div>
+                  
+                  {/* 进度条叠加 */}
+                  {!task.status === 'done' && (
+                    <div className="absolute bottom-0 left-0 h-1 bg-black/10 w-full">
+                      <div className="h-full bg-black/20" style={{ width: `${task.progress}%` }}></div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 视图 C: 截止日 (Deadline) - 紧迫感视图
+const DeadlineView = ({ tasks }) => {
+  // 过滤出有截止日期的任务并排序
+  const deadlineTasks = tasks
+    .filter(t => t.deadline)
+    .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+  
+  const upcomingTasks = tasks.filter(t => !t.deadline && t.status !== 'done');
+
+  return (
+    <div className="px-4 pb-32 space-y-6">
+      {/* 头部摘要 */}
+      <div className="bg-[#3E4855] rounded-[24px] p-6 text-white shadow-lg shadow-gray-300">
+        <div className="flex items-center gap-3 mb-4">
+           <div className="p-2 bg-white/10 rounded-full"><AlertCircle size={24}/></div>
+           <div>
+             <h3 className="font-bold text-lg">紧迫任务</h3>
+             <p className="text-white/70 text-xs">今天有 {deadlineTasks.length} 个任务必须完成</p>
+           </div>
+        </div>
+        <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+           <div className="h-full bg-rose-400 w-[40%]"></div>
+        </div>
+      </div>
+
+      {/* 倒计时列表 */}
+      <div>
+        <h4 className="text-sm font-bold text-gray-500 mb-3 px-2 uppercase tracking-wider">Counting Down</h4>
+        <div className="space-y-3">
+          {deadlineTasks.map(task => (
+            <div key={task.id} className="bg-white rounded-[24px] p-5 border border-gray-100 shadow-sm flex items-center gap-4">
+               {/* 视觉倒计时圆环 */}
+               <div className="relative w-14 h-14 flex items-center justify-center">
+                 <svg className="w-full h-full rotate-[-90deg]" viewBox="0 0 36 36">
+                   <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#eee" strokeWidth="3" />
+                   <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#F43F5E" strokeWidth="3" strokeDasharray="70, 100" />
+                 </svg>
+                 <div className="absolute flex flex-col items-center text-rose-600 leading-none">
+                   <span className="text-sm font-bold">3</span>
+                   <span className="text-[8px]">HRS</span>
+                 </div>
+               </div>
+
+               <div className="flex-1">
+                 <h3 className="font-bold text-gray-800">{task.title}</h3>
+                 <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                   <Flag size={10} className="text-rose-500"/> 截止: {task.deadline.split('T')[1].slice(0, 5)}
+                 </p>
+               </div>
+               
+               <button className="bg-gray-100 p-3 rounded-full hover:bg-green-100 hover:text-green-600 transition-colors">
+                 <Check size={18}/>
+               </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 稍后安排 */}
+      <div>
+         <h4 className="text-sm font-bold text-gray-500 mb-3 px-2 uppercase tracking-wider">Later</h4>
+         <div className="grid grid-cols-2 gap-3">
+            {upcomingTasks.map(task => (
+               <div key={task.id} className="bg-white p-4 rounded-[20px] border border-gray-100">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">{task.title}</h3>
+                  <span className="bg-gray-100 text-gray-500 text-[10px] px-2 py-1 rounded-md">无具体截止</span>
+               </div>
+            ))}
+         </div>
+      </div>
+    </div>
+  );
+};
+
+// --- 6. 交互组件：全屏语音层 ---
+const ListeningLayer = ({ isVisible, onClose, onComplete }) => {
+  if (!isVisible) return null;
+  return (
+    <div className="fixed inset-0 z-50 bg-[#1F1F1F]/95 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-300">
+       {/* 关闭按钮 */}
+       <button onClick={onClose} className="absolute top-12 right-6 bg-white/10 p-3 rounded-full text-white hover:bg-white/20">
+         <X size={24}/>
+       </button>
+
+       <div className="w-full max-w-xs text-center space-y-10">
+          <div className="relative flex justify-center">
+             {/* 动态声波环 */}
+             <div className="absolute w-40 h-40 bg-[#A8C7FA]/20 rounded-full animate-ping"></div>
+             <div className="absolute w-40 h-40 bg-[#A8C7FA]/10 rounded-full animate-ping animation-delay-300"></div>
+             <div className="w-32 h-32 bg-gradient-to-b from-[#0B57D0] to-[#0842A0] rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(11,87,208,0.4)] relative z-10">
+                <Mic size={48} className="text-white animate-pulse"/>
+             </div>
+          </div>
+
+          <div>
+            <h2 className="text-white text-3xl font-normal mb-4">正在聆听...</h2>
+            <p className="text-[#C4C7C5] text-lg leading-relaxed">
+               "帮我把下午5点的会议加进去，持续一小时，是关于Q4预算的..."
+            </p>
+          </div>
+       </div>
+
+       <button 
+         onClick={onComplete}
+         className="absolute bottom-24 bg-[#E3E3E3] text-[#1F1F1F] px-10 py-4 rounded-full font-medium text-lg hover:scale-105 transition-transform active:scale-95"
+       >
+         说完了
+       </button>
+    </div>
+  );
+}
+
+// --- 7. 交互组件：AI 结果 Bottom Sheet ---
+const AIResultSheet = ({ data, onCancel, onConfirm }) => {
+  if (!data) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end pointer-events-none">
+       {/* 背景遮罩 */}
+       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto" onClick={onCancel}></div>
+       
+       {/* Sheet 本体 */}
+       <div className="relative w-full bg-white rounded-t-[32px] p-6 shadow-2xl pointer-events-auto animate-in slide-in-from-bottom duration-300 flex flex-col max-h-[85vh]">
+          <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-8 opacity-60"></div>
+          
+          <div className="flex items-center gap-3 mb-6">
+             <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white">
+               <Sparkles size={20}/>
+             </div>
+             <div>
+               <h3 className="text-xl font-bold text-gray-800">AI 识别结果</h3>
+               <p className="text-sm text-gray-500">已解析关键信息</p>
+             </div>
+          </div>
+
+          {/* 模拟表单字段 */}
+          <div className="space-y-4 mb-8 overflow-y-auto">
+             <div className="bg-[#F0F4F8] p-4 rounded-2xl">
+                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">任务标题</label>
+                <div className="text-lg text-gray-800">{data.title}</div>
+             </div>
+             
+             <div className="flex gap-3">
+               <div className="flex-1 bg-[#F0F4F8] p-4 rounded-2xl">
+                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">时间段</label>
+                  <div className="flex items-center gap-2 text-gray-800 font-medium">
+                     <Clock size={16}/> {data.startTime} - {data.endTime}
+                  </div>
+               </div>
+               <div className="flex-1 bg-[#F0F4F8] p-4 rounded-2xl">
+                  <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">时长</label>
+                  <div className="text-gray-800 font-medium">{data.duration} 小时</div>
+               </div>
+             </div>
+
+             {data.deadline && (
+                <div className="border border-rose-100 bg-rose-50 p-4 rounded-2xl flex items-center justify-between">
+                   <div className="flex items-center gap-2 text-rose-700 font-medium">
+                      <Flag size={18}/> 截止: {data.deadline.split('T')[1]}
+                   </div>
+                   <span className="bg-white text-rose-600 text-[10px] px-2 py-1 rounded border border-rose-200 font-bold">URGENT</span>
+                </div>
+             )}
+          </div>
+
+          <div className="flex gap-3 mt-auto">
+             <button onClick={onCancel} className="flex-1 py-4 rounded-full text-blue-600 font-medium hover:bg-blue-50 transition-colors">取消</button>
+             <button 
+               onClick={onConfirm}
+               className="flex-[2] py-4 rounded-full bg-[#0B57D0] text-white font-bold shadow-lg shadow-blue-200 hover:bg-[#0842A0] active:scale-95 transition-transform flex items-center justify-center gap-2"
+             >
+               <Check size={20}/> 确认添加
+             </button>
+          </div>
+       </div>
+    </div>
+  );
+}
+
+// --- 8. 主入口 ---
+const App = () => {
+  const [view, setView] = useState('gantt'); // 默认展示甘特图，展示优势
+  const [tasks, setTasks] = useState(INITIAL_TASKS);
+  
+  // 交互状态
+  const [isListening, setIsListening] = useState(false);
+  const [aiData, setAiData] = useState(null);
+
+  // 演示逻辑：录音结束 -> AI 填充
+  const handleRecordComplete = () => {
+    setIsListening(false);
+    setTimeout(() => {
+      // 模拟 AI 解析出的新任务
+      setAiData({
+        title: 'Q4 季度预算会议',
+        type: 'work',
+        startTime: '17:00',
+        endTime: '18:00',
+        duration: 1,
+        deadline: '2025-11-21T18:00:00', // 刚好卡点
+        progress: 0,
+        location: 'Zoom',
+      });
+    }, 800);
+  };
+
+  // 确认添加 -> 写入 State -> 视图自动更新
+  const handleConfirmAdd = () => {
+    if (aiData) {
+      const newTask = { ...aiData, id: Date.now(), status: 'todo' };
+      setTasks([...tasks, newTask]);
+      setAiData(null);
+      // 自动切到 Timeline 或 Gantt 来看新任务
+      // setView('gantt'); 
+    }
+  };
+
+  return (
+    <div className={`w-full h-screen ${THEME.bg} font-sans flex flex-col overflow-hidden text-[#1F1F1F]`}>
+      
+      {/* 1. 顶部信息 */}
+      <TopAppBar dateStr="11月21日" taskCount={tasks.length} />
+
+      {/* 2. 内容滚动区 */}
+      <div className="flex-1 overflow-y-auto flex flex-col relative">
+        <ViewSwitcher currentView={view} setView={setView} />
+        
+        {view === 'timeline' && <TimelineView tasks={tasks} />}
+        {view === 'gantt' && <GanttView tasks={tasks} />}
+        {view === 'deadline' && <DeadlineView tasks={tasks} />}
+      </div>
+
+      {/* 3. 底部悬浮按钮 (FAB) */}
+      <div className="absolute bottom-8 right-6 flex flex-col gap-4 items-end z-30 pointer-events-none">
+        {/* 辅助按钮：手动添加 */}
+        <button 
+          className="pointer-events-auto w-12 h-12 rounded-[16px] bg-[#C2E7FF] text-[#001D35] shadow-md flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+          onClick={() => alert("手动添加功能")}
+        >
+          <Plus size={24} />
+        </button>
+
+        {/* 主按钮：语音添加 */}
+        <button 
+          onClick={() => setIsListening(true)}
+          className="pointer-events-auto h-16 pr-6 pl-5 rounded-[20px] bg-[#0B57D0] text-white shadow-xl shadow-blue-200 flex items-center gap-3 hover:bg-[#0842A0] hover:scale-105 active:scale-95 transition-all duration-300"
+        >
+          <Mic size={24} />
+          <span className="font-medium text-[15px] tracking-wide">语音安排</span>
+        </button>
+      </div>
+
+      {/* 4. 全屏交互层 */}
+      <ListeningLayer 
+        isVisible={isListening} 
+        onClose={() => setIsListening(false)} 
+        onComplete={handleRecordComplete}
+      />
+
+      <AIResultSheet 
+        data={aiData} 
+        onCancel={() => setAiData(null)}
+        onConfirm={handleConfirmAdd}
+      />
+
+    </div>
+  );
+};
+
+export default App;
