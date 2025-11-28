@@ -1,24 +1,17 @@
 package com.litetask.app.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,182 +19,160 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.litetask.app.data.model.Task
-import com.litetask.app.ui.theme.Primary
-import java.util.Calendar
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 @Composable
 fun DeadlineView(
     tasks: List<Task>,
+    onTaskClick: (Task) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    LazyColumn(
+    // Filter tasks that have a deadline and are not done
+    val urgentTasks = tasks.filter { it.deadline > 0 && !it.isDone }.sortedBy { it.deadline }
+    val urgentCount = urgentTasks.size
+
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF2F6FC))
             .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState())
     ) {
-        // 紧迫任务头部摘要
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF3E4855), MaterialTheme.shapes.large)
-                    .padding(24.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+        // Urgent Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF3E4855))
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
-                            .background(Color.White.copy(alpha = 0.1f), CircleShape),
-                        contentAlignment = Alignment.Center
+                            .background(Color.White.copy(alpha = 0.1f), CircleShape)
+                            .padding(8.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Flag,
+                            imageVector = Icons.Default.Warning,
                             contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
+                            tint = Color.White
                         )
                     }
-                    
-                    Column(modifier = Modifier.padding(start = 12.dp)) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
                         Text(
                             text = "紧迫任务",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
-                            text = "今天有 ${tasks.count { it.deadline != null }} 个任务必须完成",
+                            text = "今天有 $urgentCount 个任务必须完成",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.7f),
-                            modifier = Modifier.padding(top = 4.dp)
+                            color = Color.White.copy(alpha = 0.7f)
                         )
                     }
                 }
-                
-                // 进度条
+                Spacer(modifier = Modifier.height(16.dp))
+                // Progress Bar (Mock)
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
                         .fillMaxWidth()
                         .height(4.dp)
-                        .background(Color.White.copy(alpha = 0.1f))
-                        .padding(top = 16.dp)
+                        .background(Color.White.copy(alpha = 0.1f), CircleShape)
                 ) {
                     Box(
                         modifier = Modifier
-                            .height(4.dp)
-                            .fillMaxWidth(0.4f) // 示例进度40%
-                            .background(Color(0xFFF43F5E))
+                            .fillMaxWidth(0.4f) // Mock progress
+                            .fillMaxHeight()
+                            .background(Color(0xFFFB7185), CircleShape)
                     )
                 }
             }
         }
-        
-        // 倒计时列表标题
-        item {
-            Text(
-                text = "Counting Down",
-                style = MaterialTheme.typography.labelMedium,
-                color = Color(0xFF747775),
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .padding(top = 24.dp, bottom = 12.dp)
-                    .fillMaxWidth()
-            )
-        }
-        
-        // 有截止日期的任务
-        items(tasks.filter { it.deadline != null }.sortedBy { it.deadline }) { task ->
-            CountdownTaskItem(task = task)
-        }
-        
-        // 稍后安排标题
-        item {
-            Text(
-                text = "Later",
-                style = MaterialTheme.typography.labelMedium,
-                color = Color(0xFF747775),
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .padding(top = 24.dp, bottom = 12.dp)
-                    .fillMaxWidth()
-            )
-        }
-        
-        // 无截止日期的任务
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                tasks.filter { it.deadline == null && !it.isDone }.forEach { task ->
-                    LaterTaskItem(task = task)
-                }
+
+        Text(
+            text = "COUNTING DOWN",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = Color.Gray,
+            modifier = Modifier.padding(bottom = 12.dp, start = 4.dp)
+        )
+
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            urgentTasks.forEach { task ->
+                DeadlineTaskItem(task = task, onClick = { onTaskClick(task) })
             }
         }
         
-        // 底部填充空间
-        item {
-            Box(modifier = Modifier.height(80.dp))
-        }
+        Spacer(modifier = Modifier.height(80.dp))
     }
 }
 
 @Composable
-fun CountdownTaskItem(task: Task) {
-    Box(
+fun DeadlineTaskItem(task: Task, onClick: () -> Unit) {
+    val timeLeftHours = ((task.deadline - System.currentTimeMillis()) / (1000 * 60 * 60)).coerceAtLeast(0)
+    
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
-            .background(Color.White, MaterialTheme.shapes.large)
-            .padding(20.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.padding(20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 视觉倒计时圆环（简化为静态展示）
+            // Circular Progress / Time Left
             Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(Color(0xFFE3E3E3), CircleShape),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(56.dp)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
+                CircularProgressIndicator(
+                    progress = { 1f },
+                    color = Color(0xFFEEEEEE),
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.fillMaxSize()
+                )
+                CircularProgressIndicator(
+                    progress = { 0.7f }, // Mock
+                    color = Color(0xFFF43F5E),
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "3",
+                        text = "$timeLeftHours",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFF43F5E)
+                        color = Color(0xFFE11D48)
                     )
                     Text(
                         text = "HRS",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFF43F5E)
+                        fontSize = 8.sp,
+                        color = Color(0xFFE11D48)
                     )
                 }
             }
             
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp)
-            ) {
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = task.title,
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
                     color = Color(0xFF1F1F1F)
                 )
                 Row(
-                    modifier = Modifier.padding(top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 4.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Flag,
@@ -209,56 +180,26 @@ fun CountdownTaskItem(task: Task) {
                         tint = Color(0xFFF43F5E),
                         modifier = Modifier.size(12.dp)
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "截止: ${formatDeadlineTime(task.deadline!!)}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color(0xFF747775),
-                        modifier = Modifier.padding(start = 4.dp)
+                        text = "截止: ${formatDeadlineTime(task.deadline)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF6B7280)
                     )
                 }
             }
             
-            Box(
+            IconButton(
+                onClick = { /* Mark done handled in detail sheet for now, or add callback */ },
                 modifier = Modifier
-                    .size(48.dp)
-                    .background(Color(0xFFEEF2F6), CircleShape)
-                    .clip(CircleShape),
-                contentAlignment = Alignment.Center
+                    .background(Color(0xFFF3F4F6), CircleShape)
+                    .size(40.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Flag,
-                    contentDescription = null,
-                    tint = Primary
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun LaterTaskItem(task: Task) {
-    Box(
-        modifier = Modifier
-            .weight(1f)
-            .background(Color.White, MaterialTheme.shapes.large)
-            .padding(16.dp)
-    ) {
-        Column {
-            Text(
-                text = task.title,
-                style = MaterialTheme.typography.labelMedium,
-                color = Color(0xFF444746),
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            Box(
-                modifier = Modifier
-                    .background(Color(0xFFEEF2F6), MaterialTheme.shapes.small)
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = "无具体截止",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF747775)
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Done",
+                    tint = Color(0xFF9CA3AF),
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -266,9 +207,5 @@ fun LaterTaskItem(task: Task) {
 }
 
 fun formatDeadlineTime(timestamp: Long): String {
-    val calendar = Calendar.getInstance()
-    calendar.timeInMillis = timestamp
-    val hour = calendar.get(Calendar.HOUR_OF_DAY)
-    val minute = calendar.get(Calendar.MINUTE)
-    return String.format("%02d:%02d", hour, minute)
+    return SimpleDateFormat("HH:mm", Locale.getDefault()).format(timestamp)
 }

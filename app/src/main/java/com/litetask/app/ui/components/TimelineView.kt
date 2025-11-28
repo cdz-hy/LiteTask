@@ -1,57 +1,82 @@
 package com.litetask.app.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimelineView(
     tasks: List<Task>,
+    onTaskClick: (Task) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scrollState = rememberScrollState()
-    
-    Box(
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredTasks = tasks.filter { 
+        it.title.contains(searchQuery, ignoreCase = true) || 
+        (it.description?.contains(searchQuery, ignoreCase = true) == true)
+    }
+
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(scrollState)
             .background(Color(0xFFF2F6FC))
             .padding(horizontal = 16.dp)
     ) {
+        // Search Bar
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("搜索任务...") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                focusedBorderColor = Color.Transparent,
+                unfocusedBorderColor = Color.Transparent
+            ),
+            singleLine = true
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 16.dp)
+                .padding(bottom = 80.dp) // Space for FAB
+                .verticalScroll(rememberScrollState())
         ) {
-            tasks.forEach { task ->
-                TaskItem(task = task)
+            filteredTasks.forEach { task ->
+                TaskItem(task = task, onClick = { onTaskClick(task) })
             }
         }
     }
 }
 
 @Composable
-fun TaskItem(task: Task) {
-    val isUrgent = task.type == TaskType.DEV // 示例紧急任务类型
+fun TaskItem(task: Task, onClick: () -> Unit) {
+    val isUrgent = task.type == TaskType.URGENT
     val isDone = task.isDone
     
     Box(
@@ -59,13 +84,17 @@ fun TaskItem(task: Task) {
             .fillMaxWidth()
             .padding(vertical = 6.dp)
             .background(
-                if (isDone) Color(0xFFEEF2F6) else Color.White,
+                if (isDone) Color.White.copy(alpha = 0.6f) else Color.White,
                 MaterialTheme.shapes.large
             )
+            .clickable(onClick = onClick)
             .padding(16.dp)
     ) {
-        Column {
-            // 左侧时间轴指示器
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
+            // Left Indicator
             Box(
                 modifier = Modifier
                     .width(4.dp)
@@ -78,7 +107,7 @@ fun TaskItem(task: Task) {
             
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .weight(1f)
                     .padding(start = 12.dp)
             ) {
                 Text(
@@ -86,51 +115,58 @@ fun TaskItem(task: Task) {
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium,
                     color = if (isDone) Color(0xFF747775) else Color(0xFF1F1F1F),
+                    textDecoration = if (isDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
                 )
                 
-                // 时间和位置信息
-                Text(
-                    text = "${formatTimelineTime(task.startTime)} - ${formatTimelineTime(task.endTime)}" + 
-                           if (task.location != null) " • ${task.location}" else "",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (isDone) Color(0xFF747775) else Color(0xFF444746),
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-                
-                // 截止日期和完成状态
-                if (task.endTime > 0) {
+                // Time and Location
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccessTime,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = Color(0xFF747775)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "${formatTimelineTime(task.startTime)} - ${formatTimelineTime(task.deadline)}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isDone) Color(0xFF747775) else Color(0xFF444746)
+                    )
+                }
+
+                // Deadline Tag
+                if (task.deadline > 0 && !isDone) {
+                    val isUrgentDeadline = task.deadline < System.currentTimeMillis() + 24 * 60 * 60 * 1000
                     Box(
                         modifier = Modifier
                             .padding(top = 8.dp)
-                    ) {
-                        if (isDone) {
-                            // 完成状态
-                            Text(
-                                text = "已完成",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Color(0xFF22C55E),
-                                fontWeight = FontWeight.Bold
+                            .background(
+                                if (isUrgentDeadline) Color(0xFFFFD8E4) else Color(0xFFD3E3FD),
+                                MaterialTheme.shapes.small
                             )
-                        } else {
-                            // 截止信息
-                            Box(
-                                modifier = Modifier
-                                    .background(
-                                        if (isUrgent) Color(0xFFFFD8E4) else Color(0xFFD3E3FD),
-                                        MaterialTheme.shapes.small
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = "今天截止",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isUrgent) Color(0xFF31111D) else Color(0xFF041E49)
-                                )
-                            }
-                        }
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = if (isUrgentDeadline) "今天截止" else "截止: ${formatDate(task.deadline)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isUrgentDeadline) Color(0xFF31111D) else Color(0xFF041E49)
+                        )
                     }
                 }
+            }
+            
+            // Right Status Icon
+            if (isDone) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = Color(0xFF146C2E), // Green
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }
@@ -142,4 +178,8 @@ fun formatTimelineTime(timestamp: Long): String {
     val hour = calendar.get(Calendar.HOUR_OF_DAY)
     val minute = calendar.get(Calendar.MINUTE)
     return String.format("%02d:%02d", hour, minute)
+}
+
+fun formatDate(timestamp: Long): String {
+    return SimpleDateFormat("MM-dd", Locale.getDefault()).format(timestamp)
 }

@@ -106,6 +106,24 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun addTask(task: Task) {
+        viewModelScope.launch {
+            taskRepository.insertTask(task)
+        }
+    }
+
+    fun updateTask(task: Task) {
+        viewModelScope.launch {
+            taskRepository.updateTask(task)
+        }
+    }
+
+    fun deleteTask(task: Task) {
+        viewModelScope.launch {
+            taskRepository.deleteTask(task)
+        }
+    }
+
     fun dismissAiResult() {
         _uiState.value = _uiState.value.copy(showAiResult = false, aiParsedTasks = emptyList())
     }

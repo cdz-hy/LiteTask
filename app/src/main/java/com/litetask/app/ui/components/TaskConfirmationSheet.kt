@@ -36,12 +36,13 @@ import com.litetask.app.ui.theme.Indigo600
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskConfirmationSheet(
     tasks: List<Task>,
-    onDismiss: () -> Unit,
+   onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -51,7 +52,7 @@ fun TaskConfirmationSheet(
         sheetState = sheetState,
         containerColor = Color.White,
         tonalElevation = 0.dp
-    ) {
+) {
         Column(
             modifier = Modifier
                 .padding(horizontal = 24.dp)
@@ -61,7 +62,7 @@ fun TaskConfirmationSheet(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
-                    .padding(vertical = 8.dp)
+                    .padding(vertical =8.dp)
                     .size(48.dp, 6.dp)
                     .clip(CircleShape)
                     .background(Color(0xFFC4C7C5))
@@ -70,7 +71,7 @@ fun TaskConfirmationSheet(
             // 标题
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(vertical = 16.dp)
+                modifier = Modifier.padding(vertical =16.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -79,7 +80,7 @@ fun TaskConfirmationSheet(
                             brush = Brush.linearGradient(
                                 colors = listOf(Color(0xFF6366F1), Color(0xFF8B5CF6))
                             ),
-                            shape = CircleShape
+                            shape =CircleShape
                         )
                         .padding(8.dp),
                     contentAlignment = Alignment.Center
@@ -92,7 +93,7 @@ fun TaskConfirmationSheet(
                     )
                 }
                 
-                Column(modifier = Modifier.padding(start = 12.dp)) {
+                Column(modifier =Modifier.padding(start = 12.dp)) {
                     Text(
                         text = "AI 识别结果",
                         style = MaterialTheme.typography.headlineSmall,
@@ -110,7 +111,7 @@ fun TaskConfirmationSheet(
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier
-                    .weight(1f, fill = false)
+                    .weight(1f, fill =false)
                     .padding(vertical = 8.dp)
             ) {
                 items(tasks) { task ->
@@ -134,7 +135,7 @@ fun TaskConfirmationSheet(
                     Text("取消")
                 }
                 Button(
-                    onClick = onConfirm,
+                    onClick= onConfirm,
                     modifier = Modifier.weight(2f),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Indigo600,
@@ -143,7 +144,7 @@ fun TaskConfirmationSheet(
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
                 ) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment= Alignment.CenterVertically,
                         modifier = Modifier.padding(horizontal = 8.dp)
                     ) {
                         Icon(
@@ -153,7 +154,7 @@ fun TaskConfirmationSheet(
                         )
                         Text(
                             text = "确认添加",
-                            modifier = Modifier.padding(start = 8.dp)
+                            modifier = Modifier.padding(start= 8.dp)
                         )
                     }
                 }
@@ -188,23 +189,24 @@ fun TaskPreviewItem(task: Task) {
                 modifier = Modifier.size(16.dp)
             )
             Text(
-                text = "${formatPreviewTime(task.startTime)} - ${formatPreviewTime(task.endTime)}",
+                text = "${formatPreviewTime(task.startTime)}- ${formatPreviewTime(task.deadline)}",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF1F1F1F),
-                modifier = Modifier.padding(start = 8.dp)
+                color = Color(0xFF444746)
             )
         }
         
+        // 位置信息已移除，因为新的 Task 模型中不再包含该字段
+        /*
         if (task.location != null) {
             Row(
                 modifier = Modifier.padding(top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 简单的占位图标
-                Box(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .background(Color(0xFF747775), CircleShape)
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = Color(0xFF444746),
+                   modifier = Modifier.size(16.dp)
                 )
                 Text(
                     text = task.location,
@@ -214,21 +216,24 @@ fun TaskPreviewItem(task: Task) {
                 )
             }
         }
-        
-        // 时长信息
+        */
+
+        //时长信息
+        val durationMillis = task.deadline - task.startTime
+        val durationHours = durationMillis / (1000 * 60 * 60)
         Text(
-            text = "时长: ${calculateDurationInHours(task)} 小时",
+            text = "时长: ${durationHours} 小时",
             style = MaterialTheme.typography.bodyMedium,
             color = Color(0xFF444746),
             modifier = Modifier.padding(top = 8.dp)
         )
-        
+
         // 如果有截止日期
         if (isUrgentTask(task)) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp)
+                    .padding(top= 12.dp)
                     .background(Color(0xFFFFD8E4), MaterialTheme.shapes.small)
                     .padding(12.dp)
             ) {
@@ -243,7 +248,7 @@ fun TaskPreviewItem(task: Task) {
                     )
                     Text(
                         text = "紧急任务",
-                        style = MaterialTheme.typography.bodyMedium,
+                       style = MaterialTheme.typography.bodyMedium,
                         color = Color(0xFF31111D),
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(start = 8.dp)
@@ -255,18 +260,18 @@ fun TaskPreviewItem(task: Task) {
 }
 
 fun formatPreviewTime(timestamp: Long): String {
-    val calendar = Calendar.getInstance()
+    val calendar =Calendar.getInstance()
     calendar.timeInMillis = timestamp
     return SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(Date(timestamp))
 }
 
 fun calculateDurationInHours(task: Task): Float {
-    val durationMillis = task.endTime - task.startTime
-    return durationMillis / (1000f * 60 * 60)
+    val durationMillis = task.deadline - task.startTime
+    return durationMillis / (1000f * 60* 60)
 }
 
 fun isUrgentTask(task: Task): Boolean {
     // 简单判断逻辑：如果有截止时间且距离现在不到24小时，则认为是紧急任务
     val currentTime = System.currentTimeMillis()
-    return task.deadline != null && task.deadline - currentTime < 24 * 60 * 60 * 1000
+    return task.deadline > 0 && task.deadline - currentTime <24 * 60 * 60 * 1000
 }

@@ -27,9 +27,9 @@ class AddTaskViewModel @Inject constructor(
                 title = title,
                 description = description.ifBlank { null },
                 startTime = startTime,
-                endTime = endTime,
-                type = type,
-                location = location.ifBlank { null }
+                deadline = endTime, // 将 endTime 替换为 deadline
+                type = type
+                // 移除 location 字段，因为新的 Task 模型中不再包含该字段
             )
             taskRepository.insertTask(task)
         }

@@ -189,9 +189,10 @@ fun TypeChip(
     val color = when(type) {
         TaskType.WORK -> Color(0xFF4F46E5)
         TaskType.LIFE -> Color(0xFF22C55E)
-        TaskType.DEV -> Color(0xFFA855F7)
-        TaskType.HEALTH -> Color(0xFFF97316)
-        TaskType.OTHER -> Color.Gray
+        TaskType.URGENT -> Color(0xFFF97316) // 修改 DEV 为 URGENT
+        TaskType.STUDY -> Color(0xFFA855F7)  // 修改 HEALTH 为 STUDY
+        TaskType.HEALTH -> Color(0xFF06B6D4) // 添加 HEALTH 类型
+        else -> Color.Gray                   // 添加默认分支
     }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
