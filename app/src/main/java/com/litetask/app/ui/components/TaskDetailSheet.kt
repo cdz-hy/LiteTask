@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.litetask.app.data.model.Task
 import com.litetask.app.ui.theme.Primary
@@ -141,4 +142,27 @@ fun TaskDetailSheet(
 
 private fun formatTime(timestamp: Long): String {
     return SimpleDateFormat("HH:mm", Locale.getDefault()).format(timestamp)
+}
+
+@Preview(showBackground = true)
+@Composable
+fun TaskDetailSheetPreview() {
+    val sampleTask = Task(
+        id = 1,
+        title = "完成项目报告",
+        description = "准备季度总结报告并提交",
+        type = com.litetask.app.data.model.TaskType.WORK,
+        startTime = System.currentTimeMillis(),
+        deadline = System.currentTimeMillis() + 2 * 60 * 60 * 1000,
+        isDone = false
+    )
+    
+    MaterialTheme {
+        TaskDetailSheet(
+            task = sampleTask,
+            onDismiss = {},
+            onDelete = {},
+            onUpdate = {}
+        )
+    }
 }

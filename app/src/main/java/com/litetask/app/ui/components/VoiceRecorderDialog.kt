@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -64,7 +65,7 @@ fun VoiceRecorderDialog(
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 Text(
-                    text = "\"帮我把下午5点的会议加进去，持续一小时，是关于Q4预算的...\"",
+                    text = "\"帮我把下午5点的会议加进去,持续一小时,是关于Q4预算的...\"",
                     style = MaterialTheme.typography.bodyLarge,
                     color = Color(0xFFC4C7C5),
                     textAlign = TextAlign.Center
@@ -172,6 +173,31 @@ fun RecordingAnimation() {
                 tint = Color.White,
                 modifier = Modifier.size(48.dp)
             )
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun VoiceRecorderDialogPreview() {
+    MaterialTheme {
+        VoiceRecorderDialog(
+            onDismiss = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun RecordingAnimationPreview() {
+    MaterialTheme {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF1F1F1F)),
+            contentAlignment = Alignment.Center
+        ) {
+            RecordingAnimation()
         }
     }
 }

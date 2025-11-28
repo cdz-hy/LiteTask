@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
@@ -174,4 +175,36 @@ fun formatGanttTime(timestamp: Long): String {
     val hour = calendar.get(Calendar.HOUR_OF_DAY)
     val minute = calendar.get(Calendar.MINUTE)
     return String.format("%02d:%02d", hour, minute)
+}
+
+@Preview(showBackground = true, showSystemUi = true)
+@Composable
+fun GanttViewPreview() {
+    val sampleTasks = listOf(
+        Task(
+            id = 1,
+            title = "项目会议",
+            description = "讨论Q4规划",
+            type = TaskType.WORK,
+            startTime = System.currentTimeMillis(),
+            deadline = System.currentTimeMillis() + 2 * 60 * 60 * 1000,
+            isDone = false
+        ),
+        Task(
+            id = 2,
+            title = "健身锻炼",
+            description = "跑步",
+            type = TaskType.LIFE,
+            startTime = System.currentTimeMillis() + 3 * 60 * 60 * 1000,
+            deadline = System.currentTimeMillis() + 4 * 60 * 60 * 1000,
+            isDone = false
+        )
+    )
+    
+    MaterialTheme {
+        GanttView(
+            tasks = sampleTasks,
+            onTaskClick = {}
+        )
+    }
 }

@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
@@ -182,4 +183,100 @@ fun formatTimelineTime(timestamp: Long): String {
 
 fun formatDate(timestamp: Long): String {
     return SimpleDateFormat("MM-dd", Locale.getDefault()).format(timestamp)
+}
+
+@Preview(showBackground = true, showSystemUi = true)
+@Composable
+fun TimelineViewPreview() {
+    val sampleTasks = listOf(
+        Task(
+            id = 1,
+            title = "完成项目报告",
+            description = "准备季度总结报告",
+            type = TaskType.WORK,
+            startTime = System.currentTimeMillis(),
+            deadline = System.currentTimeMillis() + 2 * 60 * 60 * 1000,
+            isDone = false
+        ),
+        Task(
+            id = 2,
+            title = "健身锻炼",
+            description = "跑步30分钟",
+            type = TaskType.LIFE,
+            startTime = System.currentTimeMillis() + 3 * 60 * 60 * 1000,
+            deadline = System.currentTimeMillis() + 4 * 60 * 60 * 1000,
+            isDone = true
+        ),
+        Task(
+            id = 3,
+            title = "紧急会议",
+            description = "客户需求讨论",
+            type = TaskType.URGENT,
+            startTime = System.currentTimeMillis(),
+            deadline = System.currentTimeMillis() + 1 * 60 * 60 * 1000,
+            isDone = false
+        )
+    )
+    
+    MaterialTheme {
+        TimelineView(
+            tasks = sampleTasks,
+            onTaskClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun TaskItemPreview() {
+    MaterialTheme {
+        Column(
+            modifier = Modifier
+                .background(Color(0xFFF2F6FC))
+                .padding(16.dp)
+        ) {
+            TaskItem(
+                task = Task(
+                    id = 1,
+                    title = "完成项目报告",
+                    description = "准备季度总结",
+                    type = TaskType.WORK,
+                    startTime = System.currentTimeMillis(),
+                    deadline = System.currentTimeMillis() + 2 * 60 * 60 * 1000,
+                    isDone = false
+                ),
+                onClick = {}
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            TaskItem(
+                task = Task(
+                    id = 2,
+                    title = "紧急任务",
+                    description = "需要立即处理",
+                    type = TaskType.URGENT,
+                    startTime = System.currentTimeMillis(),
+                    deadline = System.currentTimeMillis() + 30 * 60 * 1000,
+                    isDone = false
+                ),
+                onClick = {}
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            TaskItem(
+                task = Task(
+                    id = 3,
+                    title = "已完成任务",
+                    description = "这个任务已经完成了",
+                    type = TaskType.LIFE,
+                    startTime = System.currentTimeMillis() - 60 * 60 * 1000,
+                    deadline = System.currentTimeMillis(),
+                    isDone = true
+                ),
+                onClick = {}
+            )
+        }
+    }
 }

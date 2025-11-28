@@ -33,12 +33,6 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToSettings = { currentScreen = "settings" }
                             )
                         }
-                        "add_task" -> {
-                            com.litetask.app.ui.addtask.AddTaskScreen(
-                                onBack = { currentScreen = "home" },
-                                onSave = { currentScreen = "home" }
-                            )
-                        }
                         "settings" -> {
                             com.litetask.app.ui.settings.SettingsScreen(
                                 onBack = { currentScreen = "home" }

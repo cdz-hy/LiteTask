@@ -20,7 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.litetask.app.data.model.Task
@@ -38,7 +40,7 @@ fun AddTaskDialog(
 ) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf(TaskType.WORK) }
+    var selectedType by remember { mutableStateOf(TaskType.STUDY) }
     
     // 日期和时间状态 - 分别管理日期和时间
     val calendar = Calendar.getInstance()
@@ -239,7 +241,7 @@ fun AddTaskDialog(
                             icon = Icons.Default.CalendarToday,
                             value = formatDateForDialog(startDate),
                             onClick = { showStartDatePicker = true },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1.6f)
                         )
                         DateTimePickerCard(
                             label = "开始时间",
@@ -269,7 +271,7 @@ fun AddTaskDialog(
                             icon = Icons.Default.Event,
                             value = formatDateForDialog(deadlineDate),
                             onClick = { showDeadlineDatePicker = true },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1.6f),
                             isUrgent = deadlineMillis < System.currentTimeMillis() + 24 * 60 * 60 * 1000
                         )
                         DateTimePickerCard(
@@ -571,6 +573,7 @@ fun MaterialTimePicker(
     )
 }
 
+
 @Composable
 fun DateTimePickerCard(
     label: String,
@@ -582,14 +585,16 @@ fun DateTimePickerCard(
 ) {
     Card(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.height(100.dp), // 固定高度确保所有卡片一致
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isUrgent) Color(0xFFFFEBEE) else Color(0xFFF8F9FA)
         )
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -599,22 +604,30 @@ fun DateTimePickerCard(
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
-            Column {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
+            ) {
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF747775)
+                    color = Color(0xFF747775),
+                    maxLines = 1
                 )
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = value,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (isUrgent) Color(0xFFF43F5E) else Color(0xFF1F1F1F)
+                    color = if (isUrgent) Color(0xFFF43F5E) else Color(0xFF1F1F1F),
+                    maxLines = 2,
+                    lineHeight = 20.sp
                 )
             }
         }
     }
 }
+
 
 private fun formatDateForDialog(timestamp: Long): String {
     val sdf = SimpleDateFormat("yyyy年MM月dd日 E", Locale.CHINESE)
@@ -629,5 +642,44 @@ private fun getTaskTypeName(type: TaskType): String {
         TaskType.STUDY -> "学习"
         TaskType.HEALTH -> "健康"
         TaskType.DEV -> "开发"
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun AddTaskDialogPreview() {
+    MaterialTheme {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Color.Black.copy(alpha = 0.5f)
+        ) {
+            AddTaskDialog(
+                onDismiss = {},
+                onConfirm = {}
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun DateTimePickerCardPreview() {
+    MaterialTheme {
+        Column(modifier = Modifier.padding(16.dp)) {
+            DateTimePickerCard(
+                label = "开始日期",
+                icon = Icons.Default.CalendarToday,
+                value = "2025年11月28日 周四",
+                onClick = {}
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            DateTimePickerCard(
+                label = "截止时间",
+                icon = Icons.Default.Flag,
+                value = "23:59",
+                onClick = {},
+                isUrgent = true
+            )
+        }
     }
 }

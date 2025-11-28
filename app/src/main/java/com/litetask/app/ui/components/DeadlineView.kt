@@ -18,9 +18,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.litetask.app.data.model.Task
+import com.litetask.app.data.model.TaskType
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -208,4 +210,55 @@ fun DeadlineTaskItem(task: Task, onClick: () -> Unit) {
 
 fun formatDeadlineTime(timestamp: Long): String {
     return SimpleDateFormat("HH:mm", Locale.getDefault()).format(timestamp)
+}
+
+@Preview(showBackground = true, showSystemUi = true)
+@Composable
+fun DeadlineViewPreview() {
+    val sampleTasks = listOf(
+        Task(
+            id = 1,
+            title = "完成项目报告",
+            description = "准备季度总结",
+            type = TaskType.WORK,
+            startTime = System.currentTimeMillis(),
+            deadline = System.currentTimeMillis() + 2 * 60 * 60 * 1000,
+            isDone = false
+        ),
+        Task(
+            id = 2,
+            title = "紧急会议",
+            description = "客户需求讨论",
+            type = TaskType.URGENT,
+            startTime = System.currentTimeMillis(),
+            deadline = System.currentTimeMillis() + 1 * 60 * 60 * 1000,
+            isDone = false
+        )
+    )
+    
+    MaterialTheme {
+        DeadlineView(
+            tasks = sampleTasks,
+            onTaskClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun DeadlineTaskItemPreview() {
+    MaterialTheme {
+        DeadlineTaskItem(
+            task = Task(
+                id = 1,
+                title = "完成项目报告",
+                description = "准备季度总结报告",
+                type = TaskType.URGENT,
+                startTime = System.currentTimeMillis(),
+                deadline = System.currentTimeMillis() + 3 * 60 * 60 * 1000,
+                isDone = false
+            ),
+            onClick = {}
+        )
+    }
 }
