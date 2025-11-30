@@ -1,3 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LiteTask</string>
+    
+    <!-- 通用字符串 -->
+    <string name="search_hint">搜索任务...</string>
+    <string name="cancel">取消</string>
+    <string name="confirm">确定</string>
+    <string name="save">保存</string>
+    <string name="edit">编辑</string>
+    <string name="delete">删除</string>
+    <string name="close">关闭</string>
+    
+    <!-- 任务类型 -->
+    <string name="task_type_work">工作</string>
+    <string name="task_type_life">生活</string>
+    <string name="task_type_urgent">紧急</string>
+    <string name="task_type_study">学习</string>
+    <string name="task_type_health">健康</string>
+    <string name="task_type_dev">开发</string>
+    
+    <!-- 任务操作 -->
+    <string name="pin_task">置顶任务</string>
+    <string name="unpin_task">取消置顶</string>
+    <string name="mark_done">完成任务</string>
+    <string name="mark_undone">标记未完成</string>
+    <string name="delete_task">删除任务</string>
+    <string name="add_subtask">添加新的子步骤...</string>
+    
+    <!-- 任务状态提示 -->
+    <string name="task_cannot_pin_completed">已完成的任务不能置顶</string>
+    <string name="task_cannot_pin_expired">已过期的任务不能置顶</string>
+    <string name="task_cannot_undone_expired">已过期任务不能标记为未完成</string>
+    <string name="task_fixed_top">将此任务固定在列表顶部</string>
+    <string name="task_expired_cannot_pin">截止时间在现在时间前的任务不能置顶</string>
+    
+    <!-- 时间相关 -->
+    <string name="start_time">开始时间</string>
+    <string name="deadline">截止时间</string>
+    <string name="start_date">开始日期</string>
+    <string name="deadline_date">截止日期</string>
+    <string name="start_time_label">开始时间</string>
+    <string name="deadline_time">截止时间</string>
+    <string name="date_format">MM月dd日</string>
+    <string name="time_format">HH:mm</string>
+    <string name="date_time_format">MM/dd HH:mm</string>
+    <string name="full_date_format">yyyy年MM月dd日 E</string>
+    <string name="hours_left">HRS</string>
+    
+    <!-- 表单字段 -->
+    <string name="task_title">任务标题</string>
+    <string name="task_title_placeholder">例如：完成项目报告</string>
+    <string name="task_description">任务描述（可选）</string>
+    <string name="task_description_placeholder">添加更多详细信息...</string>
+    <string name="task_type">任务类型</string>
+    
+    <!-- 提示信息 -->
+    <string name="warning_deadline_before_start">截止时间必须晚于开始时间</string>
+    <string name="duration_info">预计时长: %1$s天 %2$s小时</string>
+    <string name="duration_info_hours">预计时长: %1$s小时</string>
+    <string name="urgent_task_label">紧急任务</string>
+    <string name="duration_label">时长: %1$d 小时</string>
+    <string name="urgent_tasks_today_count">今天有 %1$d 个任务必须完成</string>
+    
+    <!-- 界面标签 -->
+    <string name="archived">已归档</string>
+    <string name="advanced_options">高级选项</string>
+    <string name="expand_advanced_options">展开高级选项</string>
+    <string name="collapse_advanced_options">收起高级选项</string>
+    <string name="countdown_label">COUNTING DOWN</string>
+    <string name="ai_recognition_result">AI 识别结果</string>
+    <string name="parsed_key_information">已解析关键信息</string>
+    
+    <!-- 按钮文字 -->
+    <string name="create_task">创建任务</string>
+    <string name="confirm_add">确认添加</string>
+    <string name="confirm_modify">确认修改</string>
+    
+    <!-- 视图选项 -->
+    <string name="view_list">列表</string>
+    <string name="view_gantt">甘特</string>
+    <string name="view_deadline">截止</string>
+    
+    <!-- 任务详情 -->
+    <string name="subtasks_steps">子任务 / 步骤</string>
+    <string name="deadline_label">截止: %1$s</string>
+    
+    <!-- 其他 -->
+    <string name="menu">菜单</string>
+    <string name="profile">个人资料</string>
+    <string name="tasks_count">%1$d 个任务</string>
+    <string name="pull_to_refresh">下拉刷新</string>
 </resources>

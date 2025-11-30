@@ -19,12 +19,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.theme.Primary
@@ -122,16 +124,15 @@ fun AddTaskDialog(
                     ) {
                         Column {
                             Text(
-                                text = if (initialTask != null) "编辑任务" else "新建任务",
+                                text = if (initialTask != null) stringResource(R.string.edit) + stringResource(R.string.task_type) else stringResource(R.string.create_task),
                                 style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1F1F1F)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = if (initialTask != null) "修改任务详细信息" else "填写任务详细信息",
+                                text = if (initialTask != null) stringResource(R.string.confirm_modify) else stringResource(R.string.create_task),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFF444746),
-                                modifier = Modifier.padding(top = 4.dp)
+                                color = Color(0xFF444746)
                             )
                         }
                         IconButton(
@@ -142,7 +143,7 @@ fun AddTaskDialog(
                         ) {
                             Icon(
                                 Icons.Default.Close,
-                                contentDescription = "关闭",
+                                contentDescription = stringResource(R.string.close),
                                 tint = Color(0xFF444746)
                             )
                         }
@@ -160,8 +161,8 @@ fun AddTaskDialog(
                     OutlinedTextField(
                         value = title,
                         onValueChange = { title = it },
-                        label = { Text("任务标题 *") },
-                        placeholder = { Text("例如：完成项目报告") },
+                        label = { Text(stringResource(R.string.task_title) + " *") },
+                        placeholder = { Text(stringResource(R.string.task_title_placeholder)) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
                         singleLine = true,
@@ -180,8 +181,8 @@ fun AddTaskDialog(
                     OutlinedTextField(
                         value = description,
                         onValueChange = { description = it },
-                        label = { Text("任务描述（可选）") },
-                        placeholder = { Text("添加更多详细信息...") },
+                        label = { Text(stringResource(R.string.task_description)) },
+                        placeholder = { Text(stringResource(R.string.task_description_placeholder)) },
                         modifier = Modifier.fillMaxWidth().height(100.dp),
                         shape = RoundedCornerShape(16.dp),
                         maxLines = 4,
@@ -194,7 +195,7 @@ fun AddTaskDialog(
 
                     // Task Type Selection
                     Text(
-                        text = "任务类型",
+                        text = stringResource(R.string.task_type),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = Color(0xFF1F1F1F),
@@ -205,7 +206,7 @@ fun AddTaskDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        TaskType.values().take(4).forEach { type ->
+                        TaskType.values().take(4).forEach { type -> // 只取前4个类型
                             val isSelected = selectedType == type
                             FilterChip(
                                 selected = isSelected,
@@ -232,7 +233,7 @@ fun AddTaskDialog(
 
                     // Date and Time Section
                     Text(
-                        text = "开始时间",
+                        text = stringResource(R.string.start_time),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = Color(0xFF1F1F1F),
@@ -262,7 +263,7 @@ fun AddTaskDialog(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
-                        text = "截止时间",
+                        text = stringResource(R.string.deadline),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = Color(0xFF1F1F1F),
@@ -323,11 +324,11 @@ fun AddTaskDialog(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (deadlineMillis <= startTimeMillis) {
-                                    "截止时间必须晚于开始时间"
+                                    stringResource(R.string.warning_deadline_before_start)
                                 } else if (durationDays > 0) {
-                                    "预计时长: ${durationDays}天 ${remainingHours}小时"
+                                    stringResource(R.string.duration_info, durationDays.toString(), remainingHours.toString())
                                 } else {
-                                    "预计时长: ${durationHours}小时"
+                                    stringResource(R.string.duration_info_hours, durationHours.toString())
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (deadlineMillis <= startTimeMillis) Color(0xFFF43F5E) else Color(0xFF444746),
@@ -348,7 +349,7 @@ fun AddTaskDialog(
                             contentDescription = null
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (showAdvanced) "收起高级选项" else "展开高级选项")
+                        Text(if (showAdvanced) stringResource(R.string.collapse_advanced_options) else stringResource(R.string.expand_advanced_options))
                     }
 
                     // Advanced Options
@@ -385,25 +386,25 @@ fun AddTaskDialog(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        "置顶任务",
+                                        stringResource(R.string.pin_task),
                                         fontWeight = FontWeight.Medium,
                                         color = Color(0xFF1F1F1F)
                                     )
                                     Text(
-                                        "将此任务固定在列表顶部",
+                                        stringResource(R.string.task_fixed_top),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = Color(0xFF747775)
                                     )
                                     // 显示置顶不可用的原因
                                     if (isTaskExpired) {
                                         Text(
-                                            "截止时间在现在时间前的任务不能置顶",
+                                            stringResource(R.string.task_expired_cannot_pin),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = Color(0xFFF43F5E)
                                         )
                                     } else if (isTaskDone) {
                                         Text(
-                                            "已完成的任务不能置顶",
+                                            stringResource(R.string.task_cannot_pin_completed),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = Color(0xFFF43F5E)
                                         )
@@ -437,7 +438,7 @@ fun AddTaskDialog(
                         shape = RoundedCornerShape(16.dp),
                         contentPadding = PaddingValues(vertical = 14.dp)
                     ) {
-                        Text("取消", fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.cancel), fontWeight = FontWeight.Medium)
                     }
                     
                     Button(
@@ -471,7 +472,7 @@ fun AddTaskDialog(
                     ) {
                         Icon(if (initialTask != null) Icons.Default.Save else Icons.Default.Check, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (initialTask != null) "确认修改" else "创建任务", fontWeight = FontWeight.Bold)
+                        Text(if (initialTask != null) stringResource(R.string.confirm_modify) else stringResource(R.string.create_task), fontWeight = FontWeight.Bold)
                     }
                 }
             }

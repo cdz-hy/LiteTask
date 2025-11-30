@@ -1,6 +1,8 @@
 package com.litetask.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.colorResource
+import androidx.compose.runtime.Composable
 
 // Material Design 3 标准颜色
 val Purple80 = Color(0xFFD0BCFF)
@@ -48,3 +50,45 @@ val Blue600 = Color(0xFF2563EB)
 val Green500 = Color(0xFF22C55E)
 val Orange500 = Color(0xFFF97316)
 val Purple500 = Color(0xFFA855F7)
+
+/**
+ * 从资源文件获取颜色的 Composable 函数
+ */
+object LiteTaskColors {
+    @Composable
+    fun workTask() = Color(0xFF0B57D0)
+    
+    @Composable
+    fun lifeTask() = Color(0xFF146C2E)
+    
+    @Composable
+    fun studyTask() = Color(0xFF65558F)
+    
+    @Composable
+    fun urgentTask() = Color(0xFFB3261E)
+    
+    @Composable
+    fun healthTask() = Color(0xFF006D44)
+    
+    @Composable
+    fun devTask() = Color(0xFFE65100)
+    
+    // 浅色背景 (用于置顶卡片背景)
+    @Composable
+    fun workTaskSurface() = Color(0xFFEFF6FF)   // Blue-50
+    
+    @Composable
+    fun lifeTaskSurface() = Color(0xFFF0FDF4)   // Green-50
+    
+    @Composable
+    fun studyTaskSurface() = Color(0xFFF5F3FF)  // Violet-50
+    
+    @Composable
+    fun urgentTaskSurface() = Color(0xFFFEF2F2) // Red-50
+    
+    @Composable
+    fun healthTaskSurface() = Color(0xFFF0FDF4) // Emerald-50
+    
+    @Composable
+    fun devTaskSurface() = Color(0xFFFFF7ED)    // Orange-50
+}

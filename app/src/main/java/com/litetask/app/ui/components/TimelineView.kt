@@ -27,16 +27,19 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.home.TimelineItem
+import com.litetask.app.ui.theme.LiteTaskColors
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -45,37 +48,61 @@ import kotlin.math.roundToInt
 // --- 1. 颜色系统定义 (完全不透明色值) ---
 private object TaskColors {
     // 主色 (用于文字、图标、进度条)
-    val Work = Color(0xFF0B57D0)
-    val Life = Color(0xFF146C2E)
-    val Study = Color(0xFF65558F)
-    val Urgent = Color(0xFFB3261E)
-    val Health = Color(0xFF006D44)
-    val Dev = Color(0xFFE65100)
+    @Composable
+    fun Work() = LiteTaskColors.workTask()
+    
+    @Composable
+    fun Life() = LiteTaskColors.lifeTask()
+    
+    @Composable
+    fun Study() = LiteTaskColors.studyTask()
+    
+    @Composable
+    fun Urgent() = LiteTaskColors.urgentTask()
+    
+    @Composable
+    fun Health() = LiteTaskColors.healthTask()
+    
+    @Composable
+    fun Dev() = LiteTaskColors.devTask()
 
     // 浅色背景 (用于置顶卡片背景 - 对应 Tailwind 的 xx-50 色阶，不透明)
-    val WorkSurface = Color(0xFFEFF6FF)   // Blue-50
-    val LifeSurface = Color(0xFFF0FDF4)   // Green-50
-    val StudySurface = Color(0xFFF5F3FF)  // Violet-50
-    val UrgentSurface = Color(0xFFFEF2F2) // Red-50
-    val HealthSurface = Color(0xFFF0FDF4) // Emerald-50
-    val DevSurface = Color(0xFFFFF7ED)    // Orange-50
+    @Composable
+    fun WorkSurface() = LiteTaskColors.workTaskSurface()
+    
+    @Composable
+    fun LifeSurface() = LiteTaskColors.lifeTaskSurface()
+    
+    @Composable
+    fun StudySurface() = LiteTaskColors.studyTaskSurface()
+    
+    @Composable
+    fun UrgentSurface() = LiteTaskColors.urgentTaskSurface()
+    
+    @Composable
+    fun HealthSurface() = LiteTaskColors.healthTaskSurface()
+    
+    @Composable
+    fun DevSurface() = LiteTaskColors.devTaskSurface()
 
+    @Composable
     fun getPrimary(type: TaskType): Color = when (type) {
-        TaskType.WORK -> Work
-        TaskType.LIFE -> Life
-        TaskType.URGENT -> Urgent
-        TaskType.STUDY -> Study
-        TaskType.HEALTH -> Health
-        TaskType.DEV -> Dev
+        TaskType.WORK -> Work()
+        TaskType.LIFE -> Life()
+        TaskType.URGENT -> Urgent()
+        TaskType.STUDY -> Study()
+        TaskType.HEALTH -> Health()
+        TaskType.DEV -> Dev()
     }
 
+    @Composable
     fun getSurface(type: TaskType): Color = when (type) {
-        TaskType.WORK -> WorkSurface
-        TaskType.LIFE -> LifeSurface
-        TaskType.URGENT -> UrgentSurface
-        TaskType.STUDY -> StudySurface
-        TaskType.HEALTH -> HealthSurface
-        TaskType.DEV -> DevSurface
+        TaskType.WORK -> WorkSurface()
+        TaskType.LIFE -> LifeSurface()
+        TaskType.URGENT -> UrgentSurface()
+        TaskType.STUDY -> StudySurface()
+        TaskType.HEALTH -> HealthSurface()
+        TaskType.DEV -> DevSurface()
     }
 }
 
@@ -126,7 +153,7 @@ fun TimelineView(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray)
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("搜索任务...", color = Color.Gray, fontSize = 14.sp)
+                Text(stringResource(R.string.search_hint), color = Color.Gray, fontSize = 14.sp)
             }
         }
 
@@ -161,7 +188,7 @@ fun TimelineView(
                         ) {
                             HorizontalDivider(modifier = Modifier.weight(1f), color = Color.LightGray.copy(alpha = 0.5f))
                             Text(
-                                "已归档",
+                                stringResource(R.string.archived),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color.Gray,
                                 modifier = Modifier.padding(horizontal = 12.dp)
@@ -270,7 +297,7 @@ fun HtmlStyleTaskCard(
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = "Done",
-                            tint = TaskColors.Life,
+                            tint = TaskColors.Life(),
                             modifier = Modifier.size(20.dp)
                         )
                     } else if (isPinned) {
@@ -294,7 +321,7 @@ fun HtmlStyleTaskCard(
                             shape = RoundedCornerShape(6.dp)
                         ) {
                             Text(
-                                text = task.type.name,
+                                text = getTaskTypeName(task.type),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
@@ -502,6 +529,17 @@ fun ActionIcon(icon: ImageVector, color: Color, onClick: () -> Unit) {
             .size(48.dp)
     ) {
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+    }
+}
+
+private fun getTaskTypeName(type: TaskType): String {
+    return when (type) {
+        TaskType.WORK -> "工作"
+        TaskType.LIFE -> "生活"
+        TaskType.URGENT -> "紧急"
+        TaskType.STUDY -> "学习"
+        TaskType.HEALTH -> "健康"
+        TaskType.DEV -> "开发"
     }
 }
 

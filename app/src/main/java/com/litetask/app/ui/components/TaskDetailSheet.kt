@@ -21,9 +21,11 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.ui.theme.Primary
@@ -136,11 +138,11 @@ fun TaskDetailSheet(
                         text = task.title,
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1F1F1F),
+                        color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = { closeSheetWithAnimation() }) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray)
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close), tint = Color.Gray)
                     }
                 }
             }
@@ -185,7 +187,7 @@ fun TaskDetailSheet(
 
                 // 子任务标题
                 Text(
-                    text = "子任务 / 步骤",
+                    text = stringResource(R.string.subtasks_steps),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF444746)
@@ -229,7 +231,7 @@ fun TaskDetailSheet(
                     OutlinedTextField(
                         value = newSubTaskText,
                         onValueChange = { newSubTaskText = it },
-                        placeholder = { Text("添加新的子步骤...") },
+                        placeholder = { Text(stringResource(R.string.add_subtask)) },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
                         shape = RoundedCornerShape(24.dp),
@@ -249,7 +251,7 @@ fun TaskDetailSheet(
                         },
                         modifier = Modifier.padding(start = 8.dp)
                     ) {
-                        Icon(Icons.Default.AddCircle, contentDescription = "Add", tint = Primary)
+                        Icon(Icons.Default.AddCircle, contentDescription = stringResource(R.string.add_subtask), tint = Primary)
                     }
                 }
 
@@ -268,14 +270,14 @@ fun TaskDetailSheet(
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("删除任务")
+                        Text(stringResource(R.string.delete_task))
                     }
 
                     if (!task.isDone || task.deadline >= System.currentTimeMillis()) {
                         Button(
                             onClick = {
                                 if (task.isDone && task.deadline < System.currentTimeMillis()) {
-                                    Toast.makeText(context, "已过期任务不能标记为未完成", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, R.string.task_cannot_undone_expired, Toast.LENGTH_SHORT).show()
                                 } else {
                                     val updatedTask = if (!task.isDone) {
                                         task.copy(isDone = true, isPinned = false)
@@ -293,7 +295,7 @@ fun TaskDetailSheet(
                         ) {
                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(if (task.isDone) "标记未完成" else "完成任务")
+                            Text(if (task.isDone) stringResource(R.string.mark_undone) else stringResource(R.string.mark_done))
                         }
                     }
                 }
@@ -359,7 +361,7 @@ private fun SubTaskItem(
             ) {
                 Icon(
                     Icons.Default.Close,
-                    contentDescription = "删除子任务",
+                    contentDescription = stringResource(R.string.delete),
                     tint = Color(0xFFE57373),
                     modifier = Modifier.size(18.dp)
                 )
@@ -368,6 +370,7 @@ private fun SubTaskItem(
     }
 }
 
+@Composable
 private fun formatTime(timestamp: Long): String {
-    return SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date(timestamp))
+    return SimpleDateFormat(stringResource(R.string.date_time_format), Locale.getDefault()).format(Date(timestamp))
 }

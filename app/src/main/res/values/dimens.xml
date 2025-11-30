@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 通用间距 -->
+    <dimen name="spacing_xsmall">4dp</dimen>
+    <dimen name="spacing_small">8dp</dimen>
+    <dimen name="spacing_medium">12dp</dimen>
+    <dimen name="spacing_large">16dp</dimen>
+    <dimen name="spacing_xlarge">24dp</dimen>
+    <dimen name="spacing_xxlarge">32dp</dimen>
+    
+    <!-- 卡片圆角 -->
+    <dimen name="card_corner_radius_small">12dp</dimen>
+    <dimen name="card_corner_radius_medium">16dp</dimen>
+    <dimen name="card_corner_radius_large">24dp</dimen>
+    <dimen name="card_corner_radius_xlarge">28dp</dimen>
+    
+    <!-- 图标尺寸 -->
+    <dimen name="icon_size_small">16dp</dimen>
+    <dimen name="icon_size_medium">20dp</dimen>
+    <dimen name="icon_size_large">24dp</dimen>
+    <dimen name="icon_size_xlarge">32dp</dimen>
+    
+    <!-- 文字尺寸 -->
+    <dimen name="text_size_micro">10sp</dimen>
+    <dimen name="text_size_small">12sp</dimen>
+    <dimen name="text_size_medium">14sp</dimen>
+    <dimen name="text_size_large">16sp</dimen>
+    <dimen name="text_size_xlarge">18sp</dimen>
+    <dimen name="text_size_xxlarge">20sp</dimen>
+    <dimen name="text_size_xxxlarge">24sp</dimen>
+    
+    <!-- 任务卡片相关 -->
+    <dimen name="task_card_elevation_normal">0.5dp</dimen>
+    <dimen name="task_card_elevation_pinned">4dp</dimen>
+    <dimen name="task_card_stripe_width">8dp</dimen>
+    <dimen name="task_card_stripe_height">32dp</dimen>
+    <dimen name="task_card_stripe_corner_radius">4dp</dimen>
+</resources>

@@ -17,10 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
 import java.text.SimpleDateFormat
@@ -66,13 +68,13 @@ fun DeadlineView(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = "紧迫任务",
+                            text = stringResource(R.string.urgent_task_label),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
-                            text = "今天有 $urgentCount 个任务必须完成",
+                            text = stringResource(R.string.urgent_tasks_today_count, urgentCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.7f)
                         )
@@ -97,7 +99,7 @@ fun DeadlineView(
         }
 
         Text(
-            text = "COUNTING DOWN",
+            text = stringResource(R.string.countdown_label),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             color = Color.Gray,
@@ -155,7 +157,7 @@ fun DeadlineTaskItem(task: Task, onClick: () -> Unit) {
                         color = Color(0xFFE11D48)
                     )
                     Text(
-                        text = "HRS",
+                        text = stringResource(R.string.hours_left),
                         style = MaterialTheme.typography.labelSmall,
                         fontSize = 8.sp,
                         color = Color(0xFFE11D48)
@@ -170,7 +172,7 @@ fun DeadlineTaskItem(task: Task, onClick: () -> Unit) {
                     text = task.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1F1F1F)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -184,7 +186,7 @@ fun DeadlineTaskItem(task: Task, onClick: () -> Unit) {
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "截止: ${formatDeadlineTime(task.deadline)}",
+                        text = stringResource(R.string.deadline_label, formatDeadlineTime(task.deadline)),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF6B7280)
                     )
@@ -199,7 +201,7 @@ fun DeadlineTaskItem(task: Task, onClick: () -> Unit) {
             ) {
                 Icon(
                     imageVector = Icons.Default.Check,
-                    contentDescription = "Done",
+                    contentDescription = stringResource(R.string.mark_done),
                     tint = Color(0xFF9CA3AF),
                     modifier = Modifier.size(20.dp)
                 )
@@ -208,8 +210,9 @@ fun DeadlineTaskItem(task: Task, onClick: () -> Unit) {
     }
 }
 
+@Composable
 fun formatDeadlineTime(timestamp: Long): String {
-    return SimpleDateFormat("HH:mm", Locale.getDefault()).format(timestamp)
+    return SimpleDateFormat(stringResource(R.string.time_format), Locale.getDefault()).format(timestamp)
 }
 
 @Preview(showBackground = true, showSystemUi = true)

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material Design 3 标准颜色 -->
+    <color name="purple_80">#FFD0BCFF</color>
+    <color name="purple_grey_80">#FFCCC2DC</color>
+    <color name="pink_80">#FFEFB8C8</color>
+    <color name="purple_40">#FF6650a4</color>
+    <color name="purple_grey_40">#FF625b71</color>
+    <color name="pink_40">#FF7D5260</color>
+
+    <!-- LiteTask 自定义颜色 (参考原型) -->
+    <color name="primary">#FF0B57D0</color>                 <!-- Google Blue 主色 -->
+    <color name="on_primary">#FFFFFFFF</color>              <!-- 主色上的文字 -->
+    <color name="primary_container">#FFD3E3FD</color>       <!-- 主色容器 -->
+    <color name="on_primary_container">#FF041E49</color>    <!-- 主色容器上的文字 -->
+    <color name="secondary_container">#FFC2E7FF</color>     <!-- 次色容器 -->
+    <color name="on_secondary_container">#FF001D35</color>  <!-- 次色容器上的文字 -->
+    <color name="tertiary_container">#FFFFD8E4</color>      <!-- 第三色容器 -->
+    <color name="on_tertiary_container">#FF31111D</color>   <!-- 第三色容器上的文字 -->
+    <color name="error_container">#FFF9DEDC</color>         <!-- 错误容器 -->
+    <color name="on_error_container">#FF410E0B</color>      <!-- 错误容器上的文字 -->
+    <color name="surface">#FFFFFFFF</color>                 <!-- 表面颜色 -->
+    <color name="surface_container">#FFEEF2F6</color>       <!-- 表面容器颜色 -->
+    <color name="background">#FFF2F6FC</color>              <!-- 背景颜色 -->
+    <color name="on_surface">#FF1F1F1F</color>              <!-- 表面文字颜色 -->
+    <color name="on_surface_variant">#FF444746</color>      <!-- 表面变体文字颜色 -->
+    <color name="outline">#FF747775</color>                 <!-- 轮廓线颜色 -->
+    <color name="outline_variant">#FFC4C7C5</color>         <!-- 轮廓线变体颜色 -->
+
+    <!-- 任务类型颜色 -->
+    <color name="work_task">#FF0B57D0</color>
+    <color name="life_task">#FF001D35</color>
+    <color name="dev_task">#FF31111D</color>
+    <color name="health_task">#FF410E0B</color>
+    <color name="study_task">#FF65558F</color>
+    <color name="urgent_task">#FFB3261E</color>
+
+    <!-- 其他辅助颜色 -->
+    <color name="indigo_600">#FF4F46E5</color>
+    <color name="indigo_100">#FFE0E7FF</color>
+    <color name="blue_600">#FF2563EB</color>
+    <color name="green_500">#FF22C55E</color>
+    <color name="orange_500">#FFF97316</color>
+    <color name="purple_500">#FFA855F7</color>
+    <color name="red_500">#FFE11D48</color>
+    <color name="gray_500">#FF6B7280</color>
+    <color name="gray_300">#FFF3F4F6</color>
+    <color name="gray_400">#FF9CA3AF</color>
+    <color name="gray_600">#FF4B5563</color>
+    <color name="gray_200">#FFEEEEEE</color>
+    <color name="rose_300">#FFF43F5E</color>
+    <color name="rose_500">#FFFB7185</color>
+    <color name="slate_700">#FF3E4855</color>
+    <color name="slate_100">#FFEEF2F6</color>
+    <color name="slate_50">#FFF8F9FA</color>
+    <color name="slate_200">#FFC4C7C5</color>
+    <color name="slate_300">#FF747775</color>
+    <color name="slate_800">#FF1F1F1F</color>
+    <color name="rose_100">#FFFFEBEE</color>
+    <color name="rose_900">#FF31111D</color>
+    <color name="emerald_50">#FFF0FDF4</color>
+    <color name="orange_50">#FFFFF7ED</color>
+    <color name="violet_50">#FFF5F3FF</color>
+    <color name="blue_50">#FFEFF6FF</color>
+    
+    <!-- 任务卡片相关颜色 -->
+    <color name="task_work_surface">#FFEFF6FF</color>       <!-- Blue-50 -->
+    <color name="task_life_surface">#FFF0FDF4</color>       <!-- Green-50 -->
+    <color name="task_study_surface">#FFF5F3FF</color>      <!-- Violet-50 -->
+    <color name="task_urgent_surface">#FFFEF2F2</color>     <!-- Red-50 -->
+    <color name="task_health_surface">#FFF0FDF4</color>     <!-- Emerald-50 -->
+    <color name="task_dev_surface">#FFFFF7ED</color>        <!-- Orange-50 -->
+</resources>

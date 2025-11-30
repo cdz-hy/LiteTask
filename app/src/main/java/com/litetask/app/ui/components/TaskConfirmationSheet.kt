@@ -29,8 +29,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.ui.theme.Indigo600
 import java.text.SimpleDateFormat
@@ -95,13 +97,13 @@ fun TaskConfirmationSheet(
                 
                 Column(modifier =Modifier.padding(start = 12.dp)) {
                     Text(
-                        text = "AI 识别结果",
+                        text = stringResource(R.string.ai_recognition_result),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1F1F1F)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "已解析关键信息",
+                        text = stringResource(R.string.parsed_key_information),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color(0xFF444746)
                     )
@@ -132,7 +134,7 @@ fun TaskConfirmationSheet(
                         contentColor = Indigo600
                     )
                 ) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
                 Button(
                     onClick= onConfirm,
@@ -153,7 +155,7 @@ fun TaskConfirmationSheet(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "确认添加",
+                            text = stringResource(R.string.confirm_add),
                             modifier = Modifier.padding(start= 8.dp)
                         )
                     }
@@ -174,7 +176,7 @@ fun TaskPreviewItem(task: Task) {
         Text(
             text = task.title,
             style = MaterialTheme.typography.titleMedium,
-            color = Color(0xFF1F1F1F),
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Medium
         )
         
@@ -222,7 +224,7 @@ fun TaskPreviewItem(task: Task) {
         val durationMillis = task.deadline - task.startTime
         val durationHours = durationMillis / (1000 * 60 * 60)
         Text(
-            text = "时长: ${durationHours} 小时",
+            text = stringResource(R.string.duration_label, durationHours),
             style = MaterialTheme.typography.bodyMedium,
             color = Color(0xFF444746),
             modifier = Modifier.padding(top = 8.dp)
@@ -247,7 +249,7 @@ fun TaskPreviewItem(task: Task) {
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "紧急任务",
+                        text = stringResource(R.string.urgent_task_label),
                        style = MaterialTheme.typography.bodyMedium,
                         color = Color(0xFF31111D),
                         fontWeight = FontWeight.Bold,
@@ -259,10 +261,11 @@ fun TaskPreviewItem(task: Task) {
     }
 }
 
+@Composable
 fun formatPreviewTime(timestamp: Long): String {
     val calendar =Calendar.getInstance()
     calendar.timeInMillis = timestamp
-    return SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(Date(timestamp))
+    return SimpleDateFormat(stringResource(R.string.time_format), java.util.Locale.getDefault()).format(Date(timestamp))
 }
 
 fun calculateDurationInHours(task: Task): Float {

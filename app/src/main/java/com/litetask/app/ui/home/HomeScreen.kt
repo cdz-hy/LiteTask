@@ -24,14 +24,21 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.litetask.app.R
 import com.litetask.app.data.model.Task
-import com.litetask.app.ui.components.*
+import com.litetask.app.ui.components.AddTaskDialog
+import com.litetask.app.ui.components.DeadlineView
+import com.litetask.app.ui.components.GanttView
+import com.litetask.app.ui.components.TaskDetailSheet
+import com.litetask.app.ui.components.TimelineView
+import com.litetask.app.ui.components.VoiceRecorderDialog
+import com.litetask.app.ui.components.TaskConfirmationSheet
 import com.litetask.app.ui.theme.Primary
-import com.litetask.app.ui.theme.OnPrimary
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -106,17 +113,17 @@ fun HomeScreen(
                     title = {
                         Column {
                             Text(
-                                "LiteTask",
+                                stringResource(R.string.app_name),
                                 style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1F1F1F)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(top = 4.dp)
                             ) {
                                 Text(
-                                    text = SimpleDateFormat("MM月dd日", Locale.getDefault()).format(Date()),
+                                    text = SimpleDateFormat(stringResource(R.string.date_format), Locale.getDefault()).format(Date()),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color(0xFF666666)
                                 )
@@ -124,7 +131,7 @@ fun HomeScreen(
                                 Box(modifier = Modifier.size(4.dp).background(Color(0xFFCCCCCC), CircleShape))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    "${tasks.size} 个任务",
+                                    stringResource(R.string.tasks_count, tasks.size),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color(0xFF666666)
                                 )
@@ -133,7 +140,7 @@ fun HomeScreen(
                     },
                     navigationIcon = {
                         IconButton(onClick = { /* TODO: Menu */ }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color(0xFF1F1F1F))
+                            Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.menu), tint = MaterialTheme.colorScheme.onSurface)
                         }
                     },
                     actions = {
@@ -166,27 +173,28 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     ViewOption(
-                        text = "列表",
+                        text = stringResource(R.string.view_list),
                         icon = Icons.Default.List,
                         isSelected = currentView == "timeline",
                         onClick = { currentView = "timeline" },
                         modifier = Modifier.weight(1f)
                     )
                     ViewOption(
-                        text = "甘特",
+                        text = stringResource(R.string.view_gantt),
                         icon = Icons.Default.ViewTimeline,
                         isSelected = currentView == "gantt",
                         onClick = { currentView = "gantt" },
                         modifier = Modifier.weight(1f)
                     )
                     ViewOption(
-                        text = "截止",
+                        text = stringResource(R.string.view_deadline),
                         icon = Icons.Default.Flag,
                         isSelected = currentView == "deadline",
                         onClick = { currentView = "deadline" },
                         modifier = Modifier.weight(1f)
                     )
                 }
+
             }
         },
         floatingActionButton = {
