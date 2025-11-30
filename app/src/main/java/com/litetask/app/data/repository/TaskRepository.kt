@@ -4,6 +4,7 @@ import com.litetask.app.data.local.TaskDao
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.TaskDetailComposite
+import com.litetask.app.data.model.TaskType
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -41,6 +42,20 @@ class TaskRepositoryImpl @Inject constructor(
     
     suspend fun insertTasks(tasks: List<Task>) = taskDao.insertTasks(tasks)
     suspend fun autoMarkOverdueTasksAsDone(time: Long) = taskDao.autoMarkOverdueTasksAsDone(time)
+    
+    // 搜索
+    fun searchTasks(
+        query: String,
+        types: List<TaskType>,
+        startDate: Long?,
+        endDate: Long?
+    ) = taskDao.searchTasks(
+        query = query,
+        types = types.map { it.name },
+        typesEmpty = types.isEmpty(),
+        startDate = startDate,
+        endDate = endDate
+    )
     
     // 兼容
     fun getAllTasks() = taskDao.getAllTasks()

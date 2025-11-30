@@ -25,7 +25,7 @@
     <string name="mark_done">完成任务</string>
     <string name="mark_undone">标记未完成</string>
     <string name="delete_task">删除任务</string>
-    <string name="add_subtask">添加新的子步骤...</string>
+    <string name="add_subtask">添加新的子任务...</string>
     
     <!-- 任务状态提示 -->
     <string name="task_cannot_pin_completed">已完成的任务不能置顶</string>
@@ -63,7 +63,7 @@
     <string name="urgent_tasks_today_count">今天有 %1$d 个任务必须完成</string>
     
     <!-- 界面标签 -->
-    <string name="archived">已归档</string>
+    <string name="archived">已完成</string>
     <string name="advanced_options">高级选项</string>
     <string name="expand_advanced_options">展开高级选项</string>
     <string name="collapse_advanced_options">收起高级选项</string>

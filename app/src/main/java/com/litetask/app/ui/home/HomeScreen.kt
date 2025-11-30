@@ -48,6 +48,7 @@ import java.util.Locale
 fun HomeScreen(
     onNavigateToAdd: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToSearch: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val tasks by viewModel.tasks.collectAsState()
@@ -241,7 +242,8 @@ fun HomeScreen(
                         taskToEdit = it
                         showEditDialog = true
                     },
-                    onLoadMore = { viewModel.loadMoreHistory() }
+                    onLoadMore = { viewModel.loadMoreHistory() },
+                    onSearchClick = { onNavigateToSearch() }
                 )
                 "gantt" -> GanttView(
                     tasks = tasks,

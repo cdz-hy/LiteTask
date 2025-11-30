@@ -114,6 +114,7 @@ fun TimelineView(
     onPinClick: (Task) -> Unit,
     onEditClick: (Task) -> Unit,
     onLoadMore: () -> Unit,
+    onSearchClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -133,33 +134,55 @@ fun TimelineView(
         if (isAtBottom) onLoadMore()
     }
 
+    // 搜索栏显示/隐藏逻辑
+    val showSearchBar by remember {
+        derivedStateOf {
+            val firstVisibleIndex = listState.firstVisibleItemIndex
+            val firstVisibleOffset = listState.firstVisibleItemScrollOffset
+            // 向下滚动超过第一个item或者在顶部时显示
+            firstVisibleIndex == 0 && firstVisibleOffset < 100
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(Color(0xFFF2F6FC))
-            .padding(horizontal = 16.dp)
     ) {
-        // 搜索框 (占位)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp)
-                .height(48.dp)
-                .shadow(elevation = 1.dp, shape = CircleShape)
-                .background(Color.White, CircleShape)
-                .padding(horizontal = 16.dp),
-            contentAlignment = Alignment.CenterStart
+        // 搜索框 (可点击，带滚动隐藏动画)
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showSearchBar,
+            enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray)
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(stringResource(R.string.search_hint), color = Color.Gray, fontSize = 14.sp)
-            }
+            OutlinedTextField(
+                value = "",
+                onValueChange = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .shadow(elevation = 2.dp, shape = RoundedCornerShape(24.dp))
+                    .clickable { onSearchClick() },
+                placeholder = { Text(stringResource(R.string.search_hint)) },
+                leadingIcon = {
+                    Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray)
+                },
+                enabled = false,
+                shape = RoundedCornerShape(24.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledBorderColor = Color.Transparent,
+                    disabledContainerColor = Color.White,
+                    disabledPlaceholderColor = Color.Gray,
+                    disabledLeadingIconColor = Color.Gray
+                )
+            )
         }
 
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -179,21 +202,27 @@ fun TimelineView(
                         }
                     }
                     is TimelineItem.HistoryHeader -> {
-                        // 简约的历史分割线
+                        // 历史分割线（与搜索页面的"已完成"样式一致）
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            HorizontalDivider(modifier = Modifier.weight(1f), color = Color.LightGray.copy(alpha = 0.5f))
+                            HorizontalDivider(
+                                modifier = Modifier.weight(1f),
+                                color = Color.LightGray.copy(alpha = 0.5f)
+                            )
                             Text(
                                 stringResource(R.string.archived),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color.Gray,
                                 modifier = Modifier.padding(horizontal = 12.dp)
                             )
-                            HorizontalDivider(modifier = Modifier.weight(1f), color = Color.LightGray.copy(alpha = 0.5f))
+                            HorizontalDivider(
+                                modifier = Modifier.weight(1f),
+                                color = Color.LightGray.copy(alpha = 0.5f)
+                            )
                         }
                     }
                     is TimelineItem.Loading -> {

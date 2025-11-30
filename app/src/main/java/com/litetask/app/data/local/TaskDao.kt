@@ -83,6 +83,30 @@ interface TaskDao {
     @Query("DELETE FROM sub_tasks WHERE task_id = :taskId")
     suspend fun deleteSubTasksByTaskId(taskId: Long)
     
+    // --- 搜索功能 ---
+    @Transaction
+    @Query("""
+        SELECT DISTINCT t.* FROM tasks t
+        LEFT JOIN sub_tasks st ON t.id = st.task_id
+        WHERE (
+            :query = '' OR
+            t.title LIKE '%' || :query || '%' OR
+            t.description LIKE '%' || :query || '%' OR
+            st.content LIKE '%' || :query || '%'
+        )
+        AND (:typesEmpty = 1 OR t.type IN (:types))
+        AND (:startDate IS NULL OR t.start_time >= :startDate)
+        AND (:endDate IS NULL OR t.deadline <= :endDate)
+        ORDER BY t.is_done ASC, t.deadline ASC
+    """)
+    fun searchTasks(
+        query: String,
+        types: List<String>,
+        typesEmpty: Boolean,
+        startDate: Long?,
+        endDate: Long?
+    ): Flow<List<TaskDetailComposite>>
+    
     // --- 兼容性保留 ---
     @Query("UPDATE tasks SET is_done = 1 WHERE deadline < :currentTime AND is_done = 0")
     suspend fun autoMarkOverdueTasksAsDone(currentTime: Long): Int
