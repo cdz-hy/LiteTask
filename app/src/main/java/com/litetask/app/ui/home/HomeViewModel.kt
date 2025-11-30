@@ -35,8 +35,9 @@ class HomeViewModel @Inject constructor(
     val selectedDate: StateFlow<Long> = _selectedDate
 
     // 任务列表 (显示所有与选定日期有时间重叠的任务)
-    val tasks: StateFlow<List<Task>> = combine(
-        taskRepository.getAllTasks(),
+    // 注意：这里我们使用 TaskDetailComposite 来获取子任务信息
+    val tasks: StateFlow<List<TaskDetailComposite>> = combine(
+        taskRepository.getActiveTasks(),
         _selectedDate
     ) { allTasks, date ->
         val calendar = Calendar.getInstance()
@@ -47,8 +48,8 @@ class HomeViewModel @Inject constructor(
 
         // 修复：显示所有与当天有重叠的任务
         // 任务重叠条件：任务开始时间 < 当天结束时间 AND 任务结束时间 > 当天开始时间
-        allTasks.filter { task ->
-            task.startTime < endOfDay && task.deadline > startOfDay
+        allTasks.filter { composite ->
+            composite.task.startTime < endOfDay && composite.task.deadline > startOfDay
         }
     }.stateIn(
         scope = viewModelScope,
@@ -282,17 +283,13 @@ class HomeViewModel @Inject constructor(
                 val now = System.currentTimeMillis()
                 taskRepository.autoMarkOverdueTasksAsDone(now)
                 
-                // 2. 重置历史任务分页
-                historyPage = 0
-                isHistoryExhausted = false
-                _historyList.value = emptyList()
-                
-                // 3. 重新加载最近20条已完成任务
+                // 2. 重新加载最近20条已完成任务（不先清空，避免闪烁）
                 val newHistory = taskRepository.getHistoryTasks(pageSize, 0)
+                
+                // 3. 重置历史任务分页并更新列表（一次性操作）
+                historyPage = if (newHistory.isNotEmpty()) 1 else 0
+                isHistoryExhausted = false
                 _historyList.value = newHistory
-                if (newHistory.isNotEmpty()) {
-                    historyPage = 1
-                }
                 
                 // 延迟一下让动画更自然
                 kotlinx.coroutines.delay(300)
@@ -300,6 +297,31 @@ class HomeViewModel @Inject constructor(
                 e.printStackTrace()
             } finally {
                 _isRefreshing.value = false
+            }
+        }
+    }
+    
+    /**
+     * 静默刷新：用于视图切换时自动加载数据，不显示刷新动画
+     * 
+     * 执行流程：
+     * 1. 重置历史任务分页
+     * 2. 重新加载最近20条已完成任务
+     * 
+     * 注意：不执行过期任务的懒更新，避免不必要的数据库操作
+     */
+    fun silentRefresh() {
+        viewModelScope.launch {
+            try {
+                // 重新加载最近20条已完成任务
+                val newHistory = taskRepository.getHistoryTasks(pageSize, 0)
+                
+                // 重置历史任务分页并更新列表
+                historyPage = if (newHistory.isNotEmpty()) 1 else 0
+                isHistoryExhausted = false
+                _historyList.value = newHistory
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

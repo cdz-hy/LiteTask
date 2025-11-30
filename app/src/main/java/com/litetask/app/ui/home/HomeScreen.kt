@@ -51,11 +51,46 @@ fun HomeScreen(
     onNavigateToSearch: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
-    val tasks by viewModel.tasks.collectAsState()
-    val timelineItems by viewModel.timelineItems.collectAsState()
+    // ViewModel 数据流
+    val todayTasks by viewModel.tasks.collectAsState()  // 当天的任务（用于日期筛选视图）
+    val timelineItems by viewModel.timelineItems.collectAsState()  // Timeline 数据（未完成 + 已加载的已完成）
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     var currentView by remember { mutableStateOf("timeline") } // timeline, gantt, deadline
+    
+    // 从 timelineItems 中提取所有任务（用于甘特视图和截止视图）
+    val allLoadedTasks = remember(timelineItems) {
+        timelineItems.filterIsInstance<com.litetask.app.ui.home.TimelineItem.TaskItem>()
+            .map { it.composite }
+    }
+    
+    // 甘特视图专用：筛选3天内的任务
+    val ganttTasks = remember(allLoadedTasks) {
+        val now = System.currentTimeMillis()
+        val calendar = java.util.Calendar.getInstance()
+        calendar.timeInMillis = now
+        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        calendar.set(java.util.Calendar.MINUTE, 0)
+        calendar.set(java.util.Calendar.SECOND, 0)
+        calendar.set(java.util.Calendar.MILLISECOND, 0)
+        val startOfToday = calendar.timeInMillis
+        val endOfThreeDays = startOfToday + (3 * 24 * 60 * 60 * 1000L)
+        
+        // 筛选：任务的某部分在这3天内
+        allLoadedTasks.filter { composite ->
+            val taskStart = composite.task.startTime
+            val taskEnd = composite.task.deadline
+            // 任务重叠条件：开始时间 < 3天结束 AND 结束时间 > 今天开始
+            taskStart < endOfThreeDays && taskEnd > startOfToday
+        }
+    }
+    
+    // 监听视图切换，进入甘特视图时静默刷新（加载最近20条已完成任务，不显示刷新动画）
+    LaunchedEffect(currentView) {
+        if (currentView == "gantt") {
+            viewModel.silentRefresh()
+        }
+    }
     
     // 下拉刷新状态
     val pullToRefreshState = rememberPullToRefreshState()
@@ -132,7 +167,7 @@ fun HomeScreen(
                                 Box(modifier = Modifier.size(4.dp).background(Color(0xFFCCCCCC), CircleShape))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    stringResource(R.string.tasks_count, tasks.size),
+                                    stringResource(R.string.tasks_count, allLoadedTasks.size),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color(0xFF666666)
                                 )
@@ -246,11 +281,11 @@ fun HomeScreen(
                     onSearchClick = { onNavigateToSearch() }
                 )
                 "gantt" -> GanttView(
-                    tasks = tasks,
+                    taskComposites = ganttTasks,
                     onTaskClick = { selectedTaskId = it.id }
                 )
                 "deadline" -> DeadlineView(
-                    tasks = tasks,
+                    tasks = allLoadedTasks.map { it.task },
                     onTaskClick = { selectedTaskId = it.id }
                 )
             }
