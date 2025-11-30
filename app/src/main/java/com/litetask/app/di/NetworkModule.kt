@@ -1,5 +1,6 @@
 package com.litetask.app.di
 
+import com.litetask.app.data.remote.OpenAIService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -36,5 +37,11 @@ object NetworkModule {
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideOpenAIService(retrofit: Retrofit): OpenAIService {
+        return retrofit.create(OpenAIService::class.java)
     }
 }

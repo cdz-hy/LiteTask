@@ -1,168 +1,373 @@
 package com.litetask.app.ui.components
 
+import android.widget.Toast
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.litetask.app.data.model.Task
+import com.litetask.app.data.model.SubTask
 import com.litetask.app.ui.theme.Primary
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.Locale
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskDetailSheet(
     task: Task,
+    subTasks: List<SubTask>,
     onDismiss: () -> Unit,
     onDelete: (Task) -> Unit,
-    onUpdate: (Task) -> Unit
+    onUpdateTask: (Task) -> Unit,
+    onUpdateSubTask: (SubTask, Boolean) -> Unit,
+    onAddSubTask: (String) -> Unit,
+    onDeleteSubTask: (SubTask) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     
+    var newSubTaskText by remember { mutableStateOf("") }
+    var isFullScreen by remember { mutableStateOf(false) }
+
+    // 优化封装带动画的关闭逻辑
+    fun closeSheetWithAnimation() {
+        scope.launch {
+            sheetState.hide() 
+        }.invokeOnCompletion {
+            if (!sheetState.isVisible) {
+                onDismiss()
+            }
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color.White
+        containerColor = Color.White,
+        dragHandle = null,
+        // 保持键盘弹出时的处理，WindowInsets.ime 会自动处理底部 Padding
+        windowInsets = WindowInsets.ime
     ) {
         Column(
             modifier = Modifier
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 48.dp)
-        ) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "任务详情",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                .fillMaxWidth()
+                // 优化更柔和的展开动画
+                .animateContentSize(
+                    animationSpec = spring(
+                        dampingRatio = 0.85f,
+                        stiffness = 300f      
+                    )
                 )
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close")
+                // 高度逻辑：全屏95%，非全屏自适应
+                .then(
+                    if (isFullScreen) Modifier.fillMaxHeight(0.95f)
+                    else Modifier.wrapContentHeight()
+                )
+        ) {
+            // --- 顶部手势区域 ---
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = { /* 惯性处理可选 */ }
+                        ) { change, dragAmount ->
+                            change.consume()
+                            
+                            // --- 核心优化 3：手势阈值判断 ---
+                            val sensitivity = 8f 
+                            
+                            if (dragAmount < -sensitivity) {
+                                if (!isFullScreen) isFullScreen = true
+                            } else if (dragAmount > sensitivity) {
+                                if (isFullScreen) {
+                                    isFullScreen = false
+                                } else {
+                                    closeSheetWithAnimation()
+                                }
+                            }
+                        }
+                    }
+            ) {
+                // 视觉 Handle
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(40.dp)
+                            .height(4.dp)
+                            .background(Color(0xFFE0E0E0), RoundedCornerShape(2.dp))
+                    )
                 }
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // Title
-            Text(
-                text = task.title,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1F1F1F)
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Time Info
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    color = Color(0xFFF2F6FC),
-                    shape = MaterialTheme.shapes.small
+
+                // Header 标题栏
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
                 ) {
                     Text(
+                        text = task.title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1F1F1F),
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { closeSheetWithAnimation() }) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray)
+                    }
+                }
+            }
+
+            // --- 内容区域 ---
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 16.dp)
+            ) {
+                // 描述
+                if (!task.description.isNullOrEmpty()) {
+                    Text(
+                        text = task.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                // 时间
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.AccessTime,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = Color(0xFF666666)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
                         text = "${formatTime(task.startTime)} - ${formatTime(task.deadline)}",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Color(0xFF444746)
                     )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Surface(
-                    color = when(task.type.name) {
-                        "URGENT" -> Color(0xFFFFD8E4)
-                        "LIFE" -> Color(0xFFE7F3E8)
-                        else -> Color(0xFFC2E7FF)
-                    },
-                    shape = MaterialTheme.shapes.small
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 子任务标题
+                Text(
+                    text = "子任务 / 步骤",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF444746)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 子任务列表
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (isFullScreen) {
+                                Modifier.weight(1f) // 全屏：占满剩余空间
+                            } else {
+                                Modifier
+                                    .heightIn(max = 240.dp) // 非全屏：限制最大高度
+                                    // 关键修改：添加 weight(1f, fill = false)
+                                    // fill = false 保证了内容少时高度自适应（不会强行占满）
+                                    // 但当键盘弹出导致空间不足时，weight 属性会让它优先收缩，从而保护底部按钮不被挤压
+                                    .weight(1f, fill = false) 
+                            }
+                        )
                 ) {
-                    Text(
-                        text = task.type.name,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = when(task.type.name) {
-                            "URGENT" -> Color(0xFF31111D)
-                            "LIFE" -> Color(0xFF144419)
-                            else -> Color(0xFF001D35)
+                    items(items = subTasks.sortedBy { it.id }, key = { it.id }) { subTask ->
+                        SubTaskItem(
+                            subTask = subTask,
+                            onToggleComplete = { onUpdateSubTask(subTask, it) },
+                            onDelete = { onDeleteSubTask(subTask) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 添加子任务输入框
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = newSubTaskText,
+                        onValueChange = { newSubTaskText = it },
+                        placeholder = { Text("添加新的子步骤...") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        shape = RoundedCornerShape(24.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Primary,
+                            unfocusedBorderColor = Color.LightGray,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent
+                        )
+                    )
+                    IconButton(
+                        onClick = {
+                            if (newSubTaskText.isNotBlank()) {
+                                onAddSubTask(newSubTaskText)
+                                newSubTaskText = ""
+                            }
+                        },
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Icon(Icons.Default.AddCircle, contentDescription = "Add", tint = Primary)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 底部按钮区
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    OutlinedButton(
+                        onClick = { 
+                            onDelete(task)
+                            closeSheetWithAnimation() 
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFF43F5E)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF43F5E))
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("删除任务")
+                    }
+
+                    if (!task.isDone || task.deadline >= System.currentTimeMillis()) {
+                        Button(
+                            onClick = {
+                                if (task.isDone && task.deadline < System.currentTimeMillis()) {
+                                    Toast.makeText(context, "已过期任务不能标记为未完成", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    val updatedTask = if (!task.isDone) {
+                                        task.copy(isDone = true, isPinned = false)
+                                    } else {
+                                        task.copy(isDone = false)
+                                    }
+                                    onUpdateTask(updatedTask)
+                                    closeSheetWithAnimation()
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (task.isDone) Color.Gray else Primary
+                            )
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (task.isDone) "标记未完成" else "完成任务")
                         }
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            // Actions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // Delete
-                OutlinedButton(
-                    onClick = { onDelete(task) },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("删除")
-                }
-                
-                // Mark Done / Undone
-                Button(
-                    onClick = { onUpdate(task.copy(isDone = !task.isDone)) },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (task.isDone) Color(0xFFE0E0E0) else Primary,
-                        contentColor = if (task.isDone) Color(0xFF1F1F1F) else Color.White
-                    )
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (task.isDone) "未完成" else "完成")
+                    }
                 }
             }
         }
     }
 }
 
-private fun formatTime(timestamp: Long): String {
-    return SimpleDateFormat("HH:mm", Locale.getDefault()).format(timestamp)
+// 保持原有的 SubTaskItem 和 formatTime 不变
+@Composable
+private fun SubTaskItem(
+    subTask: SubTask,
+    onToggleComplete: (Boolean) -> Unit,
+    onDelete: () -> Unit
+) {
+    var isDeleting by remember { mutableStateOf(false) }
+
+    val alpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isDeleting) 0f else 1f,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 300),
+        label = "alpha"
+    )
+
+    // 使用 padding 变化代替 offset，通常在列表中表现更稳定
+    LaunchedEffect(isDeleting) {
+        if (isDeleting) {
+            kotlinx.coroutines.delay(300)
+            onDelete()
+        }
+    }
+
+    // 如果正在删除，高度逐渐变为0
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(alpha)
+            .then(if(isDeleting) Modifier.height(0.dp) else Modifier.wrapContentHeight())
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp)
+                .clickable {
+                    onToggleComplete(!subTask.isCompleted)
+                },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = subTask.isCompleted,
+                onCheckedChange = { onToggleComplete(it) },
+                colors = CheckboxDefaults.colors(checkedColor = Primary)
+            )
+            Text(
+                text = subTask.content,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (subTask.isCompleted) Color.Gray else Color(0xFF1F1F1F),
+                textDecoration = if (subTask.isCompleted) TextDecoration.LineThrough else null,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(
+                onClick = { isDeleting = true },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "删除子任务",
+                    tint = Color(0xFFE57373),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun TaskDetailSheetPreview() {
-    val sampleTask = Task(
-        id = 1,
-        title = "完成项目报告",
-        description = "准备季度总结报告并提交",
-        type = com.litetask.app.data.model.TaskType.WORK,
-        startTime = System.currentTimeMillis(),
-        deadline = System.currentTimeMillis() + 2 * 60 * 60 * 1000,
-        isDone = false
-    )
-    
-    MaterialTheme {
-        TaskDetailSheet(
-            task = sampleTask,
-            onDismiss = {},
-            onDelete = {},
-            onUpdate = {}
-        )
-    }
+private fun formatTime(timestamp: Long): String {
+    return SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date(timestamp))
 }

@@ -1,90 +1,98 @@
 package com.litetask.app.data.local
 
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
-import androidx.room.Update
-import androidx.room.Transaction
-import androidx.room.Delete
+import androidx.room.*
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
-import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.TaskDetailComposite
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TaskDao {
-    // --- 1. 首页核心视图 ---
-    // 逻辑：
-    // - 只查没做完的 (is_done = 0)
-    // - 优先显示置顶的 (is_pinned DESC)
-    // - 剩下的按 DDL 由近到远排序 (deadline ASC)，越紧迫的越靠前
+
+    // 1. 置顶任务 (无论是否完成，只要置顶就在最上面)
+    // 排序：未完成在前，然后按截止时间
+    @Transaction
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE is_pinned = 1 
+        ORDER BY is_done ASC, deadline ASC
+    """)
+    fun getPinnedTasks(): Flow<List<TaskDetailComposite>>
+
+    // 2. 普通进行中任务 (不含置顶)
+    // 排序：开始时间早的在前 -> 截止时间早的在前
+    @Transaction
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE is_pinned = 0 AND is_done = 0 
+        ORDER BY start_time ASC, deadline ASC
+    """)
+    fun getActiveNonPinnedTasks(): Flow<List<TaskDetailComposite>>
+
+    // 3. 所有未完成任务（包括置顶和非置顶）
+    // 按照要求：is_done = 0，置顶优先，然后按开始时间、截止时间排序
+    @Transaction
     @Query("""
         SELECT * FROM tasks 
         WHERE is_done = 0 
-        ORDER BY is_pinned DESC, deadline ASC
+        ORDER BY is_pinned DESC, start_time ASC, deadline ASC
     """)
-    fun getActiveTasksSortedByDeadline(): Flow<List<Task>>
+    fun getActiveTasks(): Flow<List<TaskDetailComposite>>
 
-    // --- 2. 截止日/倒计时视图 ---
-    // 逻辑：
-    // - 找出所有截止日期在 "未来24小时内" 的极度紧急任务
+    // 4. 历史任务 (已完成) - 分页加载
+    // 排序：最近截止/完成的在前 (DESC)
+    @Transaction
     @Query("""
         SELECT * FROM tasks 
-        WHERE is_done = 0 
-        AND deadline <= :limitTime
-        ORDER BY deadline ASC
+        WHERE is_done = 1
+        ORDER BY deadline DESC
+        LIMIT :limit OFFSET :offset
     """)
-    fun getUrgentTasks(limitTime: Long): Flow<List<Task>>
+    suspend fun getHistoryTasks(limit: Int, offset: Int): List<TaskDetailComposite>
 
-    // --- 3. 详情页 (关联查询) ---
-    // 一次性查出：任务详情 + 它的所有子任务 + 它的所有提醒
+    // --- 详情与操作 ---
     @Transaction
     @Query("SELECT * FROM tasks WHERE id = :taskId")
     fun getTaskDetail(taskId: Long): Flow<TaskDetailComposite>
 
-    // --- 4. 基础操作 ---
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTask(task: Task): Long // 返回新 ID
-
-    @Insert
-    suspend fun insertSubTasks(subTasks: List<SubTask>)
-
-    @Insert
-    suspend fun insertReminders(reminders: List<Reminder>)
-
-    @Update
-    suspend fun updateTask(task: Task)
-    
-    // 勾选/取消勾选子任务
-    @Query("UPDATE sub_tasks SET is_completed = :completed WHERE id = :subTaskId")
-    suspend fun updateSubTaskStatus(subTaskId: Long, completed: Boolean)
-    
-    // 为向后兼容保留的基础查询方法
-    @Query("SELECT * FROM tasks ORDER BY start_time ASC")
-    fun getAllTasks(): Flow<List<Task>>
-
-    @Query("SELECT * FROM tasks WHERE start_time >= :start AND deadline <= :end ORDER BY deadline ASC")
-    fun getTasksInRange(start: Long, end: Long): Flow<List<Task>>
-
     @Query("SELECT * FROM tasks WHERE id = :id")
     suspend fun getTaskById(id: Long): Task?
 
+    // --- 基础增删改 ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTasks(tasks: List<Task>)
+    suspend fun insertTask(task: Task): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSubTask(subTask: SubTask) // 单个插入
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSubTasks(subTasks: List<SubTask>)
+
+    @Update
+    suspend fun updateTask(task: Task)
 
     @Delete
     suspend fun deleteTask(task: Task)
     
-    // --- 5. 懒更新策略：自动标记过期任务 ---
-    // 核心逻辑：将所有截止时间 (deadline) 小于当前时间 (now)，且还没做完 (is_done=0) 的任务，全部置为 1
-    // 这个方法会在用户打开 App 或刷新数据时调用，确保显示的数据是最新的
-    @Query("""
-        UPDATE tasks 
-        SET is_done = 1 
-        WHERE deadline < :currentTime 
-        AND is_done = 0
-    """)
-    suspend fun autoMarkOverdueTasksAsDone(currentTime: Long): Int // 返回受影响的行数
+    @Query("UPDATE sub_tasks SET is_completed = :completed WHERE id = :subTaskId")
+    suspend fun updateSubTaskStatus(subTaskId: Long, completed: Boolean)
+    
+    @Delete
+    suspend fun deleteSubTask(subTask: SubTask)
+
+    @Query("DELETE FROM sub_tasks WHERE task_id = :taskId")
+    suspend fun deleteSubTasksByTaskId(taskId: Long)
+    
+    // --- 兼容性保留 ---
+    @Query("UPDATE tasks SET is_done = 1 WHERE deadline < :currentTime AND is_done = 0")
+    suspend fun autoMarkOverdueTasksAsDone(currentTime: Long): Int
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTasks(tasks: List<Task>)
+    
+    @Query("SELECT * FROM tasks ORDER BY start_time ASC")
+    fun getAllTasks(): Flow<List<Task>>
+    
+    @Query("SELECT * FROM tasks WHERE start_time >= :start AND deadline <= :end ORDER BY deadline ASC")
+    fun getTasksInRange(start: Long, end: Long): Flow<List<Task>>
 }

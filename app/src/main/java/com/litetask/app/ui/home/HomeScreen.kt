@@ -1,5 +1,6 @@
 package com.litetask.app.ui.home
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -13,14 +14,19 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.litetask.app.data.model.Task
 import com.litetask.app.ui.components.*
@@ -38,11 +44,49 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val tasks by viewModel.tasks.collectAsState()
+    val timelineItems by viewModel.timelineItems.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     var currentView by remember { mutableStateOf("timeline") } // timeline, gantt, deadline
     
+    // 下拉刷新状态
+    val pullToRefreshState = rememberPullToRefreshState()
+    
+    // 监听刷新状态
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) {
+            pullToRefreshState.startRefresh()
+        } else {
+            pullToRefreshState.endRefresh()
+        }
+    }
+    
+    // 监听下拉动作
+    LaunchedEffect(pullToRefreshState.isRefreshing) {
+        if (pullToRefreshState.isRefreshing) {
+            viewModel.onRefresh()
+        }
+    }
+    
     var showAddTaskDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
     var selectedTask by remember { mutableStateOf<Task?>(null) }
+    var taskToEdit by remember { mutableStateOf<Task?>(null) }
+    var selectedTaskId by remember { mutableStateOf<Long?>(null) }
+    
+    // 实时订阅选中任务的详情（包括子任务）
+    val selectedTaskComposite by produceState<com.litetask.app.data.model.TaskDetailComposite?>(
+        initialValue = null,
+        key1 = selectedTaskId
+    ) {
+        selectedTaskId?.let { taskId ->
+            viewModel.getTaskDetailFlow(taskId).collect { composite ->
+                value = composite
+            }
+        } ?: run {
+            value = null
+        }
+    }
 
     // 录音相关状态
     val context = LocalContext.current
@@ -55,16 +99,16 @@ fun HomeScreen(
     }
 
     Scaffold(
-        containerColor = Color(0xFFF2F6FC),
+        containerColor = Color(0xFFF8F9FA),
         topBar = {
-            Column(modifier = Modifier.background(Color(0xFFF2F6FC))) {
+            Column(modifier = Modifier.background(Color(0xFFF8F9FA))) {
                 TopAppBar(
                     title = {
                         Column {
                             Text(
                                 "LiteTask",
                                 style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Normal,
+                                fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1F1F1F)
                             )
                             Row(
@@ -74,15 +118,15 @@ fun HomeScreen(
                                 Text(
                                     text = SimpleDateFormat("MM月dd日", Locale.getDefault()).format(Date()),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFF444746)
+                                    color = Color(0xFF666666)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Box(modifier = Modifier.size(4.dp).background(Color(0xFF9CA3AF), CircleShape))
+                                Box(modifier = Modifier.size(4.dp).background(Color(0xFFCCCCCC), CircleShape))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     "${tasks.size} 个任务",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFF444746)
+                                    color = Color(0xFF666666)
                                 )
                             }
                         }
@@ -98,18 +142,18 @@ fun HomeScreen(
                                 .padding(end = 16.dp)
                                 .size(40.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFC2E7FF))
+                                .background(Color(0xFFE3F2FD))
                                 .clickable { /* Profile */ },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 "L",
-                                color = Color(0xFF001D35),
+                                color = Color(0xFF1976D2),
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF2F6FC))
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF8F9FA))
                 )
                 
                 // View Switcher
@@ -130,7 +174,7 @@ fun HomeScreen(
                     )
                     ViewOption(
                         text = "甘特",
-                        icon = Icons.Default.ViewTimeline, // Using ViewTimeline as Gantt icon proxy
+                        icon = Icons.Default.ViewTimeline,
                         isSelected = currentView == "gantt",
                         onClick = { currentView = "gantt" },
                         modifier = Modifier.weight(1f)
@@ -151,27 +195,15 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Manual Add Button (Small)
-                SmallFloatingActionButton(
+                FloatingActionButton(
                     onClick = { showAddTaskDialog = true },
-                    containerColor = Color(0xFFC2E7FF),
-                    contentColor = Color(0xFF001D35),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Task")
-                }
-
-                // Voice Add Button (Large)
-                ExtendedFloatingActionButton(
-                    onClick = { 
-                        permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                    },
-                    icon = { Icon(Icons.Default.Mic, contentDescription = "Voice") },
-                    text = { Text("语音安排") },
                     containerColor = Primary,
-                    contentColor = OnPrimary,
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.height(64.dp)
-                )
+                    contentColor = androidx.compose.ui.graphics.Color.White,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Task", modifier = Modifier.size(24.dp))
+                }
             }
         }
     ) { paddingValues ->
@@ -179,11 +211,29 @@ fun HomeScreen(
             modifier = Modifier
                 .padding(paddingValues)
                 .fillMaxSize()
+                .nestedScroll(pullToRefreshState.nestedScrollConnection)
         ) {
             when (currentView) {
                 "timeline" -> TimelineView(
-                    tasks = tasks,
-                    onTaskClick = { selectedTask = it }
+                    items = timelineItems,
+                    onTaskClick = { task -> 
+                        selectedTaskId = task.id
+                    },
+                    onDeleteClick = { viewModel.deleteTask(it) },
+                    onPinClick = { 
+                         if (it.isDone) {
+                             Toast.makeText(context, "已完成的任务不能置顶", Toast.LENGTH_SHORT).show()
+                         } else if (it.deadline < System.currentTimeMillis()) {
+                             Toast.makeText(context, "已过期的任务不能置顶", Toast.LENGTH_SHORT).show()
+                         } else {
+                             viewModel.updateTask(it.copy(isPinned = !it.isPinned))
+                         }
+                    },
+                    onEditClick = { 
+                        taskToEdit = it
+                        showEditDialog = true
+                    },
+                    onLoadMore = { viewModel.loadMoreHistory() }
                 )
                 "gantt" -> GanttView(
                     tasks = tasks,
@@ -194,6 +244,21 @@ fun HomeScreen(
                     onTaskClick = { selectedTask = it }
                 )
             }
+            
+            // --- 美化后的下拉刷新指示器 ---
+            PullToRefreshContainer(
+                state = pullToRefreshState,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    // 关键: zIndex 确保指示器浮在列表内容之上，不会被遮挡
+                    .zIndex(1f),
+                // 美化: 使用 LiteTask 风格的 PrimaryContainer 浅蓝色背景
+                containerColor = Color(0xFFD3E3FD), 
+                // 美化: 使用深蓝色图标，增加对比度
+                contentColor = Color(0xFF041E49),
+                // 美化: 显式指定圆形，并添加轻微阴影效果(Shadow已由组件默认处理，但颜色决定了质感)
+                shape = CircleShape
+            )
         }
 
         // Dialogs
@@ -207,17 +272,40 @@ fun HomeScreen(
             )
         }
 
-        selectedTask?.let { task ->
+        if (showEditDialog) {
+            AddTaskDialog(
+                initialTask = taskToEdit,
+                onDismiss = { 
+                    showEditDialog = false
+                    taskToEdit = null
+                },
+                onConfirm = { task ->
+                    viewModel.updateTask(task)
+                    showEditDialog = false
+                    taskToEdit = null
+                }
+            )
+        }
+
+        // 详情 Sheet 连接
+        selectedTaskComposite?.let { composite ->
             TaskDetailSheet(
-                task = task,
-                onDismiss = { selectedTask = null },
+                task = composite.task,
+                subTasks = composite.subTasks,
+                onDismiss = { selectedTaskId = null },
                 onDelete = { 
                     viewModel.deleteTask(it)
-                    selectedTask = null
+                    selectedTaskId = null
                 },
-                onUpdate = {
-                    viewModel.updateTask(it)
-                    selectedTask = null // Close sheet after update? Or keep open? Let's close for now.
+                onUpdateTask = { viewModel.updateTask(it) },
+                onUpdateSubTask = { sub, isCompleted -> 
+                    viewModel.updateSubTaskStatus(sub.id, isCompleted)
+                },
+                onAddSubTask = { content ->
+                    viewModel.addSubTask(composite.task.id, content)
+                },
+                onDeleteSubTask = { subTask ->
+                    viewModel.deleteSubTask(subTask)
                 }
             )
         }

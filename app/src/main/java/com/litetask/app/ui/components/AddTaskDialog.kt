@@ -35,29 +35,36 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTaskDialog(
+    initialTask: Task? = null,
     onDismiss: () -> Unit,
     onConfirm: (Task) -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf(TaskType.STUDY) }
+    var title by remember { mutableStateOf(initialTask?.title ?: "") }
+    var description by remember { mutableStateOf(initialTask?.description ?: "") }
+    var selectedType by remember { mutableStateOf(initialTask?.type ?: TaskType.STUDY) }
+    var isPinned by remember { mutableStateOf(initialTask?.isPinned ?: false) }
     
-    // 日期和时间状态 - 分别管理日期和时间
-    val calendar = Calendar.getInstance()
-    
-    // 开始日期和时间
-    var startDate by remember { mutableStateOf(calendar.timeInMillis) }
-    var startHour by remember { mutableStateOf(calendar.get(Calendar.HOUR_OF_DAY)) }
-    var startMinute by remember { mutableStateOf(calendar.get(Calendar.MINUTE)) }
-    
-    // 截止日期和时间（默认第二天同一时间）
-    val deadlineCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }
-    var deadlineDate by remember { mutableStateOf(deadlineCal.timeInMillis) }
-    var deadlineHour by remember { mutableStateOf(deadlineCal.get(Calendar.HOUR_OF_DAY)) }
-    var deadlineMinute by remember { mutableStateOf(deadlineCal.get(Calendar.MINUTE)) }
-    
-    var showAdvanced by remember { mutableStateOf(false) }
-    var isPinned by remember { mutableStateOf(false) }
+    // 时间初始化
+    val initialStart = initialTask?.startTime ?: System.currentTimeMillis()
+    val initialDead = initialTask?.deadline ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
+
+    val startCal = Calendar.getInstance().apply { timeInMillis = initialStart }
+    var startDate by remember { mutableStateOf(startCal.timeInMillis) }
+    var startHour by remember { mutableStateOf(startCal.get(Calendar.HOUR_OF_DAY)) }
+    var startMinute by remember { mutableStateOf(startCal.get(Calendar.MINUTE)) }
+
+    val deadCal = Calendar.getInstance().apply { timeInMillis = initialDead }
+    var deadlineDate by remember { mutableStateOf(deadCal.timeInMillis) }
+    var deadlineHour by remember { mutableStateOf(deadCal.get(Calendar.HOUR_OF_DAY)) }
+    var deadlineMinute by remember { mutableStateOf(deadCal.get(Calendar.MINUTE)) }
+
+    // 对于已完成的任务，即使isPinned为true，我们也应该在UI上显示为false
+    val isTaskDone = initialTask?.isDone ?: false
+    var showAdvanced by remember { 
+        mutableStateOf(
+            if (isTaskDone) false else (initialTask?.isPinned == true)
+        ) 
+    }
 
     // Date/Time Picker 状态
     var showStartDatePicker by remember { mutableStateOf(false) }
@@ -115,13 +122,13 @@ fun AddTaskDialog(
                     ) {
                         Column {
                             Text(
-                                text = "新建任务",
+                                text = if (initialTask != null) "编辑任务" else "新建任务",
                                 style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1F1F1F)
                             )
                             Text(
-                                text = "填写任务详细信息",
+                                text = if (initialTask != null) "修改任务详细信息" else "填写任务详细信息",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = Color(0xFF444746),
                                 modifier = Modifier.padding(top = 4.dp)
@@ -266,13 +273,17 @@ fun AddTaskDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        // 修改截止时间卡片变红逻辑：只在截止时间在未来24小时内才变红
+                        val isDeadlineWithin24Hours = deadlineMillis > System.currentTimeMillis() && 
+                                                    deadlineMillis < System.currentTimeMillis() + 24 * 60 * 60 * 1000
+                        
                         DateTimePickerCard(
                             label = "截止日期",
                             icon = Icons.Default.Event,
                             value = formatDateForDialog(deadlineDate),
                             onClick = { showDeadlineDatePicker = true },
                             modifier = Modifier.weight(1.6f),
-                            isUrgent = deadlineMillis < System.currentTimeMillis() + 24 * 60 * 60 * 1000
+                            isUrgent = isDeadlineWithin24Hours
                         )
                         DateTimePickerCard(
                             label = "截止时间",
@@ -280,7 +291,7 @@ fun AddTaskDialog(
                             value = String.format("%02d:%02d", deadlineHour, deadlineMinute),
                             onClick = { showDeadlineTimePicker = true },
                             modifier = Modifier.weight(1f),
-                            isUrgent = deadlineMillis < System.currentTimeMillis() + 24 * 60 * 60 * 1000
+                            isUrgent = isDeadlineWithin24Hours
                         )
                     }
 
@@ -312,7 +323,7 @@ fun AddTaskDialog(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (deadlineMillis <= startTimeMillis) {
-                                    "⚠️ 截止时间必须晚于开始时间"
+                                    "截止时间必须晚于开始时间"
                                 } else if (durationDays > 0) {
                                     "预计时长: ${durationDays}天 ${remainingHours}小时"
                                 } else {
@@ -349,19 +360,27 @@ fun AddTaskDialog(
                         Column {
                             Spacer(modifier = Modifier.height(12.dp))
                             
+                            // 检查任务是否已过期或已完成
+                            val isTaskExpired = deadlineMillis < System.currentTimeMillis()
+                            val isTaskDone = initialTask?.isDone ?: false
+                            val pinEnabled = !isTaskExpired && !isTaskDone
+                            
+                            // 确保已完成的任务不能置顶
+                            val displayIsPinned = if (isTaskDone) false else isPinned
+                            
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(12.dp))
-                                    .clickable { isPinned = !isPinned }
-                                    .background(if (isPinned) Primary.copy(alpha = 0.1f) else Color.Transparent)
+                                    .clickable(enabled = pinEnabled) { isPinned = !isPinned }
+                                    .background(if (displayIsPinned && pinEnabled) Primary.copy(alpha = 0.1f) else Color.Transparent)
                                     .padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     Icons.Default.PushPin,
                                     contentDescription = null,
-                                    tint = if (isPinned) Primary else Color(0xFF444746)
+                                    tint = if (displayIsPinned && pinEnabled) Primary else Color(0xFF444746)
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
@@ -375,9 +394,24 @@ fun AddTaskDialog(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = Color(0xFF747775)
                                     )
+                                    // 显示置顶不可用的原因
+                                    if (isTaskExpired) {
+                                        Text(
+                                            "截止时间在现在时间前的任务不能置顶",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFFF43F5E)
+                                        )
+                                    } else if (isTaskDone) {
+                                        Text(
+                                            "已完成的任务不能置顶",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFFF43F5E)
+                                        )
+                                    }
                                 }
                                 Switch(
-                                    checked = isPinned,
+                                    checked = displayIsPinned && pinEnabled,
+                                    enabled = pinEnabled,
                                     onCheckedChange = { isPinned = it },
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = Primary,
@@ -409,16 +443,21 @@ fun AddTaskDialog(
                     Button(
                         onClick = {
                             if (title.isNotBlank() && deadlineMillis > startTimeMillis) {
-                                onConfirm(
-                                    Task(
-                                        title = title,
-                                        description = description.ifBlank { null },
-                                        type = selectedType,
-                                        startTime = startTimeMillis,
-                                        deadline = deadlineMillis,
-                                        isPinned = isPinned
-                                    )
+                                // 对于已完成的任务，强制将isPinned设置为false
+                                val isTaskDone = initialTask?.isDone ?: false
+                                val effectiveIsPinned = if (isTaskDone) false else isPinned
+                                
+                                val newTask = Task(
+                                    id = initialTask?.id ?: 0,
+                                    title = title,
+                                    description = description.ifBlank { null },
+                                    type = selectedType,
+                                    startTime = startTimeMillis,
+                                    deadline = deadlineMillis,
+                                    isPinned = effectiveIsPinned,
+                                    isDone = initialTask?.isDone ?: false
                                 )
+                                onConfirm(newTask)
                             }
                         },
                         enabled = title.isNotBlank() && deadlineMillis > startTimeMillis,
@@ -430,9 +469,9 @@ fun AddTaskDialog(
                         shape = RoundedCornerShape(16.dp),
                         contentPadding = PaddingValues(vertical = 14.dp)
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Icon(if (initialTask != null) Icons.Default.Save else Icons.Default.Check, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("创建任务", fontWeight = FontWeight.Bold)
+                        Text(if (initialTask != null) "确认修改" else "创建任务", fontWeight = FontWeight.Bold)
                     }
                 }
             }

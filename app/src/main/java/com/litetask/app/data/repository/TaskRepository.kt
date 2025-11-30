@@ -2,54 +2,47 @@ package com.litetask.app.data.repository
 
 import com.litetask.app.data.local.TaskDao
 import com.litetask.app.data.model.Task
+import com.litetask.app.data.model.SubTask
+import com.litetask.app.data.model.TaskDetailComposite
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
 
-interface TaskRepository {
-    fun getAllTasks(): Flow<List<Task>>
-    fun getTasksInRange(start: Long, end: Long): Flow<List<Task>>
-    suspend fun getTaskById(id: Long): Task?
-    suspend fun insertTask(task: Task): Long
-    suspend fun insertTasks(tasks: List<Task>)
-    suspend fun updateTask(task: Task)
-    suspend fun deleteTask(task: Task)
-    
-    // 新增的领域特定查询方法
-    fun getActiveTasksSortedByDeadline(): Flow<List<Task>>
-    fun getUrgentTasks(limitTime: Long): Flow<List<Task>>
-    
-    // 懒更新策略：自动标记过期任务
-    suspend fun autoMarkOverdueTasksAsDone(currentTime: Long): Int
-}
-
 @Singleton
 class TaskRepositoryImpl @Inject constructor(
     private val taskDao: TaskDao
-) : TaskRepository {
-    override fun getAllTasks(): Flow<List<Task>> = taskDao.getAllTasks()
-
-    override fun getTasksInRange(start: Long, end: Long): Flow<List<Task>> =
-        taskDao.getTasksInRange(start, end)
-
-    override suspend fun getTaskById(id: Long): Task? = taskDao.getTaskById(id)
-
-    override suspend fun insertTask(task: Task): Long = taskDao.insertTask(task)
-
-    override suspend fun insertTasks(tasks: List<Task>) = taskDao.insertTasks(tasks)
-
-    override suspend fun updateTask(task: Task) = taskDao.updateTask(task)
-
-    override suspend fun deleteTask(task: Task) = taskDao.deleteTask(task)
+) {
+    // 拆分流
+    fun getPinnedTasks() = taskDao.getPinnedTasks()
+    fun getActiveNonPinnedTasks() = taskDao.getActiveNonPinnedTasks()
+    fun getActiveTasks() = taskDao.getActiveTasks()
     
-    // 新增的领域特定查询方法实现
-    override fun getActiveTasksSortedByDeadline(): Flow<List<Task>> = 
-        taskDao.getActiveTasksSortedByDeadline()
-        
-    override fun getUrgentTasks(limitTime: Long): Flow<List<Task>> = 
-        taskDao.getUrgentTasks(limitTime)
-        
-    // 懒更新策略实现
-    override suspend fun autoMarkOverdueTasksAsDone(currentTime: Long): Int = 
-        taskDao.autoMarkOverdueTasksAsDone(currentTime)
+    // 分页加载历史
+    suspend fun getHistoryTasks(limit: Int, offset: Int) = taskDao.getHistoryTasks(limit, offset)
+
+    fun getTaskDetail(id: Long) = taskDao.getTaskDetail(id)
+
+    suspend fun insertTask(task: Task) = taskDao.insertTask(task)
+    suspend fun insertSubTask(subTask: SubTask) = taskDao.insertSubTask(subTask)
+    
+    suspend fun updateTask(task: Task) = taskDao.updateTask(task)
+    suspend fun deleteTask(task: Task) = taskDao.deleteTask(task)
+    suspend fun updateSubTaskStatus(id: Long, completed: Boolean) = taskDao.updateSubTaskStatus(id, completed)
+    suspend fun deleteSubTask(subTask: SubTask) = taskDao.deleteSubTask(subTask)
+
+    suspend fun updateTaskWithSubTasks(task: Task, subTasks: List<SubTask>) {
+        taskDao.updateTask(task)
+        taskDao.deleteSubTasksByTaskId(task.id)
+        if (subTasks.isNotEmpty()) {
+            val newSubTasks = subTasks.map { it.copy(taskId = task.id, id = 0) } 
+            taskDao.insertSubTasks(newSubTasks)
+        }
+    }
+    
+    suspend fun insertTasks(tasks: List<Task>) = taskDao.insertTasks(tasks)
+    suspend fun autoMarkOverdueTasksAsDone(time: Long) = taskDao.autoMarkOverdueTasksAsDone(time)
+    
+    // 兼容
+    fun getAllTasks() = taskDao.getAllTasks()
+    fun getTasksInRange(start: Long, end: Long) = taskDao.getTasksInRange(start, end)
 }
