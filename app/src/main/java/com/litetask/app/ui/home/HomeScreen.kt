@@ -247,11 +247,11 @@ fun HomeScreen(
                 )
                 "gantt" -> GanttView(
                     tasks = tasks,
-                    onTaskClick = { selectedTask = it }
+                    onTaskClick = { selectedTaskId = it.id }
                 )
                 "deadline" -> DeadlineView(
                     tasks = tasks,
-                    onTaskClick = { selectedTask = it }
+                    onTaskClick = { selectedTaskId = it.id }
                 )
             }
             

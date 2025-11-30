@@ -34,7 +34,7 @@ class HomeViewModel @Inject constructor(
     }.timeInMillis)
     val selectedDate: StateFlow<Long> = _selectedDate
 
-    // 旧的任务列表 (根据日期过滤)
+    // 任务列表 (显示所有与选定日期有时间重叠的任务)
     val tasks: StateFlow<List<Task>> = combine(
         taskRepository.getAllTasks(),
         _selectedDate
@@ -45,8 +45,10 @@ class HomeViewModel @Inject constructor(
         calendar.add(Calendar.DAY_OF_YEAR, 1)
         val endOfDay = calendar.timeInMillis
 
+        // 修复：显示所有与当天有重叠的任务
+        // 任务重叠条件：任务开始时间 < 当天结束时间 AND 任务结束时间 > 当天开始时间
         allTasks.filter { task ->
-            task.startTime in startOfDay until endOfDay
+            task.startTime < endOfDay && task.deadline > startOfDay
         }
     }.stateIn(
         scope = viewModelScope,
