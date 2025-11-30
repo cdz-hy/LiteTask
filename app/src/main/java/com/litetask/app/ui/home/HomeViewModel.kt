@@ -22,6 +22,11 @@ class HomeViewModel @Inject constructor(
     private val speechHelper: com.litetask.app.util.SpeechRecognizerHelper
 ) : ViewModel() {
 
+    // 懒更新策略：在 ViewModel 初始化时自动标记过期任务
+    init {
+        refreshTasks()
+    }
+
     // ... (Existing code)
 
     // 日期选择状态
@@ -126,6 +131,37 @@ class HomeViewModel @Inject constructor(
 
     fun dismissAiResult() {
         _uiState.value = _uiState.value.copy(showAiResult = false, aiParsedTasks = emptyList())
+    }
+    
+    /**
+     * 懒更新策略：刷新任务列表
+     * 
+     * 执行流程：
+     * 1. 先自动标记所有已过期的任务为完成状态
+     * 2. 然后刷新任务列表（由于使用 Flow，数据会自动更新）
+     * 
+     * 调用时机：
+     * - ViewModel 初始化时（用户打开 App）
+     * - 用户手动刷新时
+     * - 从后台返回前台时
+     */
+    fun refreshTasks() {
+        viewModelScope.launch {
+            try {
+                // 1. 执行自动更新逻辑：标记所有过期任务
+                val now = System.currentTimeMillis()
+                val updatedCount = taskRepository.autoMarkOverdueTasksAsDone(now)
+                
+                // 2. 由于使用了 Flow，任务列表会自动更新
+                // 可以在这里添加日志或通知用户
+                if (updatedCount > 0) {
+                    // TODO: 可选 - 显示提示信息，如 "已自动完成 $updatedCount 个过期任务"
+                }
+            } catch (e: Exception) {
+                // 处理异常，但不影响正常使用
+                e.printStackTrace()
+            }
+        }
     }
 }
 

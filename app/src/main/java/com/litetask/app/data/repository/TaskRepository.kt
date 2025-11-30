@@ -18,6 +18,9 @@ interface TaskRepository {
     // 新增的领域特定查询方法
     fun getActiveTasksSortedByDeadline(): Flow<List<Task>>
     fun getUrgentTasks(limitTime: Long): Flow<List<Task>>
+    
+    // 懒更新策略：自动标记过期任务
+    suspend fun autoMarkOverdueTasksAsDone(currentTime: Long): Int
 }
 
 @Singleton
@@ -45,4 +48,8 @@ class TaskRepositoryImpl @Inject constructor(
         
     override fun getUrgentTasks(limitTime: Long): Flow<List<Task>> = 
         taskDao.getUrgentTasks(limitTime)
+        
+    // 懒更新策略实现
+    override suspend fun autoMarkOverdueTasksAsDone(currentTime: Long): Int = 
+        taskDao.autoMarkOverdueTasksAsDone(currentTime)
 }

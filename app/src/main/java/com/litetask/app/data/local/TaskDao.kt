@@ -76,4 +76,15 @@ interface TaskDao {
 
     @Delete
     suspend fun deleteTask(task: Task)
+    
+    // --- 5. 懒更新策略：自动标记过期任务 ---
+    // 核心逻辑：将所有截止时间 (deadline) 小于当前时间 (now)，且还没做完 (is_done=0) 的任务，全部置为 1
+    // 这个方法会在用户打开 App 或刷新数据时调用，确保显示的数据是最新的
+    @Query("""
+        UPDATE tasks 
+        SET is_done = 1 
+        WHERE deadline < :currentTime 
+        AND is_done = 0
+    """)
+    suspend fun autoMarkOverdueTasksAsDone(currentTime: Long): Int // 返回受影响的行数
 }
