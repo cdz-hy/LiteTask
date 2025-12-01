@@ -142,7 +142,7 @@ fun TaskDetailSheet(
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = { closeSheetWithAnimation() }) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close), tint = Color.Gray)
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close), tint = MaterialTheme.colorScheme.outline)
                     }
                 }
             }
@@ -159,7 +159,7 @@ fun TaskDetailSheet(
                     Text(
                         text = task.description,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.outline,
                         modifier = Modifier.padding(top = 8.dp)
                     )
                 }
@@ -173,13 +173,13 @@ fun TaskDetailSheet(
                         Icons.Default.AccessTime,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = Color(0xFF666666)
+                        tint = MaterialTheme.colorScheme.outline
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "${formatTime(task.startTime)} - ${formatTime(task.deadline)}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF444746)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
@@ -190,7 +190,7 @@ fun TaskDetailSheet(
                     text = stringResource(R.string.subtasks_steps),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF444746)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -265,8 +265,8 @@ fun TaskDetailSheet(
                             closeSheetWithAnimation() 
                         },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFF43F5E)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF43F5E))
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error)
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
@@ -290,7 +290,7 @@ fun TaskDetailSheet(
                             },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (task.isDone) Color.Gray else Primary
+                                containerColor = if (task.isDone) MaterialTheme.colorScheme.outline else Primary
                             )
                         ) {
                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -351,7 +351,7 @@ private fun SubTaskItem(
             Text(
                 text = subTask.content,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (subTask.isCompleted) Color.Gray else Color(0xFF1F1F1F),
+                color = if (subTask.isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
                 textDecoration = if (subTask.isCompleted) TextDecoration.LineThrough else null,
                 modifier = Modifier.weight(1f)
             )
@@ -362,7 +362,7 @@ private fun SubTaskItem(
                 Icon(
                     Icons.Default.Close,
                     contentDescription = stringResource(R.string.delete),
-                    tint = Color(0xFFE57373),
+                    tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(18.dp)
                 )
             }

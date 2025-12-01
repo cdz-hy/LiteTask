@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -31,6 +33,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
+import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
@@ -52,13 +55,13 @@ private val ColorUrgent = Color(0xFFB3261E)
 private val ColorDone = Color(0xFFE0E0E0)
 private val ColorTextDone = Color(0xFF9E9E9E)
 
-private val ColorWorkBg = Color(0xFFEFF6FF) // blue-50
-private val ColorLifeBg = Color(0xFFECFDF5) // emerald-50
-private val ColorStudyBg = Color(0xFFF5F3FF) // violet-50
+private val ColorWorkBg = Color(0xFFEFF6FF)
+private val ColorLifeBg = Color(0xFFECFDF5)
+private val ColorStudyBg = Color(0xFFF5F3FF)
 
-private val ColorWorkBorder = Color(0xFFBFDBFE) // blue-200
-private val ColorLifeBorder = Color(0xFFA7F3D0) // emerald-200
-private val ColorStudyBorder = Color(0xFFDDD6FE) // violet-200
+private val ColorWorkBorder = Color(0xFFBFDBFE)
+private val ColorLifeBorder = Color(0xFFA7F3D0)
+private val ColorStudyBorder = Color(0xFFDDD6FE)
 
 @Composable
 fun GanttView(
@@ -161,7 +164,7 @@ fun GanttView(
                             
                             val dateStr = SimpleDateFormat("M/d", Locale.getDefault()).format(dayCal.time)
                             val dayLabel = when {
-                                isToday -> "今天"
+                                isToday -> stringResource(R.string.today)
                                 viewMode == GanttViewMode.TODAY -> SimpleDateFormat("EEEE", Locale.getDefault()).format(dayCal.time)
                                 else -> SimpleDateFormat("EEE", Locale.getDefault()).format(dayCal.time)
                             }
@@ -170,8 +173,8 @@ fun GanttView(
                                 modifier = Modifier
                                     .width(dayWidth)
                                     .fillMaxHeight()
-                                    .background(if (isToday) Color(0xFFEFF6FF).copy(alpha = 0.4f) else Color.Transparent)
-                                    .border(width = 0.5.dp, color = Color(0xFFF0F0F0)),
+                                    .background(if (isToday) androidx.compose.ui.res.colorResource(id = R.color.gantt_today_background).copy(alpha = 0.4f) else Color.Transparent)
+                                    .border(width = 0.5.dp, color = androidx.compose.ui.res.colorResource(id = R.color.gantt_grid_line)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -179,13 +182,13 @@ fun GanttView(
                                         text = dateStr,
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isToday) Color(0xFF0B57D0) else Color(0xFF4B5563)
+                                        color = if (isToday) ColorWork else androidx.compose.ui.res.colorResource(id = R.color.gray_600)
                                     )
                                     Text(
                                         text = dayLabel,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontSize = 10.sp,
-                                        color = if (isToday) Color(0xFF0B57D0) else Color(0xFF9CA3AF)
+                                        color = if (isToday) ColorWork else androidx.compose.ui.res.colorResource(id = R.color.gray_400)
                                     )
                                 }
                             }
@@ -226,8 +229,8 @@ fun GanttView(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(16.dp),
-                containerColor = Color.White.copy(alpha = 0.9f),
-                contentColor = Color(0xFF0B57D0),
+                containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.9f),
+                contentColor = ColorWork,
                 elevation = FloatingActionButtonDefaults.elevation(
                     defaultElevation = 4.dp,
                     pressedElevation = 8.dp
@@ -235,7 +238,7 @@ fun GanttView(
             ) {
                 Icon(
                     imageVector = Icons.Default.Fullscreen,
-                    contentDescription = "全屏显示",
+                    contentDescription = stringResource(R.string.fullscreen),
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -263,7 +266,7 @@ fun GanttHeader(
             Surface(
                 onClick = { expanded = true },
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFEFF6FF),
+                color = androidx.compose.ui.res.colorResource(R.color.gantt_work_background),
                 modifier = Modifier.height(36.dp)
             ) {
                 Row(
@@ -275,23 +278,23 @@ fun GanttHeader(
                         imageVector = Icons.Default.DateRange,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = Color(0xFF0B57D0)
+                        tint = ColorWork
                     )
                     Text(
                         text = when (viewMode) {
-                            GanttViewMode.TODAY -> "今日视图"
-                            GanttViewMode.THREE_DAY -> "3日视图"
-                            GanttViewMode.SEVEN_DAY -> "7日视图"
+                            GanttViewMode.TODAY -> stringResource(R.string.today_view)
+                            GanttViewMode.THREE_DAY -> stringResource(R.string.three_day_view)
+                            GanttViewMode.SEVEN_DAY -> stringResource(R.string.seven_day_view)
                         },
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0B57D0)
+                        color = ColorWork
                     )
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
                         contentDescription = null,
                         modifier = Modifier.size(20.dp),
-                        tint = Color(0xFF0B57D0)
+                        tint = ColorWork
                     )
                 }
             }
@@ -302,7 +305,7 @@ fun GanttHeader(
                 modifier = Modifier.background(Color.White, RoundedCornerShape(12.dp))
             ) {
                 DropdownMenuItem(
-                    text = { Text("今日视图", style = MaterialTheme.typography.bodyMedium) },
+                    text = { Text(stringResource(R.string.today_view), style = MaterialTheme.typography.bodyMedium) },
                     onClick = {
                         onViewModeChange(GanttViewMode.TODAY)
                         expanded = false
@@ -312,7 +315,7 @@ fun GanttHeader(
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("3日视图", style = MaterialTheme.typography.bodyMedium) },
+                    text = { Text(stringResource(R.string.three_day_view), style = MaterialTheme.typography.bodyMedium) },
                     onClick = {
                         onViewModeChange(GanttViewMode.THREE_DAY)
                         expanded = false
@@ -322,7 +325,7 @@ fun GanttHeader(
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("7日视图", style = MaterialTheme.typography.bodyMedium) },
+                    text = { Text(stringResource(R.string.seven_day_view), style = MaterialTheme.typography.bodyMedium) },
                     onClick = {
                         onViewModeChange(GanttViewMode.SEVEN_DAY)
                         expanded = false
@@ -336,9 +339,9 @@ fun GanttHeader(
 
         // 右侧：图例
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            LegendItem(color = ColorWork, label = "Work")
-            LegendItem(color = ColorLife, label = "Life")
-            LegendItem(color = ColorStudy, label = "Study")
+            LegendItem(color = ColorWork, label = stringResource(R.string.task_type_work))
+            LegendItem(color = ColorLife, label = stringResource(R.string.task_type_life))
+            LegendItem(color = ColorStudy, label = stringResource(R.string.task_type_study))
         }
     }
 }
@@ -357,7 +360,7 @@ fun LegendItem(color: Color, label: String) {
             style = MaterialTheme.typography.labelSmall,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF4B5563)
+            color = androidx.compose.ui.res.colorResource(R.color.gray_600)
         )
     }
 }
@@ -372,6 +375,11 @@ fun GanttGrid(
     viewMode: GanttViewMode
 ) {
     val density = LocalDensity.current
+    
+    // 在 Canvas 外部获取颜色值
+    val gridLineColor = colorResource(id = R.color.gantt_grid_line)
+    val hourLineColor = colorResource(id = R.color.gantt_hour_line)
+    val currentTimeColor = colorResource(id = R.color.gantt_current_time)
     
     Canvas(modifier = Modifier
         .fillMaxWidth()
@@ -392,7 +400,7 @@ fun GanttGrid(
             
             // Vertical Day Separators
             drawLine(
-                color = Color(0xFFE5E7EB),
+                color = gridLineColor,
                 start = Offset(xOffset, 0f),
                 end = Offset(xOffset, size.height),
                 strokeWidth = 2.dp.toPx()
@@ -407,7 +415,7 @@ fun GanttGrid(
                 // 绘制时间刻度线
                 if (h != 0 || i == 0) {
                     drawLine(
-                        color = Color(0xFFF3F4F6),
+                        color = hourLineColor,
                         start = Offset(hOffset, 0f),
                         end = Offset(hOffset, size.height),
                         strokeWidth = 1.dp.toPx(),
@@ -426,7 +434,7 @@ fun GanttGrid(
             val nowX = (diffMillis.toFloat() / totalMs) * totalPx
             
             drawLine(
-                color = Color(0xFFEF4444), // Red-500
+                color = currentTimeColor,
                 start = Offset(nowX, 0f),
                 end = Offset(nowX, size.height),
                 strokeWidth = 2.5.dp.toPx()
@@ -434,7 +442,7 @@ fun GanttGrid(
             
             // 当前时间指示器圆点
             drawCircle(
-                color = Color(0xFFEF4444),
+                color = currentTimeColor,
                 radius = 4.dp.toPx(),
                 center = Offset(nowX, 8.dp.toPx())
             )
@@ -464,7 +472,7 @@ fun GanttGrid(
                                 text = String.format("%02d", h),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 9.sp,
-                                color = Color(0xFF9CA3AF),
+                                color = androidx.compose.ui.res.colorResource(id = R.color.gray_400),
                                 fontWeight = FontWeight.Medium
                             )
                         }
@@ -568,13 +576,13 @@ fun GanttTaskCard(
 
     // Determine Colors
     val (bg, border, text, fill) = if (task.isDone) {
-        Quad(ColorDone, Color(0xFFBDBDBD), ColorTextDone, Color(0xFFBDBDBD))
+        Quad(ColorDone, androidx.compose.ui.res.colorResource(id = R.color.gray_400), ColorTextDone, androidx.compose.ui.res.colorResource(id = R.color.gray_400))
     } else {
         when (task.type) {
             TaskType.WORK -> Quad(ColorWorkBg, ColorWorkBorder, ColorWork, ColorWork)
             TaskType.LIFE -> Quad(ColorLifeBg, ColorLifeBorder, ColorLife, ColorLife)
             TaskType.STUDY -> Quad(ColorStudyBg, ColorStudyBorder, ColorStudy, ColorStudy)
-            TaskType.URGENT -> Quad(Color(0xFFFEF2F2), Color(0xFFFECACA), ColorUrgent, ColorUrgent)
+            TaskType.URGENT -> Quad(androidx.compose.ui.res.colorResource(id = R.color.gantt_urgent_background), androidx.compose.ui.res.colorResource(id = R.color.gantt_urgent_border), ColorUrgent, ColorUrgent)
             else -> Quad(ColorWorkBg, ColorWorkBorder, ColorWork, ColorWork)
         }
     }

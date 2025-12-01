@@ -46,6 +46,14 @@
     <string name="date_time_format">MM/dd HH:mm</string>
     <string name="full_date_format">yyyy年MM月dd日 E</string>
     <string name="hours_left">HRS</string>
+    <string name="today">今天</string>
+    <string name="tomorrow">明天</string>
+    <string name="future">未来</string>
+    <string name="now_time">现在: %1$s</string>
+    <string name="time_range_format_same_day">%1$s - %2$s</string>
+    <string name="time_range_format_diff_day">%1$s - %2$s</string>
+    <string name="overdue">已逾期</string>
+    <string name="within_24h">24h内</string>
     
     <!-- 表单字段 -->
     <string name="task_title">任务标题</string>
@@ -70,6 +78,12 @@
     <string name="countdown_label">COUNTING DOWN</string>
     <string name="ai_recognition_result">AI 识别结果</string>
     <string name="parsed_key_information">已解析关键信息</string>
+    <string name="gantt_chart_title">甘特图</string>
+    <string name="fullscreen">全屏显示</string>
+    <string name="back">返回</string>
+    <string name="today_view">今日视图</string>
+    <string name="three_day_view">3日视图</string>
+    <string name="seven_day_view">7日视图</string>
     
     <!-- 按钮文字 -->
     <string name="create_task">创建任务</string>
@@ -84,10 +98,28 @@
     <!-- 任务详情 -->
     <string name="subtasks_steps">子任务 / 步骤</string>
     <string name="deadline_label">截止: %1$s</string>
+    <string name="next_action_prefix">Next:</string>
     
     <!-- 其他 -->
     <string name="menu">菜单</string>
     <string name="profile">个人资料</string>
     <string name="tasks_count">%1$d 个任务</string>
     <string name="pull_to_refresh">下拉刷新</string>
+    <string name="add_task">添加任务</string>
+    
+    <!-- 时间单位 -->
+    <string name="hours_short">小时</string>
+    <string name="days_short">天</string>
+    <string name="pin">置顶</string>
+    
+    <!-- 截止视图 -->
+    <string name="deadline_overview">截止任务概览</string>
+    <string name="deadline_total_tasks">共 %d 个待完成任务</string>
+    <string name="deadline_urgent">即将截止</string>
+    <string name="deadline_soon">将要截止</string>
+    <string name="deadline_future">未来任务</string>
+    <string name="deadline_urgent_short">紧急</string>
+    <string name="deadline_soon_short">临近</string>
+    <string name="deadline_future_short">未来</string>
+    <string name="deadline_urgent_label">紧急</string>
 </resources>

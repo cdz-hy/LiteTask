@@ -29,7 +29,7 @@
 
     <!-- 任务类型颜色 -->
     <color name="work_task">#FF0B57D0</color>
-    <color name="life_task">#FF001D35</color>
+    <color name="life_task">#FF146C2E</color>
     <color name="dev_task">#FF31111D</color>
     <color name="health_task">#FF410E0B</color>
     <color name="study_task">#FF65558F</color>
@@ -65,9 +65,37 @@
     
     <!-- 任务卡片相关颜色 -->
     <color name="task_work_surface">#FFEFF6FF</color>       <!-- Blue-50 -->
-    <color name="task_life_surface">#FFF0FDF4</color>       <!-- Green-50 -->
+    <color name="task_life_surface">#FFECFDF5</color>       <!-- Emerald-50 -->
     <color name="task_study_surface">#FFF5F3FF</color>      <!-- Violet-50 -->
     <color name="task_urgent_surface">#FFFEF2F2</color>     <!-- Red-50 -->
     <color name="task_health_surface">#FFF0FDF4</color>     <!-- Emerald-50 -->
     <color name="task_dev_surface">#FFFFF7ED</color>        <!-- Orange-50 -->
+    
+    <!-- 甘特图颜色 -->
+    <color name="gantt_work">#FF0B57D0</color>
+    <color name="gantt_life">#FF146C2E</color>
+    <color name="gantt_study">#FF65558F</color>
+    <color name="gantt_urgent">#FFB3261E</color>
+    <color name="gantt_done_background">#FFE0E0E0</color>
+    <color name="gantt_done_text">#FF9E9E9E</color>
+    <color name="gantt_work_background">#FFEFF6FF</color>
+    <color name="gantt_life_background">#FFECFDF5</color>
+    <color name="gantt_study_background">#FFF5F3FF</color>
+    <color name="gantt_urgent_background">#FFFEF2F2</color>
+    <color name="gantt_work_border">#FFBFDBFE</color>
+    <color name="gantt_life_border">#FFA7F3D0</color>
+    <color name="gantt_study_border">#FFDDD6FE</color>
+    <color name="gantt_urgent_border">#FFFECACA</color>
+    <color name="gantt_grid_line">#FFE5E7EB</color>
+    <color name="gantt_hour_line">#FFF3F4F6</color>
+    <color name="gantt_current_time">#FFEF4444</color>
+    <color name="gantt_today_background">#FFEFF6FF</color>
+    
+    <!-- 截止视图颜色 -->
+    <color name="deadline_urgent">#FFEF4444</color>         <!-- 紧急红色 (24h内) -->
+    <color name="deadline_soon">#FFFF9800</color>           <!-- 临近橙色 (24-48h) -->
+    <color name="deadline_future">#FF10B981</color>         <!-- 未来绿色 (48h以上) -->
+    <color name="deadline_urgent_surface">#FFFEF2F2</color> <!-- 紧急任务背景 -->
+    <color name="deadline_soon_surface">#FFFFF3E0</color>   <!-- 临近任务背景 (橙色浅底) -->
+    <color name="deadline_future_surface">#FFF0FDF4</color> <!-- 未来任务背景 -->
 </resources>

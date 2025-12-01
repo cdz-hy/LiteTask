@@ -33,6 +33,7 @@ import com.litetask.app.ui.theme.Primary
 import java.util.Calendar
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -245,14 +246,14 @@ fun AddTaskDialog(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         DateTimePickerCard(
-                            label = "开始日期",
+                            label = stringResource(R.string.start_date),
                             icon = Icons.Default.CalendarToday,
                             value = formatDateForDialog(startDate),
                             onClick = { showStartDatePicker = true },
                             modifier = Modifier.weight(1.6f)
                         )
                         DateTimePickerCard(
-                            label = "开始时间",
+                            label = stringResource(R.string.start_time_label),
                             icon = Icons.Default.AccessTime,
                             value = String.format("%02d:%02d", startHour, startMinute),
                             onClick = { showStartTimePicker = true },
@@ -279,7 +280,7 @@ fun AddTaskDialog(
                                                     deadlineMillis < System.currentTimeMillis() + 24 * 60 * 60 * 1000
                         
                         DateTimePickerCard(
-                            label = "截止日期",
+                            label = stringResource(R.string.deadline_date),
                             icon = Icons.Default.Event,
                             value = formatDateForDialog(deadlineDate),
                             onClick = { showDeadlineDatePicker = true },
@@ -287,7 +288,7 @@ fun AddTaskDialog(
                             isUrgent = isDeadlineWithin24Hours
                         )
                         DateTimePickerCard(
-                            label = "截止时间",
+                            label = stringResource(R.string.deadline_time),
                             icon = Icons.Default.Flag,
                             value = String.format("%02d:%02d", deadlineHour, deadlineMinute),
                             onClick = { showDeadlineTimePicker = true },
@@ -547,12 +548,12 @@ fun MaterialDatePicker(
             TextButton(onClick = {
                 datePickerState.selectedDateMillis?.let { onDateSelected(it) }
             }) {
-                Text("确定", color = Primary, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.confirm), color = Primary, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         },
         colors = DatePickerDefaults.colors(
@@ -590,12 +591,12 @@ fun MaterialTimePicker(
             TextButton(onClick = {
                 onTimeSelected(timePickerState.hour, timePickerState.minute)
             }) {
-                Text("确定", color = Primary, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.confirm), color = Primary, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         },
         text = {
@@ -669,19 +670,21 @@ fun DateTimePickerCard(
 }
 
 
+@Composable
 private fun formatDateForDialog(timestamp: Long): String {
-    val sdf = SimpleDateFormat("yyyy年MM月dd日 E", Locale.CHINESE)
-    return sdf.format(timestamp)
+    val sdf = SimpleDateFormat(stringResource(R.string.full_date_format), Locale.getDefault())
+    return sdf.format(Date(timestamp))
 }
 
+@Composable
 private fun getTaskTypeName(type: TaskType): String {
     return when (type) {
-        TaskType.WORK -> "工作"
-        TaskType.LIFE -> "生活"
-        TaskType.URGENT -> "紧急"
-        TaskType.STUDY -> "学习"
-        TaskType.HEALTH -> "健康"
-        TaskType.DEV -> "开发"
+        TaskType.WORK -> stringResource(R.string.task_type_work)
+        TaskType.LIFE -> stringResource(R.string.task_type_life)
+        TaskType.URGENT -> stringResource(R.string.task_type_urgent)
+        TaskType.STUDY -> stringResource(R.string.task_type_study)
+        TaskType.HEALTH -> stringResource(R.string.task_type_health)
+        TaskType.DEV -> stringResource(R.string.task_type_dev)
     }
 }
 
@@ -707,14 +710,14 @@ fun DateTimePickerCardPreview() {
     MaterialTheme {
         Column(modifier = Modifier.padding(16.dp)) {
             DateTimePickerCard(
-                label = "开始日期",
+                label = stringResource(R.string.start_date),
                 icon = Icons.Default.CalendarToday,
                 value = "2025年11月28日 周四",
                 onClick = {}
             )
             Spacer(modifier = Modifier.height(8.dp))
             DateTimePickerCard(
-                label = "截止时间",
+                label = stringResource(R.string.deadline_time),
                 icon = Icons.Default.Flag,
                 value = "23:59",
                 onClick = {},

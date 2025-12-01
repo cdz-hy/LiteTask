@@ -55,24 +55,21 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     // ViewModel 数据流
-    val todayTasks by viewModel.tasks.collectAsState()  // 当天的任务（用于日期筛选视图）
-    val timelineItems by viewModel.timelineItems.collectAsState()  // Timeline 数据（未完成 + 已加载的已完成）
+    val todayTasks by viewModel.tasks.collectAsState()
+    val timelineItems by viewModel.timelineItems.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
-    var currentView by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initialView) } // timeline, gantt, deadline
+    var currentView by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initialView) }
     
-    // 当视图改变时通知父组件
     LaunchedEffect(currentView) {
         onViewChanged(currentView)
     }
     
-    // 从 timelineItems 中提取所有任务（用于甘特视图和截止视图）
     val allLoadedTasks = remember(timelineItems) {
         timelineItems.filterIsInstance<com.litetask.app.ui.home.TimelineItem.TaskItem>()
             .map { it.composite }
     }
     
-    // 甘特视图专用：筛选3天内的任务
     val ganttTasks = remember(allLoadedTasks) {
         val now = System.currentTimeMillis()
         val calendar = java.util.Calendar.getInstance()
@@ -84,26 +81,21 @@ fun HomeScreen(
         val startOfToday = calendar.timeInMillis
         val endOfThreeDays = startOfToday + (3 * 24 * 60 * 60 * 1000L)
         
-        // 筛选：任务的某部分在这3天内
         allLoadedTasks.filter { composite ->
             val taskStart = composite.task.startTime
             val taskEnd = composite.task.deadline
-            // 任务重叠条件：开始时间 < 3天结束 AND 结束时间 > 今天开始
             taskStart < endOfThreeDays && taskEnd > startOfToday
         }
     }
     
-    // 监听视图切换，进入甘特视图时静默刷新（加载最近20条已完成任务，不显示刷新动画）
     LaunchedEffect(currentView) {
         if (currentView == "gantt") {
             viewModel.silentRefresh()
         }
     }
     
-    // 下拉刷新状态
     val pullToRefreshState = rememberPullToRefreshState()
     
-    // 监听刷新状态
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
             pullToRefreshState.startRefresh()
@@ -112,7 +104,6 @@ fun HomeScreen(
         }
     }
     
-    // 监听下拉动作
     LaunchedEffect(pullToRefreshState.isRefreshing) {
         if (pullToRefreshState.isRefreshing) {
             viewModel.onRefresh()
@@ -125,7 +116,6 @@ fun HomeScreen(
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var selectedTaskId by remember { mutableStateOf<Long?>(null) }
     
-    // 实时订阅选中任务的详情（包括子任务）
     val selectedTaskComposite by produceState<com.litetask.app.data.model.TaskDetailComposite?>(
         initialValue = null,
         key1 = selectedTaskId
@@ -139,7 +129,6 @@ fun HomeScreen(
         }
     }
 
-    // 录音相关状态
     val context = LocalContext.current
     val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
@@ -150,9 +139,9 @@ fun HomeScreen(
     }
 
     Scaffold(
-        containerColor = Color(0xFFF8F9FA),
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            Column(modifier = Modifier.background(Color(0xFFF8F9FA))) {
+            Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
                 TopAppBar(
                     title = {
                         Column {
@@ -169,15 +158,15 @@ fun HomeScreen(
                                 Text(
                                     text = SimpleDateFormat(stringResource(R.string.date_format), Locale.getDefault()).format(Date()),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFF666666)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Box(modifier = Modifier.size(4.dp).background(Color(0xFFCCCCCC), CircleShape))
+                                Box(modifier = Modifier.size(4.dp).background(MaterialTheme.colorScheme.outlineVariant, CircleShape))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     stringResource(R.string.tasks_count, allLoadedTasks.size),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFF666666)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -193,26 +182,25 @@ fun HomeScreen(
                                 .padding(end = 16.dp)
                                 .size(40.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFE3F2FD))
+                                .background(MaterialTheme.colorScheme.primaryContainer)
                                 .clickable { /* Profile */ },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 "L",
-                                color = Color(0xFF1976D2),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF8F9FA))
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
                 )
                 
-                // View Switcher
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .background(Color(0xFFEEF2F6), CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainer, CircleShape)
                         .padding(4.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
@@ -246,7 +234,6 @@ fun HomeScreen(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Manual Add Button (Small)
                 FloatingActionButton(
                     onClick = { showAddTaskDialog = true },
                     containerColor = Primary,
@@ -254,7 +241,7 @@ fun HomeScreen(
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.size(56.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Task", modifier = Modifier.size(24.dp))
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_task), modifier = Modifier.size(24.dp))
                 }
             }
         }
@@ -294,28 +281,36 @@ fun HomeScreen(
                     onNavigateToFullscreen = { viewMode -> onNavigateToGanttFullscreen(viewMode) }
                 )
                 "deadline" -> DeadlineView(
-                    tasks = allLoadedTasks.map { it.task },
-                    onTaskClick = { selectedTaskId = it.id }
+                    tasks = allLoadedTasks,
+                    onTaskClick = { task -> selectedTaskId = task.id },
+                    onDeleteClick = { task -> viewModel.deleteTask(task) },
+                    onEditClick = { task -> 
+                        taskToEdit = task
+                        showEditDialog = true
+                    },
+                    onPinClick = { task -> 
+                        if (task.isDone) {
+                            Toast.makeText(context, "已完成的任务不能置顶", Toast.LENGTH_SHORT).show()
+                        } else if (task.deadline < System.currentTimeMillis()) {
+                            Toast.makeText(context, "已过期的任务不能置顶", Toast.LENGTH_SHORT).show()
+                        } else {
+                            viewModel.updateTask(task.copy(isPinned = !task.isPinned))
+                        }
+                    }
                 )
             }
             
-            // --- 美化后的下拉刷新指示器 ---
             PullToRefreshContainer(
                 state = pullToRefreshState,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    // 关键: zIndex 确保指示器浮在列表内容之上，不会被遮挡
                     .zIndex(1f),
-                // 美化: 使用 LiteTask 风格的 PrimaryContainer 浅蓝色背景
-                containerColor = Color(0xFFD3E3FD), 
-                // 美化: 使用深蓝色图标，增加对比度
-                contentColor = Color(0xFF041E49),
-                // 美化: 显式指定圆形，并添加轻微阴影效果(Shadow已由组件默认处理，但颜色决定了质感)
+                containerColor = MaterialTheme.colorScheme.primaryContainer, 
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 shape = CircleShape
             )
         }
 
-        // Dialogs
         if (showAddTaskDialog) {
             AddTaskDialog(
                 onDismiss = { showAddTaskDialog = false },
@@ -341,7 +336,6 @@ fun HomeScreen(
             )
         }
 
-        // 详情 Sheet 连接
         selectedTaskComposite?.let { composite ->
             TaskDetailSheet(
                 task = composite.task,
@@ -364,14 +358,12 @@ fun HomeScreen(
             )
         }
 
-        // Voice Recording Dialog
         if (uiState.isRecording) {
             VoiceRecorderDialog(
                 onDismiss = { viewModel.stopRecording() }
             )
         }
 
-        // AI Result Sheet
         if (uiState.showAiResult) {
             TaskConfirmationSheet(
                 tasks = uiState.aiParsedTasks,
@@ -390,8 +382,8 @@ fun ViewOption(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val backgroundColor = if (isSelected) Color.White else Color.Transparent
-    val contentColor = if (isSelected) Primary else Color(0xFF444746)
+    val backgroundColor = if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent
+    val contentColor = if (isSelected) Primary else MaterialTheme.colorScheme.onSurfaceVariant
     val shadowElevation = if (isSelected) 2.dp else 0.dp
 
     Surface(

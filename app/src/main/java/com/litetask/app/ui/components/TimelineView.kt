@@ -394,7 +394,7 @@ fun HtmlStyleTaskCard(
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
-                                    text = if (timeLeft < 0) "已逾期" else "24h内",
+                                    text = if (timeLeft < 0) stringResource(R.string.overdue) else stringResource(R.string.within_24h),
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
@@ -447,7 +447,7 @@ fun HtmlStyleTaskCard(
                             Box(modifier = Modifier.size(6.dp).background(Color.Gray.copy(alpha=0.5f), CircleShape))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Next: ${nextAction.content}",
+                                text = "${stringResource(R.string.next_action_prefix)} ${nextAction.content}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.Gray,
                                 maxLines = 1,
@@ -561,14 +561,15 @@ fun ActionIcon(icon: ImageVector, color: Color, onClick: () -> Unit) {
     }
 }
 
+@Composable
 private fun getTaskTypeName(type: TaskType): String {
     return when (type) {
-        TaskType.WORK -> "工作"
-        TaskType.LIFE -> "生活"
-        TaskType.URGENT -> "紧急"
-        TaskType.STUDY -> "学习"
-        TaskType.HEALTH -> "健康"
-        TaskType.DEV -> "开发"
+        TaskType.WORK -> stringResource(R.string.task_type_work)
+        TaskType.LIFE -> stringResource(R.string.task_type_life)
+        TaskType.URGENT -> stringResource(R.string.task_type_urgent)
+        TaskType.STUDY -> stringResource(R.string.task_type_study)
+        TaskType.HEALTH -> stringResource(R.string.task_type_health)
+        TaskType.DEV -> stringResource(R.string.task_type_dev)
     }
 }
 
@@ -583,7 +584,7 @@ private fun formatSmartTime(start: Long, end: Long): String {
         } else {
             "${sdfDate.format(Date(end))} ${sdfTime.format(Date(end))}"
         }
-    } else "无截止"
+    } else ""
 
     return "$startStr - $endStr"
 }

@@ -4,8 +4,6 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import androidx.activity.compose.BackHandler
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -23,10 +21,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
+import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
 import java.text.SimpleDateFormat
@@ -43,29 +44,42 @@ fun GanttFullscreenView(
     var viewMode by remember { mutableStateOf(initialViewMode) }
     val context = LocalContext.current
     val activity = context as? Activity
+    val view = LocalView.current
     
     // 强制横屏显示并设置沉浸式全屏
     DisposableEffect(Unit) {
         // 设置横屏
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         
-        // 使用 WindowCompat 设置沉浸式全屏
+        // 使用WindowInsetsController实现真正的全屏沉浸模式
         activity?.window?.let { window ->
-            // 让内容延伸到系统栏下方
+            // 关键：设置窗口和 DecorView 背景为白色，防止黑边
+            window.setBackgroundDrawableResource(android.R.color.white)
+            window.decorView.setBackgroundColor(android.graphics.Color.WHITE)
+            
+            // 设置系统栏颜色为白色（而非透明，避免黑色背景透出）
+            window.statusBarColor = android.graphics.Color.WHITE
+            window.navigationBarColor = android.graphics.Color.WHITE
+            
             WindowCompat.setDecorFitsSystemWindows(window, false)
             
-            // 获取 WindowInsetsController
-            val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
-            windowInsetsController.apply {
-                // 隐藏状态栏和导航栏
-                hide(WindowInsetsCompat.Type.systemBars())
-                // 设置行为：滑动时临时显示
-                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            // 使用最新的API隐藏系统栏
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                window.insetsController?.let { controller ->
+                    controller.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+                    controller.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = (
+                    android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                )
             }
-            
-            // 设置系统栏颜色为透明
-            window.statusBarColor = android.graphics.Color.TRANSPARENT
-            window.navigationBarColor = android.graphics.Color.TRANSPARENT
         }
         
         onDispose {
@@ -77,9 +91,12 @@ fun GanttFullscreenView(
                 // 恢复正常布局
                 WindowCompat.setDecorFitsSystemWindows(window, true)
                 
-                // 显示系统栏
-                val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
-                windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    window.insetsController?.show(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+                } else {
+                    @Suppress("DEPRECATION")
+                    window.decorView.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_VISIBLE
+                }
                 
                 // 恢复原始颜色
                 window.statusBarColor = android.graphics.Color.WHITE
@@ -153,7 +170,7 @@ fun GanttFullscreenView(
                     
                     val dateStr = SimpleDateFormat("M/d", Locale.getDefault()).format(dayCal.time)
                     val dayLabel = when {
-                        isToday -> "今天"
+                        isToday -> stringResource(R.string.today)
                         viewMode == GanttViewMode.TODAY -> SimpleDateFormat("EEEE", Locale.getDefault()).format(dayCal.time)
                         else -> SimpleDateFormat("EEE", Locale.getDefault()).format(dayCal.time)
                     }
@@ -162,8 +179,8 @@ fun GanttFullscreenView(
                         modifier = Modifier
                             .width(dayWidth)
                             .fillMaxHeight()
-                            .background(if (isToday) Color(0xFFEFF6FF).copy(alpha = 0.4f) else Color.Transparent)
-                            .border(width = 0.5.dp, color = Color(0xFFF0F0F0)),
+                            .background(if (isToday) androidx.compose.ui.res.colorResource(id = R.color.gantt_today_background).copy(alpha = 0.4f) else Color.Transparent)
+                            .border(width = 0.5.dp, color = androidx.compose.ui.res.colorResource(id = R.color.gantt_grid_line)),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -171,13 +188,13 @@ fun GanttFullscreenView(
                                 text = dateStr,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isToday) Color(0xFF0B57D0) else Color(0xFF4B5563)
+                                color = if (isToday) androidx.compose.ui.res.colorResource(id = R.color.gantt_work) else androidx.compose.ui.res.colorResource(id = R.color.gray_600)
                             )
                             Text(
                                 text = dayLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
-                                color = if (isToday) Color(0xFF0B57D0) else Color(0xFF9CA3AF)
+                                color = if (isToday) androidx.compose.ui.res.colorResource(id = R.color.gantt_work) else androidx.compose.ui.res.colorResource(id = R.color.gray_400)
                             )
                         }
                     }
@@ -215,8 +232,8 @@ fun GanttFullscreenView(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(12.dp),
-            containerColor = Color.White.copy(alpha = 0.95f),
-            contentColor = Color(0xFF0B57D0),
+            containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.95f),
+            contentColor = androidx.compose.ui.res.colorResource(id = R.color.gantt_work),
             elevation = FloatingActionButtonDefaults.elevation(
                 defaultElevation = 3.dp,
                 pressedElevation = 6.dp
@@ -224,7 +241,7 @@ fun GanttFullscreenView(
         ) {
             Icon(
                 imageVector = Icons.Default.ArrowBack,
-                contentDescription = "返回",
+                contentDescription = stringResource(R.string.back),
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -239,7 +256,7 @@ fun GanttFullscreenView(
             Surface(
                 onClick = { expanded = true },
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF0B57D0).copy(alpha = 0.95f),
+                color = androidx.compose.ui.res.colorResource(id = R.color.gantt_work).copy(alpha = 0.95f),
                 shadowElevation = 3.dp
             ) {
                 Row(
@@ -249,19 +266,19 @@ fun GanttFullscreenView(
                 ) {
                     Text(
                         text = when (viewMode) {
-                            GanttViewMode.TODAY -> "今日"
-                            GanttViewMode.THREE_DAY -> "3日"
-                            GanttViewMode.SEVEN_DAY -> "7日"
+                            GanttViewMode.TODAY -> stringResource(R.string.today)
+                            GanttViewMode.THREE_DAY -> stringResource(R.string.three_day_view)
+                            GanttViewMode.SEVEN_DAY -> stringResource(R.string.seven_day_view)
                         },
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = androidx.compose.ui.graphics.Color.White
                     )
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
-                        tint = Color.White
+                        tint = androidx.compose.ui.graphics.Color.White
                     )
                 }
             }
@@ -272,7 +289,7 @@ fun GanttFullscreenView(
                 modifier = Modifier.background(Color.White, RoundedCornerShape(12.dp))
             ) {
                 DropdownMenuItem(
-                    text = { Text("今日视图", style = MaterialTheme.typography.bodyMedium) },
+                    text = { Text(stringResource(R.string.today_view), style = MaterialTheme.typography.bodyMedium) },
                     onClick = {
                         viewMode = GanttViewMode.TODAY
                         expanded = false
@@ -282,7 +299,7 @@ fun GanttFullscreenView(
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("3日视图", style = MaterialTheme.typography.bodyMedium) },
+                    text = { Text(stringResource(R.string.three_day_view), style = MaterialTheme.typography.bodyMedium) },
                     onClick = {
                         viewMode = GanttViewMode.THREE_DAY
                         expanded = false
@@ -292,7 +309,7 @@ fun GanttFullscreenView(
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("7日视图", style = MaterialTheme.typography.bodyMedium) },
+                    text = { Text(stringResource(R.string.seven_day_view), style = MaterialTheme.typography.bodyMedium) },
                     onClick = {
                         viewMode = GanttViewMode.SEVEN_DAY
                         expanded = false
