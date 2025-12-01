@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -63,6 +64,7 @@ private val ColorStudyBorder = Color(0xFFDDD6FE) // violet-200
 fun GanttView(
     taskComposites: List<TaskDetailComposite>,
     onTaskClick: (Task) -> Unit,
+    onNavigateToFullscreen: (GanttViewMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var viewMode by remember { mutableStateOf(GanttViewMode.THREE_DAY) }
@@ -216,6 +218,26 @@ fun GanttView(
                         )
                     }
                 }
+            }
+            
+            // 全屏按钮（左下角悬浮）
+            FloatingActionButton(
+                onClick = { onNavigateToFullscreen(viewMode) },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(16.dp),
+                containerColor = Color.White.copy(alpha = 0.9f),
+                contentColor = Color(0xFF0B57D0),
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 4.dp,
+                    pressedElevation = 8.dp
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Fullscreen,
+                    contentDescription = "全屏显示",
+                    modifier = Modifier.size(24.dp)
+                )
             }
         }
     }
@@ -713,5 +735,9 @@ fun GanttViewPreview() {
             reminders = emptyList()
         )
     )
-    GanttView(taskComposites = tasks, onTaskClick = {})
+    GanttView(
+        taskComposites = tasks,
+        onTaskClick = {},
+        onNavigateToFullscreen = {}
+    )
 }

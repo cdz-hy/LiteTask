@@ -49,6 +49,9 @@ fun HomeScreen(
     onNavigateToAdd: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToSearch: () -> Unit,
+    onNavigateToGanttFullscreen: (com.litetask.app.ui.components.GanttViewMode) -> Unit,
+    initialView: String = "timeline",
+    onViewChanged: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     // ViewModel 数据流
@@ -56,7 +59,12 @@ fun HomeScreen(
     val timelineItems by viewModel.timelineItems.collectAsState()  // Timeline 数据（未完成 + 已加载的已完成）
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
-    var currentView by remember { mutableStateOf("timeline") } // timeline, gantt, deadline
+    var currentView by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initialView) } // timeline, gantt, deadline
+    
+    // 当视图改变时通知父组件
+    LaunchedEffect(currentView) {
+        onViewChanged(currentView)
+    }
     
     // 从 timelineItems 中提取所有任务（用于甘特视图和截止视图）
     val allLoadedTasks = remember(timelineItems) {
@@ -282,7 +290,8 @@ fun HomeScreen(
                 )
                 "gantt" -> GanttView(
                     taskComposites = ganttTasks,
-                    onTaskClick = { selectedTaskId = it.id }
+                    onTaskClick = { selectedTaskId = it.id },
+                    onNavigateToFullscreen = { viewMode -> onNavigateToGanttFullscreen(viewMode) }
                 )
                 "deadline" -> DeadlineView(
                     tasks = allLoadedTasks.map { it.task },

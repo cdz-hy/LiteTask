@@ -39,9 +39,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppContent() {
     var currentScreen by remember { mutableStateOf("home") }
+    var currentHomeView by remember { mutableStateOf("timeline") } // 记住 HomeScreen 的当前视图，初始为列表
     var selectedTaskId by remember { mutableStateOf<Long?>(null) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
+    var ganttViewMode by remember { mutableStateOf<com.litetask.app.ui.components.GanttViewMode>(com.litetask.app.ui.components.GanttViewMode.THREE_DAY) }
     val context = LocalContext.current
 
     when (currentScreen) {
@@ -52,8 +54,73 @@ fun AppContent() {
                 onNavigateToAdd = { currentScreen = "add_task" },
                 onNavigateToSettings = { currentScreen = "settings" },
                 onNavigateToSearch = { currentScreen = "search" },
+                onNavigateToGanttFullscreen = { viewMode ->
+                    ganttViewMode = viewMode
+                    currentScreen = "gantt_fullscreen"
+                },
+                initialView = currentHomeView,
+                onViewChanged = { view -> currentHomeView = view },
                 viewModel = viewModel
             )
+        }
+        "gantt_fullscreen" -> {
+            val viewModel: HomeViewModel = hiltViewModel()
+            val timelineItems by viewModel.timelineItems.collectAsState()
+            
+            // 从 timelineItems 中提取所有任务
+            val allLoadedTasks = remember(timelineItems) {
+                timelineItems.filterIsInstance<com.litetask.app.ui.home.TimelineItem.TaskItem>()
+                    .map { it.composite }
+            }
+            
+            // 处理返回键
+            BackHandler {
+                currentScreen = "home"
+            }
+            
+            com.litetask.app.ui.components.GanttFullscreenView(
+                taskComposites = allLoadedTasks,
+                onTaskClick = { task ->
+                    selectedTaskId = task.id
+                },
+                initialViewMode = ganttViewMode,
+                onBack = { currentScreen = "home" }
+            )
+            
+            // 任务详情 Sheet
+            selectedTaskId?.let { taskId ->
+                val taskComposite by produceState<com.litetask.app.data.model.TaskDetailComposite?>(
+                    initialValue = null,
+                    key1 = taskId
+                ) {
+                    viewModel.getTaskDetailFlow(taskId).collect { composite ->
+                        value = composite
+                    }
+                }
+                
+                taskComposite?.let { composite ->
+                    TaskDetailSheet(
+                        task = composite.task,
+                        subTasks = composite.subTasks,
+                        onDismiss = { selectedTaskId = null },
+                        onDelete = { 
+                            viewModel.deleteTask(it)
+                            selectedTaskId = null
+                            Toast.makeText(context, "任务已删除", Toast.LENGTH_SHORT).show()
+                        },
+                        onUpdateTask = { viewModel.updateTask(it) },
+                        onUpdateSubTask = { sub, isCompleted -> 
+                            viewModel.updateSubTaskStatus(sub.id, isCompleted)
+                        },
+                        onAddSubTask = { content ->
+                            viewModel.addSubTask(composite.task.id, content)
+                        },
+                        onDeleteSubTask = { subTask ->
+                            viewModel.deleteSubTask(subTask)
+                        }
+                    )
+                }
+            }
         }
         "settings" -> {
             com.litetask.app.ui.settings.SettingsScreen(
