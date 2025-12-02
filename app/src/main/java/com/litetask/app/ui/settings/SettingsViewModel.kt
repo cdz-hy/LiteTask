@@ -17,4 +17,12 @@ class SettingsViewModel @Inject constructor(
     fun saveApiKey(key: String) {
         preferenceManager.saveApiKey(key)
     }
+    
+    fun getAiProvider(): String {
+        return preferenceManager.getAiProvider()
+    }
+    
+    fun saveAiProvider(provider: String) {
+        preferenceManager.saveAiProvider(provider)
+    }
 }

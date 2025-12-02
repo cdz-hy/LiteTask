@@ -123,6 +123,11 @@ fun AppContent() {
             }
         }
         "settings" -> {
+            // 处理返回键
+            BackHandler {
+                currentScreen = "home"
+            }
+            
             com.litetask.app.ui.settings.SettingsScreen(
                 onBack = { currentScreen = "home" }
             )

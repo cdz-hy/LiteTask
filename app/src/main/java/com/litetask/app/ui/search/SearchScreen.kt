@@ -27,7 +27,7 @@ import com.litetask.app.ui.theme.Primary
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
     onBack: () -> Unit,
@@ -284,7 +284,7 @@ fun SearchScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun FilterBottomSheet(
     selectedTypes: Set<TaskType>,
@@ -331,25 +331,23 @@ fun FilterBottomSheet(
                 modifier = Modifier.padding(bottom = 12.dp)
             )
             
-            Row(
+            // 使用 FlowRow 实现自动换行
+            androidx.compose.foundation.layout.FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                val taskTypes = TaskType.values().toList()
-                taskTypes.chunked(3).forEach { row ->
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        row.forEach { type ->
-                            FilterChip(
-                                selected = type in selectedTypes,
-                                onClick = { onTypeToggle(type) },
-                                label = { Text(getTaskTypeName(type)) },
-                                modifier = Modifier.weight(1f)
-                            )
+                searchableTaskTypes.forEach { type ->
+                    FilterChip(
+                        selected = type in selectedTypes,
+                        onClick = { onTypeToggle(type) },
+                        label = { 
+                            Text(
+                                getTaskTypeName(type),
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            ) 
                         }
-                    }
+                    )
                 }
             }
 
@@ -422,10 +420,17 @@ private fun getTaskTypeName(type: TaskType): String {
         TaskType.LIFE -> "生活"
         TaskType.URGENT -> "紧急"
         TaskType.STUDY -> "学习"
-        TaskType.HEALTH -> "健康"
-        TaskType.DEV -> "开发"
+        else -> ""
     }
 }
+
+// 搜索界面支持的任务类型（排除健康和开发）
+private val searchableTaskTypes = listOf(
+    TaskType.WORK,
+    TaskType.LIFE,
+    TaskType.URGENT,
+    TaskType.STUDY
+)
 
 private fun formatDateRange(range: Pair<Long, Long>): String {
     val sdf = SimpleDateFormat("MM/dd", Locale.getDefault())

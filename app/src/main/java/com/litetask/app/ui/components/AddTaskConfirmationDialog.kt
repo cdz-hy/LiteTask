@@ -38,7 +38,6 @@ import com.litetask.app.ui.theme.Indigo600
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -99,9 +99,8 @@ class AIRepositoryImpl @Inject constructor(
                     Task(
                         title = title,
                         startTime = startTime,
-                        deadline = endTime, // 将 endTime 替换为 deadline
+                        deadline = endTime, 
                         type = type
-                        // 移除 location 字段，因为新的 Task 模型中不再包含该字段
                     )
                 )
             }

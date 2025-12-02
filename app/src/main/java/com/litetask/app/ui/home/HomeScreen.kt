@@ -12,8 +12,10 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material3.*
+import kotlinx.coroutines.launch
 import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
@@ -60,6 +62,10 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     var currentView by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initialView) }
+    
+    // 侧边栏状态
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
     
     LaunchedEffect(currentView) {
         onViewChanged(currentView)
@@ -138,7 +144,45 @@ fun HomeScreen(
         }
     }
 
-    Scaffold(
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                modifier = Modifier.width(280.dp)
+            ) {
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // 应用标题
+                Text(
+                    text = stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 16.dp)
+                )
+                
+                HorizontalDivider()
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // 设置选项
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                    label = { Text("设置") },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                        onNavigateToSettings()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+    ) {
+        Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
@@ -147,50 +191,37 @@ fun HomeScreen(
                         Column {
                             Text(
                                 stringResource(R.string.app_name),
-                                style = MaterialTheme.typography.headlineMedium,
+                                style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(top = 4.dp)
+                                modifier = Modifier.padding(top = 2.dp)
                             ) {
                                 Text(
                                     text = SimpleDateFormat(stringResource(R.string.date_format), Locale.getDefault()).format(Date()),
-                                    style = MaterialTheme.typography.bodyMedium,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Box(modifier = Modifier.size(4.dp).background(MaterialTheme.colorScheme.outlineVariant, CircleShape))
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(modifier = Modifier.size(3.dp).background(MaterialTheme.colorScheme.outlineVariant, CircleShape))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     stringResource(R.string.tasks_count, allLoadedTasks.size),
-                                    style = MaterialTheme.typography.bodyMedium,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = { /* TODO: Menu */ }) {
+                        IconButton(onClick = { 
+                            scope.launch {
+                                drawerState.open()
+                            }
+                        }) {
                             Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.menu), tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                    },
-                    actions = {
-                        Box(
-                            modifier = Modifier
-                                .padding(end = 16.dp)
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer)
-                                .clickable { /* Profile */ },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "L",
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                fontWeight = FontWeight.Bold
-                            )
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -231,17 +262,45 @@ fun HomeScreen(
         },
         floatingActionButton = {
             Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // 普通添加按钮（较小）
                 FloatingActionButton(
                     onClick = { showAddTaskDialog = true },
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_task), modifier = Modifier.size(22.dp))
+                }
+                
+                // 语音添加按钮（更大更醒目）
+                LargeFloatingActionButton(
+                    onClick = {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                            val hasPermission = context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == 
+                                android.content.pm.PackageManager.PERMISSION_GRANTED
+                            if (hasPermission) {
+                                viewModel.startRecording()
+                            } else {
+                                permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            }
+                        } else {
+                            viewModel.startRecording()
+                        }
+                    },
                     containerColor = Primary,
                     contentColor = androidx.compose.ui.graphics.Color.White,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.size(56.dp)
+                    shape = CircleShape,
+                    modifier = Modifier.size(72.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_task), modifier = Modifier.size(24.dp))
+                    Icon(
+                        Icons.Default.Mic, 
+                        contentDescription = stringResource(R.string.voice_add_task), 
+                        modifier = Modifier.size(32.dp)
+                    )
                 }
             }
         }
@@ -358,9 +417,15 @@ fun HomeScreen(
             )
         }
 
-        if (uiState.isRecording) {
+        val recordingDuration by viewModel.recordingDuration.collectAsState()
+        
+        if (uiState.isRecording || uiState.recordingState == com.litetask.app.util.RecordingState.PLAYING) {
             VoiceRecorderDialog(
-                onDismiss = { viewModel.stopRecording() }
+                onDismiss = { viewModel.cancelRecording() },
+                onFinish = { viewModel.finishRecording() },
+                recognizedText = uiState.recognizedText,
+                recordingDuration = recordingDuration,
+                isPlaying = uiState.recordingState == com.litetask.app.util.RecordingState.PLAYING
             )
         }
 
@@ -372,6 +437,7 @@ fun HomeScreen(
             )
         }
     }
+    } // ModalNavigationDrawer 闭合
 }
 
 @Composable

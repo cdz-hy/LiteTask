@@ -131,21 +131,98 @@ class HomeViewModel @Inject constructor(
         return taskRepository.getTaskDetail(taskId)
     }
 
+    private var recordingJob: kotlinx.coroutines.Job? = null
+    
     fun startRecording() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isRecording = true)
-            speechHelper.startListening()
-                .collect { text ->
-                    _uiState.value = _uiState.value.copy(isRecording = false)
-                    processVoiceCommand(text)
-                }
+        recordingJob = viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isRecording = true, 
+                recognizedText = "",
+                finalRecognizedText = "",
+                recordingState = com.litetask.app.util.RecordingState.RECORDING
+            )
+            try {
+                // 使用录音+实时识别
+                speechHelper.startRecordingWithRecognition()
+                    .collect { result ->
+                        when (result) {
+                            is com.litetask.app.util.VoiceRecordResult.RecordingStarted -> {
+                                _uiState.value = _uiState.value.copy(
+                                    recordingState = com.litetask.app.util.RecordingState.RECORDING
+                                )
+                            }
+                            is com.litetask.app.util.VoiceRecordResult.RecognitionResult -> {
+                                _uiState.value = _uiState.value.copy(recognizedText = result.text)
+                            }
+                            is com.litetask.app.util.VoiceRecordResult.Error -> {
+                                // 显示错误但不关闭
+                            }
+                            else -> {}
+                        }
+                    }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(isRecording = false)
+            }
         }
     }
+    
+    // 录音时长
+    val recordingDuration: StateFlow<Long> = speechHelper.recordingDuration
 
     fun stopRecording() {
-        // SpeechRecognizer handles stop automatically on end of speech, 
-        // but we can force update state if needed
-        _uiState.value = _uiState.value.copy(isRecording = false)
+        recordingJob?.cancel()
+        recordingJob = null
+        speechHelper.release()
+    }
+    
+    fun finishRecording() {
+        // 停止录音和识别
+        recordingJob?.cancel()
+        recordingJob = null
+        
+        val text = _uiState.value.recognizedText
+        
+        // 如果有识别结果，先回放录音
+        if (text.isNotBlank()) {
+            _uiState.value = _uiState.value.copy(
+                recordingState = com.litetask.app.util.RecordingState.PLAYING
+            )
+            
+            val playSuccess = speechHelper.playRecording {
+                // 回放完成后处理文字
+                _uiState.value = _uiState.value.copy(
+                    isRecording = false,
+                    recordingState = com.litetask.app.util.RecordingState.IDLE
+                )
+                processVoiceCommand(text)
+            }
+            
+            if (!playSuccess) {
+                // 回放失败，直接处理文字
+                _uiState.value = _uiState.value.copy(
+                    isRecording = false,
+                    recordingState = com.litetask.app.util.RecordingState.IDLE
+                )
+                processVoiceCommand(text)
+            }
+        } else {
+            _uiState.value = _uiState.value.copy(
+                isRecording = false,
+                recordingState = com.litetask.app.util.RecordingState.IDLE
+            )
+        }
+    }
+    
+    fun cancelRecording() {
+        recordingJob?.cancel()
+        recordingJob = null
+        speechHelper.release()
+        _uiState.value = _uiState.value.copy(
+            isRecording = false,
+            recognizedText = "",
+            finalRecognizedText = "",
+            recordingState = com.litetask.app.util.RecordingState.IDLE
+        )
     }
 
     private fun processVoiceCommand(text: String) {
@@ -331,5 +408,8 @@ data class HomeUiState(
     val isRecording: Boolean = false,
     val isAnalyzing: Boolean = false,
     val showAiResult: Boolean = false,
-    val aiParsedTasks: List<Task> = emptyList()
+    val aiParsedTasks: List<Task> = emptyList(),
+    val recognizedText: String = "",        // 实时识别的文字
+    val finalRecognizedText: String = "",   // 最终识别结果
+    val recordingState: com.litetask.app.util.RecordingState = com.litetask.app.util.RecordingState.IDLE
 )

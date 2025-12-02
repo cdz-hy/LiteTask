@@ -10,7 +10,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -25,22 +28,32 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.widget.Toast
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onSave: () -> Unit = {}, // Added default empty lambda if not passed
+    onSave: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     var apiKey by remember { mutableStateOf("") }
+    var selectedProvider by remember { mutableStateOf("deepseek-v3.2") }
+    var expanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    
+    val aiProviders = listOf(
+        "deepseek-v3.2" to "DeepSeek V3.2"
+    )
     
     LaunchedEffect(Unit) {
         apiKey = viewModel.getApiKey() ?: ""
+        selectedProvider = viewModel.getAiProvider()
     }
 
     Scaffold(
@@ -69,10 +82,45 @@ fun SettingsScreen(
             
             Spacer(modifier = Modifier.height(16.dp))
             
+            // AI 提供商选择
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = it }
+            ) {
+                OutlinedTextField(
+                    value = aiProviders.find { it.first == selectedProvider }?.second ?: "DeepSeek V3.2",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("AI 提供商") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor()
+                )
+                
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    aiProviders.forEach { (value, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                selectedProvider = value
+                                expanded = false
+                            }
+                        )
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
             OutlinedTextField(
                 value = apiKey,
                 onValueChange = { apiKey = it },
-                label = { Text("OpenAI / DeepSeek API Key") },
+                label = { Text("API Key") },
                 leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
@@ -90,8 +138,30 @@ fun SettingsScreen(
 
             Button(
                 onClick = { 
-                    viewModel.saveApiKey(apiKey)
-                    onBack()
+                    // 验证 API Key 不为空
+                    if (apiKey.isBlank()) {
+                        Toast.makeText(context, "请输入 API Key", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    
+                    try {
+                        // 保存设置
+                        viewModel.saveApiKey(apiKey)
+                        viewModel.saveAiProvider(selectedProvider)
+                        
+                        // 验证保存是否成功
+                        val savedKey = viewModel.getApiKey()
+                        val savedProvider = viewModel.getAiProvider()
+                        
+                        if (savedKey == apiKey && savedProvider == selectedProvider) {
+                            Toast.makeText(context, "设置保存成功", Toast.LENGTH_SHORT).show()
+                            onBack()
+                        } else {
+                            Toast.makeText(context, "设置保存失败，请重试", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {

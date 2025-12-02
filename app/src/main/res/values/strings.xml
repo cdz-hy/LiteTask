@@ -106,6 +106,7 @@
     <string name="tasks_count">%1$d 个任务</string>
     <string name="pull_to_refresh">下拉刷新</string>
     <string name="add_task">添加任务</string>
+    <string name="voice_add_task">语音添加任务</string>
     
     <!-- 时间单位 -->
     <string name="hours_short">小时</string>

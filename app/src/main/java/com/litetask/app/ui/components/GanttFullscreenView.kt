@@ -51,19 +51,27 @@ fun GanttFullscreenView(
         // 设置横屏
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         
-        // 使用WindowInsetsController实现真正的全屏沉浸模式
         activity?.window?.let { window ->
-            // 关键：设置窗口和 DecorView 背景为白色，防止黑边
+            // 关键：使用 FLAG_LAYOUT_NO_LIMITS 让内容延伸到系统栏区域
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+            
+            // 设置 layoutInDisplayCutoutMode 为 SHORT_EDGES，让内容延伸到刘海屏区域
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                window.attributes.layoutInDisplayCutoutMode = 
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+            
+            // 设置窗口和 DecorView 背景为白色
             window.setBackgroundDrawableResource(android.R.color.white)
             window.decorView.setBackgroundColor(android.graphics.Color.WHITE)
             
-            // 设置系统栏颜色为白色（而非透明，避免黑色背景透出）
+            // 设置系统栏颜色为白色
             window.statusBarColor = android.graphics.Color.WHITE
             window.navigationBarColor = android.graphics.Color.WHITE
             
             WindowCompat.setDecorFitsSystemWindows(window, false)
             
-            // 使用最新的API隐藏系统栏
+            // 隐藏系统栏
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                 window.insetsController?.let { controller ->
                     controller.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
@@ -86,8 +94,16 @@ fun GanttFullscreenView(
             // 恢复竖屏
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             
-            // 恢复系统 UI
             activity?.window?.let { window ->
+                // 移除 FLAG_LAYOUT_NO_LIMITS
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+                
+                // 恢复 layoutInDisplayCutoutMode 为默认值
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    window.attributes.layoutInDisplayCutoutMode = 
+                        android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                }
+                
                 // 恢复正常布局
                 WindowCompat.setDecorFitsSystemWindows(window, true)
                 

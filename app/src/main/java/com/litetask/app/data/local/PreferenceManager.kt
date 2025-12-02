@@ -14,6 +14,8 @@ class PreferenceManager @Inject constructor(
 
     companion object {
         private const val KEY_API_KEY = "api_key"
+        private const val KEY_AI_PROVIDER = "ai_provider"
+        const val DEFAULT_PROVIDER = "deepseek-v3.2"
     }
 
     fun getApiKey(): String? {
@@ -22,5 +24,13 @@ class PreferenceManager @Inject constructor(
 
     fun saveApiKey(apiKey: String) {
         prefs.edit().putString(KEY_API_KEY, apiKey).apply()
+    }
+    
+    fun getAiProvider(): String {
+        return prefs.getString(KEY_AI_PROVIDER, DEFAULT_PROVIDER) ?: DEFAULT_PROVIDER
+    }
+    
+    fun saveAiProvider(provider: String) {
+        prefs.edit().putString(KEY_AI_PROVIDER, provider).apply()
     }
 }
