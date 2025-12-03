@@ -17,7 +17,8 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     private val taskRepository: TaskRepositoryImpl,
     private val aiRepository: AIRepository,
-    private val speechHelper: com.litetask.app.util.SpeechRecognizerHelper
+    private val speechHelper: com.litetask.app.util.SpeechRecognizerHelper,
+    private val preferenceManager: com.litetask.app.data.local.PreferenceManager
 ) : ViewModel() {
 
     // 懒更新策略：在 ViewModel 初始化时自动标记过期任务
@@ -133,6 +134,18 @@ class HomeViewModel @Inject constructor(
 
     private var recordingJob: kotlinx.coroutines.Job? = null
     
+    /**
+     * 检查 API Key 是否已配置
+     */
+    fun checkApiKey(): ApiKeyCheckResult {
+        val apiKey = preferenceManager.getApiKey()
+        return if (apiKey.isNullOrBlank()) {
+            ApiKeyCheckResult.NotConfigured
+        } else {
+            ApiKeyCheckResult.Valid
+        }
+    }
+    
     fun startRecording() {
         recordingJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
@@ -176,6 +189,34 @@ class HomeViewModel @Inject constructor(
     }
     
     fun finishRecording() {
+        // 停止录音，进入编辑确认状态
+        recordingJob?.cancel()
+        recordingJob = null
+        
+        // 停止录音但保持界面显示，让用户可以编辑或看到空状态提示
+        _uiState.value = _uiState.value.copy(
+            isRecording = false,
+            recordingState = com.litetask.app.util.RecordingState.IDLE,
+            showVoiceResult = true  // 显示结果界面（无论有无识别文字）
+        )
+    }
+    
+    fun finishRecordingWithText(editedText: String) {
+        // 用户确认后，使用编辑后的文本进行 AI 分析
+        if (editedText.isNotBlank()) {
+            _uiState.value = _uiState.value.copy(
+                isRecording = false,
+                showVoiceResult = false,
+                recordingState = com.litetask.app.util.RecordingState.PLAYING // 复用作为"分析中"状态
+            )
+            processVoiceCommand(editedText)
+        } else {
+            cancelRecording()
+        }
+    }
+    
+    @Deprecated("Use finishRecordingWithText instead")
+    fun finishRecordingOld() {
         // 停止录音和识别
         recordingJob?.cancel()
         recordingJob = null
@@ -219,6 +260,7 @@ class HomeViewModel @Inject constructor(
         speechHelper.release()
         _uiState.value = _uiState.value.copy(
             isRecording = false,
+            showVoiceResult = false,
             recognizedText = "",
             finalRecognizedText = "",
             recordingState = com.litetask.app.util.RecordingState.IDLE
@@ -228,28 +270,72 @@ class HomeViewModel @Inject constructor(
     private fun processVoiceCommand(text: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isAnalyzing = true)
-            // 模拟 API Key (实际应从设置获取)
-            val apiKey = "DEMO_KEY" 
-            val result = aiRepository.parseTasksFromText(apiKey, text)
+            
+            val result = aiRepository.parseTasksFromText("", text) // 空字符串让 Repository 使用存储的 Key
             
             result.onSuccess { tasks ->
+                // 无论是否有任务，都显示 TaskConfirmationSheet（空结果会在界面中显示提示）
                 _uiState.value = _uiState.value.copy(
                     isAnalyzing = false,
                     showAiResult = true,
-                    aiParsedTasks = tasks
+                    aiParsedTasks = tasks,
+                    recordingState = com.litetask.app.util.RecordingState.IDLE
                 )
-            }.onFailure {
-                _uiState.value = _uiState.value.copy(isAnalyzing = false)
-                // TODO: Show error
+            }.onFailure { error ->
+                val errorMessage = when {
+                    error.message?.contains("API Key 无效") == true -> 
+                        "API Key 无效，请在设置中检查并重新配置"
+                    error.message?.contains("未设置 API Key") == true -> 
+                        "请先在设置中配置大模型 API Key"
+                    error.message?.contains("权限不足") == true -> 
+                        "API Key 权限不足，请检查账户状态"
+                    error.message?.contains("请求过于频繁") == true -> 
+                        "请求过于频繁，请稍后再试"
+                    error.message?.contains("无法连接") == true || 
+                    error.message?.contains("网络") == true -> 
+                        "网络连接失败，请检查网络设置"
+                    error.message?.contains("超时") == true -> 
+                        "请求超时，请稍后重试"
+                    else -> error.message ?: "AI 分析失败，请稍后重试"
+                }
+                
+                _uiState.value = _uiState.value.copy(
+                    isAnalyzing = false,
+                    showAiError = true,
+                    aiErrorMessage = errorMessage,
+                    recordingState = com.litetask.app.util.RecordingState.IDLE
+                )
             }
         }
+    }
+    
+    fun dismissAiError() {
+        _uiState.value = _uiState.value.copy(showAiError = false, aiErrorMessage = "")
     }
     
     fun confirmAddTasks() {
         viewModelScope.launch {
             val tasksToAdd = _uiState.value.aiParsedTasks
-            taskRepository.insertTasks(tasksToAdd)
+            if (tasksToAdd.isNotEmpty()) {
+                taskRepository.insertTasks(tasksToAdd)
+            }
             _uiState.value = _uiState.value.copy(showAiResult = false, aiParsedTasks = emptyList())
+        }
+    }
+    
+    fun updateAiParsedTask(index: Int, task: Task) {
+        val currentTasks = _uiState.value.aiParsedTasks.toMutableList()
+        if (index in currentTasks.indices) {
+            currentTasks[index] = task
+            _uiState.value = _uiState.value.copy(aiParsedTasks = currentTasks)
+        }
+    }
+    
+    fun deleteAiParsedTask(index: Int) {
+        val currentTasks = _uiState.value.aiParsedTasks.toMutableList()
+        if (index in currentTasks.indices) {
+            currentTasks.removeAt(index)
+            _uiState.value = _uiState.value.copy(aiParsedTasks = currentTasks)
         }
     }
 
@@ -408,8 +494,17 @@ data class HomeUiState(
     val isRecording: Boolean = false,
     val isAnalyzing: Boolean = false,
     val showAiResult: Boolean = false,
+    val showVoiceResult: Boolean = false,   // 录音结束后显示结果界面（无论有无识别文字）
+    val showAiError: Boolean = false,       // 显示 AI 错误界面
+    val aiErrorMessage: String = "",        // AI 错误信息
     val aiParsedTasks: List<Task> = emptyList(),
     val recognizedText: String = "",        // 实时识别的文字
     val finalRecognizedText: String = "",   // 最终识别结果
     val recordingState: com.litetask.app.util.RecordingState = com.litetask.app.util.RecordingState.IDLE
 )
+
+// 检查 API Key 结果
+sealed class ApiKeyCheckResult {
+    object Valid : ApiKeyCheckResult()
+    object NotConfigured : ApiKeyCheckResult()
+}

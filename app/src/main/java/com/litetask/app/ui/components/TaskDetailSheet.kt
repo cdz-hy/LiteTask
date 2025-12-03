@@ -249,9 +249,16 @@ fun TaskDetailSheet(
                                 newSubTaskText = ""
                             }
                         },
-                        modifier = Modifier.padding(start = 8.dp)
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .size(56.dp) // 与输入框高度一致
                     ) {
-                        Icon(Icons.Default.AddCircle, contentDescription = stringResource(R.string.add_subtask), tint = Primary)
+                        Icon(
+                            Icons.Default.AddCircle, 
+                            contentDescription = stringResource(R.string.add_subtask), 
+                            tint = Primary,
+                            modifier = Modifier.size(32.dp) // 图标更大
+                        )
                     }
                 }
 

@@ -1,258 +1,537 @@
 package com.litetask.app.ui.components
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.SearchOff
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
-import com.litetask.app.ui.theme.Indigo600
+import com.litetask.app.data.model.TaskType
+import com.litetask.app.ui.theme.LiteTaskColors
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
+import java.util.*
+import kotlin.math.roundToInt
+
+// 颜色系统
+private object ConfirmTaskColors {
+    @Composable
+    fun getPrimary(type: TaskType): Color = when (type) {
+        TaskType.WORK -> LiteTaskColors.workTask()
+        TaskType.LIFE -> LiteTaskColors.lifeTask()
+        TaskType.URGENT -> LiteTaskColors.urgentTask()
+        TaskType.STUDY -> LiteTaskColors.studyTask()
+        TaskType.HEALTH -> LiteTaskColors.healthTask()
+        TaskType.DEV -> LiteTaskColors.devTask()
+    }
+
+    @Composable
+    fun getSurface(type: TaskType): Color = when (type) {
+        TaskType.WORK -> LiteTaskColors.workTaskSurface()
+        TaskType.LIFE -> LiteTaskColors.lifeTaskSurface()
+        TaskType.URGENT -> LiteTaskColors.urgentTaskSurface()
+        TaskType.STUDY -> LiteTaskColors.studyTaskSurface()
+        TaskType.HEALTH -> LiteTaskColors.healthTaskSurface()
+        TaskType.DEV -> LiteTaskColors.devTaskSurface()
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskConfirmationSheet(
     tasks: List<Task>,
-   onDismiss: () -> Unit,
-    onConfirm: () -> Unit
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    onEditTask: (Int, Task) -> Unit = { _, _ -> },
+    onDeleteTask: (Int) -> Unit = {}
 ) {
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    
+    // 内部管理任务列表状态
+    var taskList by remember(tasks) { mutableStateOf(tasks) }
+    
+    // 编辑对话框状态
+    var showEditDialog by remember { mutableStateOf(false) }
+    var editingTaskIndex by remember { mutableStateOf(-1) }
+    var editingTask by remember { mutableStateOf<Task?>(null) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color.White,
-        tonalElevation = 0.dp
-) {
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
-        ) {
-            // 拖拽指示器
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(vertical =8.dp)
-                    .size(48.dp, 6.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFC4C7C5))
-            )
-            
-            // 标题
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(vertical =16.dp)
+        containerColor = Color(0xFFF2F6FC),
+        tonalElevation = 0.dp,
+        modifier = Modifier.fillMaxHeight(0.92f),
+        dragHandle = {
+            // 自定义拖拽手柄
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(top = 12.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(Color(0xFF6366F1), Color(0xFF8B5CF6))
-                            ),
-                            shape =CircleShape
-                        )
-                        .padding(8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // 使用 Flag 图标替代 Sparkles
-                    Icon(
-                        imageVector = Icons.Default.Flag,
-                        contentDescription = null,
-                        tint = Color.White
-                    )
-                }
-                
-                Column(modifier =Modifier.padding(start = 12.dp)) {
-                    Text(
-                        text = stringResource(R.string.ai_recognition_result),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = stringResource(R.string.parsed_key_information),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF444746)
-                    )
-                }
+                        .width(40.dp)
+                        .height(4.dp)
+                        .background(Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
+                )
+            }
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp)
+        ) {
+            // 标题区域
+            AIResultHeader(taskCount = taskList.size)
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // 原始语音文本（如果有）
+            taskList.firstOrNull()?.originalVoiceText?.let { voiceText ->
+                OriginalVoiceCard(voiceText)
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier
-                    .weight(1f, fill =false)
-                    .padding(vertical = 8.dp)
-            ) {
-                items(tasks) { task ->
-                    TaskPreviewItem(task)
-                }
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onDismiss,
+            // 任务卡片列表或空状态
+            if (taskList.isEmpty()) {
+                // 空状态显示
+                EmptyTasksState(modifier = Modifier.weight(1f))
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Indigo600
-                    )
+                    contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
-                    Text(stringResource(R.string.cancel))
-                }
-                Button(
-                    onClick= onConfirm,
-                    modifier = Modifier.weight(2f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Indigo600,
-                        contentColor = Color.White
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-                ) {
-                    Row(
-                        verticalAlignment= Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.confirm_add),
-                            modifier = Modifier.padding(start= 8.dp)
+                    itemsIndexed(taskList, key = { index, task -> "${task.title}_$index" }) { index, task ->
+                        SwipeableTaskCard(
+                            task = task,
+                            onEdit = {
+                                editingTaskIndex = index
+                                editingTask = task
+                                showEditDialog = true
+                            },
+                            onDelete = {
+                                taskList = taskList.toMutableList().apply { removeAt(index) }
+                                onDeleteTask(index)
+                            }
                         )
                     }
                 }
             }
+
+            // 底部按钮
+            BottomActionBar(
+                taskCount = taskList.size,
+                onDismiss = onDismiss,
+                onConfirm = {
+                    if (taskList.isNotEmpty()) {
+                        onConfirm()
+                    }
+                }
+            )
+        }
+    }
+    
+    // 编辑对话框
+    if (showEditDialog && editingTask != null) {
+        AddTaskDialog(
+            initialTask = editingTask,
+            onDismiss = { 
+                showEditDialog = false
+                editingTask = null
+                editingTaskIndex = -1
+            },
+            onConfirm = { updatedTask ->
+                if (editingTaskIndex >= 0 && editingTaskIndex < taskList.size) {
+                    taskList = taskList.toMutableList().apply { 
+                        set(editingTaskIndex, updatedTask) 
+                    }
+                    onEditTask(editingTaskIndex, updatedTask)
+                }
+                showEditDialog = false
+                editingTask = null
+                editingTaskIndex = -1
+            }
+        )
+    }
+}
+
+
+@Composable
+private fun EmptyTasksState(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // 空状态图标
+        Surface(
+            color = Color(0xFFFFF3E0),
+            shape = CircleShape,
+            modifier = Modifier.size(80.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Icon(
+                    imageVector = Icons.Outlined.SearchOff,
+                    contentDescription = null,
+                    tint = Color(0xFFFF9800),
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        Text(
+            text = "未能识别出任务",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Text(
+            text = "AI 未能从您的描述中提取任务信息\n请尝试更清晰地描述任务内容",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 22.sp
+        )
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // 提示示例
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "试试这样说：",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "• \"明天下午3点开会\"\n• \"周五前完成报告\"\n• \"下周一上午10点面试\"",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 20.sp
+                )
+            }
         }
     }
 }
 
 @Composable
-fun TaskPreviewItem(task: Task) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFFF0F4F8), MaterialTheme.shapes.medium)
-            .padding(16.dp)
+private fun AIResultHeader(taskCount: Int) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(vertical = 8.dp)
     ) {
-        Text(
-            text = task.title,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Medium
-        )
-        
-        Row(
-            modifier = Modifier.padding(top = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // AI 图标
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = CircleShape,
+            modifier = Modifier.size(48.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Flag,
-                contentDescription = null,
-                tint = Indigo600,
-                modifier = Modifier.size(16.dp)
-            )
-            Text(
-                text = "${formatPreviewTime(task.startTime)}- ${formatPreviewTime(task.deadline)}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF444746)
-            )
-        }
-        
-        // 位置信息已移除，因为新的 Task 模型中不再包含该字段
-        /*
-        if (task.location != null) {
-            Row(
-                modifier = Modifier.padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Icon(
-                    imageVector = Icons.Default.LocationOn,
+                    imageVector = Icons.Rounded.AutoAwesome,
                     contentDescription = null,
-                    tint = Color(0xFF444746),
-                   modifier = Modifier.size(16.dp)
-                )
-                Text(
-                    text = task.location,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFF1F1F1F),
-                    modifier = Modifier.padding(start = 8.dp)
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
-        */
+        
+        Column(modifier = Modifier.padding(start = 16.dp)) {
+            Text(
+                text = stringResource(R.string.ai_recognition_result),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = stringResource(R.string.parsed_tasks_count, taskCount),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
 
-        //时长信息
-        val durationMillis = task.deadline - task.startTime
-        val durationHours = durationMillis / (1000 * 60 * 60)
-        Text(
-            text = stringResource(R.string.duration_label, durationHours),
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFF444746),
-            modifier = Modifier.padding(top = 8.dp)
-        )
+@Composable
+private fun OriginalVoiceCard(voiceText: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                imageVector = Icons.Default.FormatQuote,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = voiceText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
 
-        // 如果有截止日期
-        if (isUrgentTask(task)) {
+@Composable
+private fun SwipeableTaskCard(
+    task: Task,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val density = LocalDensity.current
+    val actionWidth = 120.dp
+    val actionWidthPx = with(density) { actionWidth.toPx() }
+    val offsetX = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.CenterEnd
+    ) {
+        // 背景操作层
+        if (offsetX.value < -30f) {
+            Row(
+                modifier = Modifier
+                    .width(actionWidth)
+                    .fillMaxHeight()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SwipeActionIcon(
+                    icon = Icons.Default.Edit,
+                    color = Color(0xFF0B57D0),
+                    onClick = { scope.launch { offsetX.animateTo(0f); onEdit() } }
+                )
+                SwipeActionIcon(
+                    icon = Icons.Default.Delete,
+                    color = Color(0xFFF43F5E),
+                    onClick = { scope.launch { offsetX.animateTo(0f); onDelete() } }
+                )
+            }
+        }
+
+        // 前景卡片
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                .draggable(
+                    state = rememberDraggableState { delta ->
+                        scope.launch {
+                            val target = (offsetX.value + delta).coerceIn(-actionWidthPx, 0f)
+                            offsetX.snapTo(target)
+                        }
+                    },
+                    orientation = Orientation.Horizontal,
+                    onDragStopped = { velocity ->
+                        val target = if (offsetX.value < -actionWidthPx / 2 || velocity < -1500) {
+                            -actionWidthPx
+                        } else {
+                            0f
+                        }
+                        scope.launch {
+                            offsetX.animateTo(target, initialVelocity = velocity)
+                        }
+                    }
+                )
+        ) {
+            AITaskCard(task = task)
+        }
+    }
+}
+
+@Composable
+private fun SwipeActionIcon(icon: ImageVector, color: Color, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .background(color.copy(alpha = 0.1f), CircleShape)
+            .size(48.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+    }
+}
+
+
+@Composable
+private fun AITaskCard(task: Task) {
+    val primaryColor = ConfirmTaskColors.getPrimary(task.type)
+    val surfaceColor = ConfirmTaskColors.getSurface(task.type)
+
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = Color.White,
+        shadowElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+            // 左侧色条
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top= 12.dp)
-                    .background(Color(0xFFFFD8E4), MaterialTheme.shapes.small)
-                    .padding(12.dp)
+                    .width(8.dp)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
+                    .background(primaryColor.copy(alpha = 0.8f))
+            )
+
+            Column(
+                modifier = Modifier
+                    .padding(start = 14.dp, end = 16.dp, top = 16.dp, bottom = 16.dp)
+                    .weight(1f)
             ) {
+                // 标题行
                 Row(
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text(
+                        text = task.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF1F1F1F),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                    )
+
+                    // 类型标签
+                    Surface(
+                        color = primaryColor.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = getTaskTypeName(task.type),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            color = primaryColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // 描述（如果有）
+                if (!task.description.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = task.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF666666),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 时间信息行
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val infoColor = Color(0xFF444746).copy(alpha = 0.8f)
+
+                    Icon(
+                        imageVector = Icons.Default.AccessTime,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = infoColor
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = formatSmartTime(task.startTime, task.deadline),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = infoColor
+                    )
+
+                    // 紧急标签
+                    if (task.deadline > 0) {
+                        val timeLeft = task.deadline - System.currentTimeMillis()
+                        if (timeLeft in 0..(24 * 3600 * 1000)) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            val isVeryUrgent = timeLeft < (3 * 3600 * 1000)
+                            Surface(
+                                color = if (isVeryUrgent) Color(0xFFFFE4E6) else Color(0xFFE0F2FE),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = if (timeLeft < 0) stringResource(R.string.overdue) else stringResource(R.string.within_24h),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    color = if (isVeryUrgent) Color(0xFFBE123C) else Color(0xFF0369A1)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 时长信息
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .background(Color(0xFFF5F7FA), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Flag,
+                        imageVector = Icons.Default.Timer,
                         contentDescription = null,
-                        tint = Color(0xFF31111D),
-                        modifier = Modifier.size(16.dp)
+                        tint = Color.Gray,
+                        modifier = Modifier.size(14.dp)
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    val durationHours = calculateDurationInHours(task)
                     Text(
-                        text = stringResource(R.string.urgent_task_label),
-                       style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF31111D),
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(start = 8.dp)
+                        text = formatDuration(durationHours),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
                     )
                 }
             }
@@ -261,19 +540,94 @@ fun TaskPreviewItem(task: Task) {
 }
 
 @Composable
-fun formatPreviewTime(timestamp: Long): String {
-    val calendar =Calendar.getInstance()
-    calendar.timeInMillis = timestamp
-    return SimpleDateFormat(stringResource(R.string.time_format), java.util.Locale.getDefault()).format(Date(timestamp))
+private fun BottomActionBar(
+    taskCount: Int,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    Surface(
+        color = Color(0xFFF2F6FC),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f).height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            ) {
+                Text(stringResource(R.string.cancel), fontWeight = FontWeight.Medium)
+            }
+            
+            Button(
+                onClick = onConfirm,
+                modifier = Modifier.weight(2f).height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                enabled = taskCount > 0,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.confirm_add_count, taskCount),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
 }
 
-fun calculateDurationInHours(task: Task): Float {
+// 辅助函数
+@Composable
+private fun getTaskTypeName(type: TaskType): String {
+    return when (type) {
+        TaskType.WORK -> stringResource(R.string.task_type_work)
+        TaskType.LIFE -> stringResource(R.string.task_type_life)
+        TaskType.URGENT -> stringResource(R.string.task_type_urgent)
+        TaskType.STUDY -> stringResource(R.string.task_type_study)
+        TaskType.HEALTH -> stringResource(R.string.task_type_health)
+        TaskType.DEV -> stringResource(R.string.task_type_dev)
+    }
+}
+
+private fun formatSmartTime(start: Long, end: Long): String {
+    val sdfDate = SimpleDateFormat("MM/dd", Locale.getDefault())
+    val sdfTime = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+    val startStr = "${sdfDate.format(Date(start))} ${sdfTime.format(Date(start))}"
+    val endStr = if (end > 0 && end < Long.MAX_VALUE) {
+        if (sdfDate.format(Date(start)) == sdfDate.format(Date(end))) {
+            sdfTime.format(Date(end))
+        } else {
+            "${sdfDate.format(Date(end))} ${sdfTime.format(Date(end))}"
+        }
+    } else ""
+
+    return "$startStr - $endStr"
+}
+
+private fun calculateDurationInHours(task: Task): Float {
     val durationMillis = task.deadline - task.startTime
-    return durationMillis / (1000f * 60* 60)
+    return durationMillis / (1000f * 60 * 60)
 }
 
-fun isUrgentTask(task: Task): Boolean {
-    // 简单判断逻辑：如果有截止时间且距离现在不到24小时，则认为是紧急任务
-    val currentTime = System.currentTimeMillis()
-    return task.deadline > 0 && task.deadline - currentTime <24 * 60 * 60 * 1000
+private fun formatDuration(hours: Float): String {
+    return when {
+        hours < 1 -> "${(hours * 60).toInt()} 分钟"
+        hours < 24 -> "${hours.toInt()} 小时"
+        else -> "${(hours / 24).toInt()} 天 ${(hours % 24).toInt()} 小时"
+    }
 }

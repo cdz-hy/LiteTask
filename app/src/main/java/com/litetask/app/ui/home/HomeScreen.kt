@@ -14,7 +14,13 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewTimeline
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.*
+import androidx.compose.animation.core.*
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import kotlinx.coroutines.launch
 import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -62,20 +68,25 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     var currentView by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initialView) }
-    
+
     // 侧边栏状态
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    
+
     LaunchedEffect(currentView) {
         onViewChanged(currentView)
     }
-    
+
     val allLoadedTasks = remember(timelineItems) {
         timelineItems.filterIsInstance<com.litetask.app.ui.home.TimelineItem.TaskItem>()
             .map { it.composite }
     }
     
+    // 未完成任务数量（用于顶部显示）
+    val activeTaskCount = remember(allLoadedTasks) {
+        allLoadedTasks.count { !it.task.isDone }
+    }
+
     val ganttTasks = remember(allLoadedTasks) {
         val now = System.currentTimeMillis()
         val calendar = java.util.Calendar.getInstance()
@@ -86,22 +97,22 @@ fun HomeScreen(
         calendar.set(java.util.Calendar.MILLISECOND, 0)
         val startOfToday = calendar.timeInMillis
         val endOfThreeDays = startOfToday + (3 * 24 * 60 * 60 * 1000L)
-        
+
         allLoadedTasks.filter { composite ->
             val taskStart = composite.task.startTime
             val taskEnd = composite.task.deadline
             taskStart < endOfThreeDays && taskEnd > startOfToday
         }
     }
-    
+
     LaunchedEffect(currentView) {
         if (currentView == "gantt") {
             viewModel.silentRefresh()
         }
     }
-    
+
     val pullToRefreshState = rememberPullToRefreshState()
-    
+
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
             pullToRefreshState.startRefresh()
@@ -109,19 +120,19 @@ fun HomeScreen(
             pullToRefreshState.endRefresh()
         }
     }
-    
+
     LaunchedEffect(pullToRefreshState.isRefreshing) {
         if (pullToRefreshState.isRefreshing) {
             viewModel.onRefresh()
         }
     }
-    
+
     var showAddTaskDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var selectedTask by remember { mutableStateOf<Task?>(null) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var selectedTaskId by remember { mutableStateOf<Long?>(null) }
-    
+
     val selectedTaskComposite by produceState<com.litetask.app.data.model.TaskDetailComposite?>(
         initialValue = null,
         key1 = selectedTaskId
@@ -151,7 +162,7 @@ fun HomeScreen(
                 modifier = Modifier.width(280.dp)
             ) {
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
                 // 应用标题
                 Text(
                     text = stringResource(R.string.app_name),
@@ -159,11 +170,11 @@ fun HomeScreen(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 28.dp, vertical = 16.dp)
                 )
-                
+
                 HorizontalDivider()
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 // 设置选项
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
@@ -177,267 +188,316 @@ fun HomeScreen(
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
             }
         }
     ) {
         Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
-            Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(
-                                stringResource(R.string.app_name),
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(top = 2.dp)
-                            ) {
+            containerColor = MaterialTheme.colorScheme.surface,
+            topBar = {
+                Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
+                    TopAppBar(
+                        title = {
+                            Column {
                                 Text(
-                                    text = SimpleDateFormat(stringResource(R.string.date_format), Locale.getDefault()).format(Date()),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    stringResource(R.string.app_name),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(modifier = Modifier.size(3.dp).background(MaterialTheme.colorScheme.outlineVariant, CircleShape))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    stringResource(R.string.tasks_count, allLoadedTasks.size),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                ) {
+                                    Text(
+                                        text = SimpleDateFormat(stringResource(R.string.date_format), Locale.getDefault()).format(Date()),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Box(modifier = Modifier.size(3.dp).background(MaterialTheme.colorScheme.outlineVariant, CircleShape))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        stringResource(R.string.pending_tasks_count, activeTaskCount),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { 
-                            scope.launch {
-                                drawerState.open()
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = {
+                                scope.launch {
+                                    drawerState.open()
+                                }
+                            }) {
+                                Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.menu), tint = MaterialTheme.colorScheme.onSurface)
                             }
-                        }) {
-                            Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.menu), tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-                )
-                
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .background(MaterialTheme.colorScheme.surfaceContainer, CircleShape)
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    ViewOption(
-                        text = stringResource(R.string.view_list),
-                        icon = Icons.Default.List,
-                        isSelected = currentView == "timeline",
-                        onClick = { currentView = "timeline" },
-                        modifier = Modifier.weight(1f)
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
                     )
-                    ViewOption(
-                        text = stringResource(R.string.view_gantt),
-                        icon = Icons.Default.ViewTimeline,
-                        isSelected = currentView == "gantt",
-                        onClick = { currentView = "gantt" },
-                        modifier = Modifier.weight(1f)
-                    )
-                    ViewOption(
-                        text = stringResource(R.string.view_deadline),
-                        icon = Icons.Default.Flag,
-                        isSelected = currentView == "deadline",
-                        onClick = { currentView = "deadline" },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
 
-            }
-        },
-        floatingActionButton = {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // 普通添加按钮（较小）
-                FloatingActionButton(
-                    onClick = { showAddTaskDialog = true },
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_task), modifier = Modifier.size(22.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .background(MaterialTheme.colorScheme.surfaceContainer, CircleShape)
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        ViewOption(
+                            text = stringResource(R.string.view_list),
+                            icon = Icons.Default.List,
+                            isSelected = currentView == "timeline",
+                            onClick = { currentView = "timeline" },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ViewOption(
+                            text = stringResource(R.string.view_gantt),
+                            icon = Icons.Default.ViewTimeline,
+                            isSelected = currentView == "gantt",
+                            onClick = { currentView = "gantt" },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ViewOption(
+                            text = stringResource(R.string.view_deadline),
+                            icon = Icons.Default.Flag,
+                            isSelected = currentView == "deadline",
+                            onClick = { currentView = "deadline" },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
                 }
-                
-                // 语音添加按钮（更大更醒目）
-                LargeFloatingActionButton(
-                    onClick = {
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                            val hasPermission = context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == 
-                                android.content.pm.PackageManager.PERMISSION_GRANTED
-                            if (hasPermission) {
-                                viewModel.startRecording()
-                            } else {
-                                permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+            },
+            floatingActionButton = {
+                EnhancedFabGroup(
+                    onAddClick = { showAddTaskDialog = true },
+                    onVoiceClick = {
+                        // 先检查 API Key 是否已配置
+                        when (viewModel.checkApiKey()) {
+                            is ApiKeyCheckResult.NotConfigured -> {
+                                Toast.makeText(context, "请先在设置中配置大模型 API Key", Toast.LENGTH_LONG).show()
                             }
-                        } else {
-                            viewModel.startRecording()
-                        }
-                    },
-                    containerColor = Primary,
-                    contentColor = androidx.compose.ui.graphics.Color.White,
-                    shape = CircleShape,
-                    modifier = Modifier.size(72.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Mic, 
-                        contentDescription = stringResource(R.string.voice_add_task), 
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-            }
-        }
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .padding(paddingValues)
-                .fillMaxSize()
-                .nestedScroll(pullToRefreshState.nestedScrollConnection)
-        ) {
-            when (currentView) {
-                "timeline" -> TimelineView(
-                    items = timelineItems,
-                    onTaskClick = { task -> 
-                        selectedTaskId = task.id
-                    },
-                    onDeleteClick = { viewModel.deleteTask(it) },
-                    onPinClick = { 
-                         if (it.isDone) {
-                             Toast.makeText(context, "已完成的任务不能置顶", Toast.LENGTH_SHORT).show()
-                         } else if (it.deadline < System.currentTimeMillis()) {
-                             Toast.makeText(context, "已过期的任务不能置顶", Toast.LENGTH_SHORT).show()
-                         } else {
-                             viewModel.updateTask(it.copy(isPinned = !it.isPinned))
-                         }
-                    },
-                    onEditClick = { 
-                        taskToEdit = it
-                        showEditDialog = true
-                    },
-                    onLoadMore = { viewModel.loadMoreHistory() },
-                    onSearchClick = { onNavigateToSearch() }
-                )
-                "gantt" -> GanttView(
-                    taskComposites = ganttTasks,
-                    onTaskClick = { selectedTaskId = it.id },
-                    onNavigateToFullscreen = { viewMode -> onNavigateToGanttFullscreen(viewMode) }
-                )
-                "deadline" -> DeadlineView(
-                    tasks = allLoadedTasks,
-                    onTaskClick = { task -> selectedTaskId = task.id },
-                    onDeleteClick = { task -> viewModel.deleteTask(task) },
-                    onEditClick = { task -> 
-                        taskToEdit = task
-                        showEditDialog = true
-                    },
-                    onPinClick = { task -> 
-                        if (task.isDone) {
-                            Toast.makeText(context, "已完成的任务不能置顶", Toast.LENGTH_SHORT).show()
-                        } else if (task.deadline < System.currentTimeMillis()) {
-                            Toast.makeText(context, "已过期的任务不能置顶", Toast.LENGTH_SHORT).show()
-                        } else {
-                            viewModel.updateTask(task.copy(isPinned = !task.isPinned))
+                            is ApiKeyCheckResult.Valid -> {
+                                // API Key 已配置，继续检查录音权限
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                    val hasPermission = context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+                                            android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    if (hasPermission) {
+                                        viewModel.startRecording()
+                                    } else {
+                                        permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                    }
+                                } else {
+                                    viewModel.startRecording()
+                                }
+                            }
                         }
                     }
                 )
             }
-            
-            PullToRefreshContainer(
-                state = pullToRefreshState,
+        ) { paddingValues ->
+            Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .zIndex(1f),
-                containerColor = MaterialTheme.colorScheme.primaryContainer, 
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                shape = CircleShape
-            )
-        }
-
-        if (showAddTaskDialog) {
-            AddTaskDialog(
-                onDismiss = { showAddTaskDialog = false },
-                onConfirm = { task ->
-                    viewModel.addTask(task)
-                    showAddTaskDialog = false
+                    .padding(paddingValues)
+                    .fillMaxSize()
+                    .nestedScroll(pullToRefreshState.nestedScrollConnection)
+            ) {
+                when (currentView) {
+                    "timeline" -> TimelineView(
+                        items = timelineItems,
+                        onTaskClick = { task ->
+                            selectedTaskId = task.id
+                        },
+                        onDeleteClick = { viewModel.deleteTask(it) },
+                        onPinClick = {
+                            if (it.isDone) {
+                                Toast.makeText(context, "已完成的任务不能置顶", Toast.LENGTH_SHORT).show()
+                            } else if (it.deadline < System.currentTimeMillis()) {
+                                Toast.makeText(context, "已过期的任务不能置顶", Toast.LENGTH_SHORT).show()
+                            } else {
+                                viewModel.updateTask(it.copy(isPinned = !it.isPinned))
+                            }
+                        },
+                        onEditClick = {
+                            taskToEdit = it
+                            showEditDialog = true
+                        },
+                        onLoadMore = { viewModel.loadMoreHistory() },
+                        onSearchClick = { onNavigateToSearch() }
+                    )
+                    "gantt" -> GanttView(
+                        taskComposites = ganttTasks,
+                        onTaskClick = { selectedTaskId = it.id },
+                        onNavigateToFullscreen = { viewMode -> onNavigateToGanttFullscreen(viewMode) }
+                    )
+                    "deadline" -> DeadlineView(
+                        tasks = allLoadedTasks,
+                        onTaskClick = { task -> selectedTaskId = task.id },
+                        onDeleteClick = { task -> viewModel.deleteTask(task) },
+                        onEditClick = { task ->
+                            taskToEdit = task
+                            showEditDialog = true
+                        },
+                        onPinClick = { task ->
+                            if (task.isDone) {
+                                Toast.makeText(context, "已完成的任务不能置顶", Toast.LENGTH_SHORT).show()
+                            } else if (task.deadline < System.currentTimeMillis()) {
+                                Toast.makeText(context, "已过期的任务不能置顶", Toast.LENGTH_SHORT).show()
+                            } else {
+                                viewModel.updateTask(task.copy(isPinned = !task.isPinned))
+                            }
+                        }
+                    )
                 }
-            )
-        }
 
-        if (showEditDialog) {
-            AddTaskDialog(
-                initialTask = taskToEdit,
-                onDismiss = { 
-                    showEditDialog = false
-                    taskToEdit = null
-                },
-                onConfirm = { task ->
-                    viewModel.updateTask(task)
-                    showEditDialog = false
-                    taskToEdit = null
-                }
-            )
-        }
+                PullToRefreshContainer(
+                    state = pullToRefreshState,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .zIndex(1f),
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = CircleShape
+                )
+            }
 
-        selectedTaskComposite?.let { composite ->
-            TaskDetailSheet(
-                task = composite.task,
-                subTasks = composite.subTasks,
-                onDismiss = { selectedTaskId = null },
-                onDelete = { 
-                    viewModel.deleteTask(it)
-                    selectedTaskId = null
-                },
-                onUpdateTask = { viewModel.updateTask(it) },
-                onUpdateSubTask = { sub, isCompleted -> 
-                    viewModel.updateSubTaskStatus(sub.id, isCompleted)
-                },
-                onAddSubTask = { content ->
-                    viewModel.addSubTask(composite.task.id, content)
-                },
-                onDeleteSubTask = { subTask ->
-                    viewModel.deleteSubTask(subTask)
-                }
-            )
-        }
+            if (showAddTaskDialog) {
+                AddTaskDialog(
+                    onDismiss = { showAddTaskDialog = false },
+                    onConfirm = { task ->
+                        viewModel.addTask(task)
+                        showAddTaskDialog = false
+                    }
+                )
+            }
 
-        val recordingDuration by viewModel.recordingDuration.collectAsState()
-        
-        if (uiState.isRecording || uiState.recordingState == com.litetask.app.util.RecordingState.PLAYING) {
-            VoiceRecorderDialog(
-                onDismiss = { viewModel.cancelRecording() },
-                onFinish = { viewModel.finishRecording() },
-                recognizedText = uiState.recognizedText,
-                recordingDuration = recordingDuration,
-                isPlaying = uiState.recordingState == com.litetask.app.util.RecordingState.PLAYING
-            )
-        }
+            if (showEditDialog) {
+                AddTaskDialog(
+                    initialTask = taskToEdit,
+                    onDismiss = {
+                        showEditDialog = false
+                        taskToEdit = null
+                    },
+                    onConfirm = { task ->
+                        viewModel.updateTask(task)
+                        showEditDialog = false
+                        taskToEdit = null
+                    }
+                )
+            }
 
-        if (uiState.showAiResult) {
-            TaskConfirmationSheet(
-                tasks = uiState.aiParsedTasks,
-                onDismiss = { viewModel.dismissAiResult() },
-                onConfirm = { viewModel.confirmAddTasks() }
-            )
+            selectedTaskComposite?.let { composite ->
+                TaskDetailSheet(
+                    task = composite.task,
+                    subTasks = composite.subTasks,
+                    onDismiss = { selectedTaskId = null },
+                    onDelete = {
+                        viewModel.deleteTask(it)
+                        selectedTaskId = null
+                    },
+                    onUpdateTask = { viewModel.updateTask(it) },
+                    onUpdateSubTask = { sub, isCompleted ->
+                        viewModel.updateSubTaskStatus(sub.id, isCompleted)
+                    },
+                    onAddSubTask = { content ->
+                        viewModel.addSubTask(composite.task.id, content)
+                    },
+                    onDeleteSubTask = { subTask ->
+                        viewModel.deleteSubTask(subTask)
+                    }
+                )
+            }
+
+            val recordingDuration by viewModel.recordingDuration.collectAsState()
+
+            // 显示条件：正在录音、录音结束待确认（无论有无文字）、或 AI 分析中
+            val showVoiceDialog = uiState.isRecording ||
+                    uiState.recordingState == com.litetask.app.util.RecordingState.PLAYING ||
+                    uiState.showVoiceResult // 新增状态：录音结束后显示结果（无论有无文字）
+
+            if (showVoiceDialog) {
+                VoiceRecorderDialog(
+                    onDismiss = { viewModel.cancelRecording() },
+                    onStopRecording = { viewModel.finishRecording() }, // 停止录音，进入确认状态
+                    onFinish = { editedText -> viewModel.finishRecordingWithText(editedText) }, // 确认添加
+                    recognizedText = uiState.recognizedText,
+                    recordingDuration = recordingDuration,
+                    isPlaying = uiState.recordingState == com.litetask.app.util.RecordingState.PLAYING,
+                    isRecording = uiState.recordingState == com.litetask.app.util.RecordingState.RECORDING
+                )
+            }
+
+            if (uiState.showAiResult) {
+                TaskConfirmationSheet(
+                    tasks = uiState.aiParsedTasks,
+                    onDismiss = { viewModel.dismissAiResult() },
+                    onConfirm = { viewModel.confirmAddTasks() },
+                    onEditTask = { index, task -> viewModel.updateAiParsedTask(index, task) },
+                    onDeleteTask = { index -> viewModel.deleteAiParsedTask(index) }
+                )
+            }
+
+            // AI 错误提示对话框
+            if (uiState.showAiError) {
+                AiErrorDialog(
+                    errorMessage = uiState.aiErrorMessage,
+                    onDismiss = { viewModel.dismissAiError() },
+                    onGoToSettings = {
+                        viewModel.dismissAiError()
+                        onNavigateToSettings()
+                    }
+                )
+            }
         }
-    }
     } // ModalNavigationDrawer 闭合
+}
+
+@Composable
+private fun AiErrorDialog(
+    errorMessage: String,
+    onDismiss: () -> Unit,
+    onGoToSettings: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(48.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "AI 分析失败",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                text = errorMessage,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        confirmButton = {
+            if (errorMessage.contains("API Key") || errorMessage.contains("设置")) {
+                TextButton(onClick = onGoToSettings) {
+                    Text("去设置")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        }
+    )
 }
 
 @Composable
@@ -477,6 +537,104 @@ fun ViewOption(
                 fontWeight = FontWeight.Medium,
                 color = contentColor
             )
+        }
+    }
+}
+
+
+/**
+ * 增强版 FAB 按钮组
+ * Material Design 3 风格，带有动效和视觉层次
+ */
+@Composable
+private fun EnhancedFabGroup(
+    onAddClick: () -> Unit,
+    onVoiceClick: () -> Unit
+) {
+    // 语音按钮呼吸动画
+    val infiniteTransition = rememberInfiniteTransition(label = "fab_pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+    
+    // 光晕动画
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.6f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow"
+    )
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // 手动添加按钮 - 中等大小
+        FloatingActionButton(
+            onClick = onAddClick,
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            shape = RoundedCornerShape(16.dp),
+            elevation = FloatingActionButtonDefaults.elevation(
+                defaultElevation = 3.dp,
+                pressedElevation = 6.dp,
+                hoveredElevation = 4.dp
+            ),
+            modifier = Modifier.size(52.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Add,
+                contentDescription = "手动添加",
+                modifier = Modifier.size(26.dp)
+            )
+        }
+
+        // 语音添加按钮 - 主要操作，带光晕效果
+        Box(contentAlignment = Alignment.Center) {
+            // 外层光晕
+            Box(
+                modifier = Modifier
+                    .size(88.dp)
+                    .scale(pulseScale)
+                    .background(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Primary.copy(alpha = glowAlpha),
+                                Primary.copy(alpha = 0f)
+                            )
+                        ),
+                        shape = CircleShape
+                    )
+            )
+            
+            // 主按钮
+            LargeFloatingActionButton(
+                onClick = onVoiceClick,
+                containerColor = Primary,
+                contentColor = Color.White,
+                shape = CircleShape,
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 6.dp,
+                    pressedElevation = 12.dp,
+                    hoveredElevation = 8.dp
+                ),
+                modifier = Modifier.size(64.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Mic,
+                    contentDescription = "语音添加",
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
     }
 }

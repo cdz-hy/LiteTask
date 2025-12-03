@@ -78,6 +78,8 @@
     <string name="countdown_label">COUNTING DOWN</string>
     <string name="ai_recognition_result">AI 识别结果</string>
     <string name="parsed_key_information">已解析关键信息</string>
+    <string name="parsed_tasks_count">识别到 %1$d 个任务</string>
+    <string name="confirm_add_count">确认添加 (%1$d)</string>
     <string name="gantt_chart_title">甘特图</string>
     <string name="fullscreen">全屏显示</string>
     <string name="back">返回</string>
@@ -104,6 +106,7 @@
     <string name="menu">菜单</string>
     <string name="profile">个人资料</string>
     <string name="tasks_count">%1$d 个任务</string>
+    <string name="pending_tasks_count">%1$d 个待办</string>
     <string name="pull_to_refresh">下拉刷新</string>
     <string name="add_task">添加任务</string>
     <string name="voice_add_task">语音添加任务</string>

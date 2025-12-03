@@ -300,8 +300,8 @@ fun AddTaskDialog(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Duration Info
-                    val durationHours = ((deadlineMillis - startTimeMillis) / (1000 * 60 * 60)).coerceAtLeast(0)
-                    val durationDays = durationHours / 24
+                    val durationHours = ((deadlineMillis - startTimeMillis) / (1000.0 * 60 * 60)).coerceAtLeast(0.0)
+                    val durationDays = (durationHours / 24).toInt()
                     val remainingHours = durationHours % 24
                     
                     Card(
@@ -327,9 +327,9 @@ fun AddTaskDialog(
                                 text = if (deadlineMillis <= startTimeMillis) {
                                     stringResource(R.string.warning_deadline_before_start)
                                 } else if (durationDays > 0) {
-                                    stringResource(R.string.duration_info, durationDays.toString(), remainingHours.toString())
+                                    stringResource(R.string.duration_info, durationDays.toString(), String.format("%.1f", remainingHours))
                                 } else {
-                                    stringResource(R.string.duration_info_hours, durationHours.toString())
+                                    stringResource(R.string.duration_info_hours, String.format("%.1f", durationHours))
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (deadlineMillis <= startTimeMillis) Color(0xFFF43F5E) else Color(0xFF444746),
