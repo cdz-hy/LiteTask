@@ -1,6 +1,7 @@
 package com.litetask.app.ui.search
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -107,24 +108,29 @@ fun SearchScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 筛选标签
+            // 筛选标签 - 使用 FlowRow 实现自动换行
             if (selectedTypes.isNotEmpty() || dateRange != null) {
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     selectedTypes.forEach { type ->
                         FilterChip(
                             selected = true,
                             onClick = { viewModel.toggleTypeFilter(type) },
-                            label = { Text(getTaskTypeName(type)) },
+                            label = { Text(getTaskTypeName(type), fontSize = 13.sp) },
                             trailingIcon = {
                                 Icon(
                                     Icons.Default.Close,
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp)
                                 )
-                            }
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Primary.copy(alpha = 0.15f),
+                                selectedLabelColor = Primary
+                            )
                         )
                     }
                     
@@ -132,27 +138,54 @@ fun SearchScreen(
                         FilterChip(
                             selected = true,
                             onClick = { viewModel.clearDateRange() },
-                            label = { Text(formatDateRange(range)) },
+                            label = { Text(formatDateRange(range), fontSize = 13.sp) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.DateRange,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
                             trailingIcon = {
                                 Icon(
                                     Icons.Default.Close,
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp)
                                 )
-                            }
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Primary.copy(alpha = 0.15f),
+                                selectedLabelColor = Primary
+                            )
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
             // 结果统计
-            Text(
-                text = stringResource(R.string.search_results_count, searchResults.size),
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.Gray,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
+            if (searchQuery.isNotEmpty() || selectedTypes.isNotEmpty() || dateRange != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = null,
+                        tint = Primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.search_results_count, searchResults.size),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = colorResource(R.color.on_surface)
+                    )
+                }
+            }
 
             // 搜索结果列表
             LazyColumn(
@@ -247,24 +280,42 @@ fun SearchScreen(
                 }
 
                 // 空状态
-                if (searchResults.isEmpty() && searchQuery.isNotEmpty()) {
+                if (searchResults.isEmpty() && (searchQuery.isNotEmpty() || selectedTypes.isNotEmpty() || dateRange != null)) {
                     item {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 48.dp),
+                                .padding(vertical = 64.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(
-                                Icons.Default.SearchOff,
-                                contentDescription = null,
-                                modifier = Modifier.size(64.dp),
-                                tint = Color.Gray.copy(alpha = 0.5f)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFF5F5F5),
+                                modifier = Modifier.size(96.dp)
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    Icon(
+                                        Icons.Default.SearchOff,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(48.dp),
+                                        tint = Color.Gray.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(24.dp))
                             Text(
                                 stringResource(R.string.no_matching_tasks),
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colorResource(R.color.on_surface)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                stringResource(R.string.try_adjust_filters),
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = Color.Gray
                             )
                         }
@@ -297,96 +348,233 @@ fun FilterBottomSheet(
     onClearAll: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color.White
+        containerColor = colorResource(R.color.background),
+        tonalElevation = 0.dp,
+        dragHandle = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(40.dp)
+                        .height(4.dp)
+                        .background(Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
+                )
+            }
+        }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp)
+                .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
+            // 标题栏
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    stringResource(R.string.filter_criteria),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                TextButton(onClick = onClearAll) {
-                    Text(stringResource(R.string.clear_all))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.FilterList,
+                        contentDescription = null,
+                        tint = Primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        stringResource(R.string.filter_criteria),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = colorResource(R.color.on_surface)
+                    )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 任务类型
-            Text(
-                stringResource(R.string.task_type),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-            
-            // 使用 FlowRow 实现自动换行
-            androidx.compose.foundation.layout.FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                searchableTaskTypes.forEach { type ->
-                    FilterChip(
-                        selected = type in selectedTypes,
-                        onClick = { onTypeToggle(type) },
-                        label = { 
-                            Text(
-                                getTaskTypeName(type),
-                                modifier = Modifier.padding(horizontal = 8.dp)
-                            ) 
-                        }
+                
+                TextButton(
+                    onClick = onClearAll,
+                    enabled = selectedTypes.isNotEmpty() || dateRange != null
+                ) {
+                    Text(
+                        stringResource(R.string.clear_all),
+                        color = if (selectedTypes.isNotEmpty() || dateRange != null) Primary else Color.Gray
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 日期范围快捷选项
-            Text(
-                stringResource(R.string.date_range),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
+            // 任务类型筛选
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White,
+                shadowElevation = 1.dp
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Category,
+                            contentDescription = null,
+                            tint = Primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.task_type),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colorResource(R.color.on_surface)
+                        )
+                        if (selectedTypes.isNotEmpty()) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = CircleShape,
+                                color = Primary.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    text = "${selectedTypes.size}",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Primary
+                                )
+                            }
+                        }
+                    }
+                    
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        searchableTaskTypes.forEach { type ->
+                            FilterChip(
+                                selected = type in selectedTypes,
+                                onClick = { onTypeToggle(type) },
+                                label = { 
+                                    Text(
+                                        getTaskTypeName(type),
+                                        fontSize = 14.sp,
+                                        fontWeight = if (type in selectedTypes) FontWeight.SemiBold else FontWeight.Normal
+                                    ) 
+                                },
+                                leadingIcon = if (type in selectedTypes) {
+                                    {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                } else null,
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Primary,
+                                    selectedLabelColor = Color.White,
+                                    selectedLeadingIconColor = Color.White,
+                                    containerColor = Color(0xFFF5F5F5),
+                                    labelColor = Color(0xFF666666)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
 
-            val calendar = Calendar.getInstance()
-            val today = calendar.timeInMillis
-            
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DateRangeOption(stringResource(R.string.today), today, today, dateRange, onDateRangeSelected)
-                
-                calendar.add(Calendar.DAY_OF_YEAR, -7)
-                DateRangeOption(stringResource(R.string.recent_7_days), calendar.timeInMillis, today, dateRange, onDateRangeSelected)
-                
-                calendar.timeInMillis = today
-                calendar.add(Calendar.DAY_OF_YEAR, -30)
-                DateRangeOption(stringResource(R.string.recent_30_days), calendar.timeInMillis, today, dateRange, onDateRangeSelected)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 日期范围筛选
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White,
+                shadowElevation = 1.dp
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.DateRange,
+                            contentDescription = null,
+                            tint = Primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.date_range),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colorResource(R.color.on_surface)
+                        )
+                        if (dateRange != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = CircleShape,
+                                color = Primary.copy(alpha = 0.15f)
+                            ) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = Primary,
+                                    modifier = Modifier
+                                        .padding(4.dp)
+                                        .size(12.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    val calendar = Calendar.getInstance()
+                    val today = calendar.timeInMillis
+                    
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DateRangeOption(stringResource(R.string.today), today, today, dateRange, onDateRangeSelected)
+                        
+                        calendar.add(Calendar.DAY_OF_YEAR, -7)
+                        DateRangeOption(stringResource(R.string.recent_7_days), calendar.timeInMillis, today, dateRange, onDateRangeSelected)
+                        
+                        calendar.timeInMillis = today
+                        calendar.add(Calendar.DAY_OF_YEAR, -30)
+                        DateRangeOption(stringResource(R.string.recent_30_days), calendar.timeInMillis, today, dateRange, onDateRangeSelected)
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // 应用按钮
             Button(
                 onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary)
             ) {
-                Text(stringResource(R.string.apply_filter))
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    stringResource(R.string.apply_filter),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
+            
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -399,21 +587,64 @@ fun DateRangeOption(
     currentRange: Pair<Long, Long>?,
     onSelect: (Long, Long) -> Unit
 ) {
-    val isSelected = currentRange?.let { it.first == start && it.second == end } ?: false
+    // 使用日期比较（忽略时分秒），避免时间戳精度问题
+    val isSelected = currentRange?.let { 
+        val startCal = Calendar.getInstance().apply { timeInMillis = start }
+        val endCal = Calendar.getInstance().apply { timeInMillis = end }
+        val currentStartCal = Calendar.getInstance().apply { timeInMillis = it.first }
+        val currentEndCal = Calendar.getInstance().apply { timeInMillis = it.second }
+        
+        startCal.get(Calendar.YEAR) == currentStartCal.get(Calendar.YEAR) &&
+        startCal.get(Calendar.DAY_OF_YEAR) == currentStartCal.get(Calendar.DAY_OF_YEAR) &&
+        endCal.get(Calendar.YEAR) == currentEndCal.get(Calendar.YEAR) &&
+        endCal.get(Calendar.DAY_OF_YEAR) == currentEndCal.get(Calendar.DAY_OF_YEAR)
+    } ?: false
     
-    OutlinedButton(
-        onClick = { onSelect(start, end) },
-        modifier = Modifier.fillMaxWidth(),
-        colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = if (isSelected) Primary.copy(alpha = 0.1f) else Color.Transparent,
-            contentColor = if (isSelected) Primary else Color.Gray
-        ),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isSelected) Primary else Color.LightGray
-        )
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect(start, end) },
+        shape = RoundedCornerShape(12.dp),
+        color = if (isSelected) colorResource(R.color.search_date_range_selected_bg) else colorResource(R.color.search_date_range_unselected_bg),
+        border = if (isSelected) {
+            androidx.compose.foundation.BorderStroke(2.dp, Primary)
+        } else {
+            androidx.compose.foundation.BorderStroke(1.dp, colorResource(R.color.search_date_range_selected_border))
+        }
     ) {
-        Text(label)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                fontSize = 15.sp,
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (isSelected) Primary else colorResource(R.color.search_date_range_text_unselected)
+            )
+            
+            if (isSelected) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = stringResource(R.string.date_range_selected),
+                    tint = Primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .border(
+                            width = 2.dp,
+                            color = colorResource(R.color.search_date_range_selected_border),
+                            shape = CircleShape
+                        )
+                )
+            }
+        }
     }
 }
 
@@ -428,7 +659,7 @@ private fun getTaskTypeName(type: TaskType): String {
     }
 }
 
-// 搜索界面支持的任务类型（排除健康和开发）
+// 搜索界面支持的任务类型
 private val searchableTaskTypes = listOf(
     TaskType.WORK,
     TaskType.LIFE,

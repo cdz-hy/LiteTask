@@ -207,4 +207,10 @@
     
     <!-- 截止视图 -->
     <string name="no_upcoming_deadlines">没有即将截止的任务</string>
+    
+    <!-- 搜索界面提示 -->
+    <string name="try_adjust_filters">尝试调整搜索条件或筛选选项</string>
+    
+    <!-- 日期范围选项 -->
+    <string name="date_range_selected">已选择</string>
 </resources>

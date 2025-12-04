@@ -120,4 +120,11 @@
     <color name="white_transparent_15">#26FFFFFF</color>
     <color name="gray">#FF808080</color>
     <color name="light_gray">#FFD3D3D3</color>
+    
+    <!-- 搜索界面颜色 -->
+    <color name="search_date_range_selected_bg">#FFEFF6FF</color>        <!-- 浅蓝色背景，更明显 -->
+    <color name="search_date_range_unselected_bg">#FFFFFFFF</color>
+    <color name="search_date_range_selected_border">#FFE0E0E0</color>
+    <color name="search_date_range_text_selected">#FF444746</color>
+    <color name="search_date_range_text_unselected">#FF444746</color>
 </resources>
