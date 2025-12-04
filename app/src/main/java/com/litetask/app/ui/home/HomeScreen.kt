@@ -178,7 +178,7 @@ fun HomeScreen(
                 // 设置选项
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("设置") },
+                    label = { Text(stringResource(R.string.settings)) },
                     selected = false,
                     onClick = {
                         scope.launch {
@@ -278,7 +278,7 @@ fun HomeScreen(
                         // 先检查 API Key 是否已配置
                         when (viewModel.checkApiKey()) {
                             is ApiKeyCheckResult.NotConfigured -> {
-                                Toast.makeText(context, "请先在设置中配置大模型 API Key", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, context.getString(R.string.api_key_not_configured), Toast.LENGTH_LONG).show()
                             }
                             is ApiKeyCheckResult.Valid -> {
                                 // API Key 已配置，继续检查录音权限
@@ -314,9 +314,9 @@ fun HomeScreen(
                         onDeleteClick = { viewModel.deleteTask(it) },
                         onPinClick = {
                             if (it.isDone) {
-                                Toast.makeText(context, "已完成的任务不能置顶", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.task_cannot_pin_done), Toast.LENGTH_SHORT).show()
                             } else if (it.deadline < System.currentTimeMillis()) {
-                                Toast.makeText(context, "已过期的任务不能置顶", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.task_cannot_pin_expired), Toast.LENGTH_SHORT).show()
                             } else {
                                 viewModel.updateTask(it.copy(isPinned = !it.isPinned))
                             }
@@ -343,9 +343,9 @@ fun HomeScreen(
                         },
                         onPinClick = { task ->
                             if (task.isDone) {
-                                Toast.makeText(context, "已完成的任务不能置顶", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.task_cannot_pin_done), Toast.LENGTH_SHORT).show()
                             } else if (task.deadline < System.currentTimeMillis()) {
-                                Toast.makeText(context, "已过期的任务不能置顶", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.task_cannot_pin_expired), Toast.LENGTH_SHORT).show()
                             } else {
                                 viewModel.updateTask(task.copy(isPinned = !task.isPinned))
                             }
@@ -473,7 +473,7 @@ private fun AiErrorDialog(
         },
         title = {
             Text(
-                text = "AI 分析失败",
+                text = stringResource(R.string.ai_analysis_failed),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
@@ -488,13 +488,13 @@ private fun AiErrorDialog(
         confirmButton = {
             if (errorMessage.contains("API Key") || errorMessage.contains("设置")) {
                 TextButton(onClick = onGoToSettings) {
-                    Text("去设置")
+                    Text(stringResource(R.string.go_to_settings))
                 }
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("关闭")
+                Text(stringResource(R.string.close))
             }
         }
     )
@@ -593,7 +593,7 @@ private fun EnhancedFabGroup(
         ) {
             Icon(
                 imageVector = Icons.Rounded.Add,
-                contentDescription = "手动添加",
+                contentDescription = stringResource(R.string.add_task),
                 modifier = Modifier.size(26.dp)
             )
         }
@@ -631,7 +631,7 @@ private fun EnhancedFabGroup(
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Mic,
-                    contentDescription = "语音添加",
+                    contentDescription = stringResource(R.string.voice_add_task),
                     modifier = Modifier.size(28.dp)
                 )
             }

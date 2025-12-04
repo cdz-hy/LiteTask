@@ -46,9 +46,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.litetask.app.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,10 +88,10 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("设置") },
+                title = { Text(stringResource(R.string.settings)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 }
             )
@@ -101,7 +104,7 @@ fun SettingsScreen(
                 .padding(24.dp)
         ) {
             Text(
-                text = "AI 配置",
+                text = stringResource(R.string.ai_config),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -117,7 +120,7 @@ fun SettingsScreen(
                     value = aiProviders.find { it.first == selectedProvider }?.second ?: "DeepSeek V3.2",
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("AI 提供商") },
+                    label = { Text(stringResource(R.string.ai_provider)) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                     colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                     modifier = Modifier
@@ -147,7 +150,7 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = apiKey,
                 onValueChange = { apiKey = it },
-                label = { Text("API Key") },
+                label = { Text(stringResource(R.string.api_key)) },
                 leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
@@ -174,7 +177,7 @@ fun SettingsScreen(
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "正在验证连通性...",
+                                text = stringResource(R.string.verifying_connection),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -183,14 +186,14 @@ fun SettingsScreen(
                             Icon(
                                 Icons.Default.CheckCircle,
                                 contentDescription = null,
-                                tint = Color(0xFF4CAF50), // Green
+                                tint = colorResource(R.color.settings_success),
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "连接成功",
+                                text = stringResource(R.string.connection_success),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF4CAF50)
+                                color = colorResource(R.color.settings_success)
                             )
                         }
                         is SettingsViewModel.ConnectionState.Error -> {
@@ -219,7 +222,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Key 仅存储在本地",
+                    text = stringResource(R.string.key_stored_locally),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -228,7 +231,7 @@ fun SettingsScreen(
                     onClick = { viewModel.testConnection(apiKey, selectedProvider) },
                     enabled = apiKey.isNotBlank() && connectionState !is SettingsViewModel.ConnectionState.Testing
                 ) {
-                    Text("测试连通性")
+                    Text(stringResource(R.string.test_connection))
                 }
             }
 
@@ -237,22 +240,22 @@ fun SettingsScreen(
             Button(
                 onClick = { 
                     if (apiKey.isBlank()) {
-                        Toast.makeText(context, "请输入 API Key", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.please_enter_api_key), Toast.LENGTH_SHORT).show()
                         return@Button
                     }
                     
                     try {
                         viewModel.saveApiKey(apiKey)
                         viewModel.saveAiProvider(selectedProvider)
-                        Toast.makeText(context, "设置保存成功", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.settings_saved), Toast.LENGTH_SHORT).show()
                         onBack()
                     } catch (e: Exception) {
-                        Toast.makeText(context, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.settings_save_failed, e.message), Toast.LENGTH_SHORT).show()
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("保存设置")
+                Text(stringResource(R.string.save_settings))
             }
         }
     }

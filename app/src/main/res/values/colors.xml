@@ -98,4 +98,26 @@
     <color name="deadline_urgent_surface">#FFFEF2F2</color> <!-- 紧急任务背景 -->
     <color name="deadline_soon_surface">#FFFFF3E0</color>   <!-- 临近任务背景 (橙色浅底) -->
     <color name="deadline_future_surface">#FFF0FDF4</color> <!-- 未来任务背景 -->
+    
+    <!-- 语音录制对话框颜色 -->
+    <color name="voice_recorder_bg_top">#FF1A1C1E</color>
+    <color name="voice_recorder_bg_bottom">#FF2F343B</color>
+    <color name="voice_recorder_primary">#FFD0BCFF</color>
+    <color name="voice_recorder_text_primary">#FFE6E1E5</color>
+    <color name="voice_recorder_text_secondary">#FFCAC4D0</color>
+    <color name="voice_recorder_success">#FF81C784</color>
+    <color name="voice_recorder_error">#FFFF8A80</color>
+    <color name="voice_recorder_button_bg">#FF381E72</color>
+    
+    <!-- 设置界面颜色 -->
+    <color name="settings_success">#FF4CAF50</color>
+    
+    <!-- 通用颜色 -->
+    <color name="white_transparent_10">#1AFFFFFF</color>
+    <color name="white_transparent_5">#0DFFFFFF</color>
+    <color name="white_transparent_8">#14FFFFFF</color>
+    <color name="white_transparent_20">#33FFFFFF</color>
+    <color name="white_transparent_15">#26FFFFFF</color>
+    <color name="gray">#FF808080</color>
+    <color name="light_gray">#FFD3D3D3</color>
 </resources>

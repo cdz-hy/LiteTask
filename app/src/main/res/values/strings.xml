@@ -126,4 +126,85 @@
     <string name="deadline_soon_short">临近</string>
     <string name="deadline_future_short">未来</string>
     <string name="deadline_urgent_label">紧急</string>
+    
+    <!-- 语音录制对话框 -->
+    <string name="voice_listening">正在聆听...</string>
+    <string name="voice_recognizing">实时识别中...</string>
+    <string name="voice_analyzing">AI 正在分析...</string>
+    <string name="voice_result">识别结果</string>
+    <string name="voice_realtime_recognition">实时识别</string>
+    <string name="voice_edit_placeholder">点击编辑识别结果...</string>
+    <string name="voice_edit_hint">可点击上方文本框进行修改</string>
+    <string name="voice_example_hint">试试说: \"13号上午十点报告要截止了...\"</string>
+    <string name="voice_no_recognition">未能识别到语音</string>
+    <string name="voice_check_microphone">请确保麦克风正常工作，并清晰地说出内容</string>
+    <string name="voice_confirm_add">确认添加</string>
+    <string name="voice_close">关闭</string>
+    <string name="voice_finish">我说完了</string>
+    <string name="voice_no_content">未识别到语音内容</string>
+    
+    <!-- 设置界面 -->
+    <string name="settings">设置</string>
+    <string name="ai_provider">AI 提供商</string>
+    <string name="api_key">API Key</string>
+    <string name="test_connection">测试连通性</string>
+    <string name="connection_success">连接成功</string>
+    <string name="save_settings">保存设置</string>
+    <string name="settings_saved">设置保存成功</string>
+    <string name="settings_save_failed">保存失败: %s</string>
+    <string name="please_enter_api_key">请输入 API Key</string>
+    <string name="api_key_not_configured">请先在设置中配置大模型 API Key</string>
+    <string name="go_to_settings">去设置</string>
+    
+    <!-- 搜索界面 -->
+    <string name="search_placeholder">搜索任务标题、描述、子任务...</string>
+    <string name="clear_all">清除全部</string>
+    <string name="apply_filter">应用筛选</string>
+    
+    <!-- Toast 提示 -->
+    <string name="task_deleted">任务已删除</string>
+    <string name="task_updated">任务已更新</string>
+    <string name="task_cannot_pin_done">已完成的任务不能置顶</string>
+    <string name="task_pinned">已置顶</string>
+    <string name="task_unpinned">已取消置顶</string>
+    
+    <!-- 错误提示 -->
+    <string name="ai_analysis_failed">AI 分析失败</string>
+    <string name="error_api_key_invalid">API Key 无效，请在设置中检查并重新配置</string>
+    <string name="error_api_key_not_set">请先在设置中配置大模型 API Key</string>
+    <string name="error_api_key_permission">API Key 权限不足，请检查账户状态</string>
+    <string name="error_rate_limit">请求过于频繁，请稍后再试</string>
+    <string name="error_network">网络连接失败，请检查网络设置</string>
+    <string name="error_timeout">请求超时，请稍后重试</string>
+    <string name="error_ai_analysis">AI 分析失败，请稍后重试</string>
+    <string name="error_connection_failed">连接失败</string>
+    
+    <!-- 设置界面新增 -->
+    <string name="ai_config">AI 配置</string>
+    <string name="verifying_connection">正在验证连通性...</string>
+    <string name="key_stored_locally">Key 仅存储在本地</string>
+    
+    <!-- 搜索界面新增 -->
+    <string name="search_results_count">找到 %d 个任务</string>
+    <string name="active_tasks_count">未完成 (%d)</string>
+    <string name="done_tasks_count">已完成 (%d)</string>
+    <string name="no_matching_tasks">未找到匹配的任务</string>
+    <string name="filter_criteria">筛选条件</string>
+    <string name="date_range">日期范围</string>
+    <string name="recent_7_days">最近7天</string>
+    <string name="recent_30_days">最近30天</string>
+    
+    <!-- AI 识别相关 -->
+    <string name="ai_no_task_recognized">未能识别出任务</string>
+    <string name="ai_no_task_info">AI 未能从您的描述中提取任务信息\n请尝试更清晰地描述任务内容</string>
+    <string name="ai_try_saying">试试这样说：</string>
+    <string name="ai_example_tasks">• \"明天下午3点开会\"\n• \"周五前完成报告\"\n• \"下周一上午10点面试\"</string>
+    
+    <!-- 时长格式化 -->
+    <string name="duration_minutes">%d 分钟</string>
+    <string name="duration_hours_only">%d 小时</string>
+    <string name="duration_days_hours">%d 天 %d 小时</string>
+    
+    <!-- 截止视图 -->
+    <string name="no_upcoming_deadlines">没有即将截止的任务</string>
 </resources>

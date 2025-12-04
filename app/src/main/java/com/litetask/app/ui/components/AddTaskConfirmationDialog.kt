@@ -207,7 +207,7 @@ private fun EmptyTasksState(modifier: Modifier = Modifier) {
         Spacer(modifier = Modifier.height(24.dp))
         
         Text(
-            text = "未能识别出任务",
+            text = stringResource(R.string.ai_no_task_recognized),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
@@ -216,7 +216,7 @@ private fun EmptyTasksState(modifier: Modifier = Modifier) {
         Spacer(modifier = Modifier.height(8.dp))
         
         Text(
-            text = "AI 未能从您的描述中提取任务信息\n请尝试更清晰地描述任务内容",
+            text = stringResource(R.string.ai_no_task_info),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -233,14 +233,14 @@ private fun EmptyTasksState(modifier: Modifier = Modifier) {
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "试试这样说：",
+                    text = stringResource(R.string.ai_try_saying),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "• \"明天下午3点开会\"\n• \"周五前完成报告\"\n• \"下周一上午10点面试\"",
+                    text = stringResource(R.string.ai_example_tasks),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 20.sp
@@ -624,10 +624,11 @@ private fun calculateDurationInHours(task: Task): Float {
     return durationMillis / (1000f * 60 * 60)
 }
 
+@Composable
 private fun formatDuration(hours: Float): String {
     return when {
-        hours < 1 -> "${(hours * 60).toInt()} 分钟"
-        hours < 24 -> "${hours.toInt()} 小时"
-        else -> "${(hours / 24).toInt()} 天 ${(hours % 24).toInt()} 小时"
+        hours < 1 -> stringResource(R.string.duration_minutes, (hours * 60).toInt())
+        hours < 24 -> stringResource(R.string.duration_hours_only, hours.toInt())
+        else -> stringResource(R.string.duration_days_hours, (hours / 24).toInt(), (hours % 24).toInt())
     }
 }

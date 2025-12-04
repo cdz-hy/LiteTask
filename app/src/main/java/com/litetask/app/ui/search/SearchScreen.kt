@@ -15,10 +15,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.components.HtmlStyleTaskCard
@@ -44,17 +47,17 @@ fun SearchScreen(
     var showFilterSheet by remember { mutableStateOf(false) }
 
     Scaffold(
-        containerColor = Color(0xFFF2F6FC),
+        containerColor = colorResource(R.color.background),
         topBar = {
             TopAppBar(
                 title = { },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFF2F6FC)
+                    containerColor = colorResource(R.color.background)
                 )
             )
         }
@@ -72,7 +75,7 @@ fun SearchScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .shadow(elevation = 2.dp, shape = RoundedCornerShape(24.dp)),
-                placeholder = { Text("搜索任务标题、描述、子任务...") },
+                placeholder = { Text(stringResource(R.string.search_placeholder)) },
                 leadingIcon = {
                     Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray)
                 },
@@ -80,13 +83,13 @@ fun SearchScreen(
                     Row {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = "清除", tint = Color.Gray)
+                                Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear_all), tint = Color.Gray)
                             }
                         }
                         IconButton(onClick = { showFilterSheet = true }) {
                             Icon(
                                 Icons.Default.FilterList,
-                                contentDescription = "筛选",
+                                contentDescription = stringResource(R.string.filter_criteria),
                                 tint = if (selectedTypes.isNotEmpty() || dateRange != null) Primary else Color.Gray
                             )
                         }
@@ -145,7 +148,7 @@ fun SearchScreen(
 
             // 结果统计
             Text(
-                text = "找到 ${searchResults.size} 个任务",
+                text = stringResource(R.string.search_results_count, searchResults.size),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.Gray,
                 modifier = Modifier.padding(vertical = 8.dp)
@@ -168,10 +171,10 @@ fun SearchScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "未完成 (${activeTasks.size})",
+                                text = stringResource(R.string.active_tasks_count, activeTasks.size),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1F1F1F)
+                                color = colorResource(R.color.on_surface)
                             )
                         }
                     }
@@ -211,7 +214,7 @@ fun SearchScreen(
                                 color = Color.LightGray.copy(alpha = 0.5f)
                             )
                             Text(
-                                "已完成 (${doneTasks.size})",
+                                stringResource(R.string.done_tasks_count, doneTasks.size),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color.Gray,
                                 modifier = Modifier.padding(horizontal = 12.dp)
@@ -260,7 +263,7 @@ fun SearchScreen(
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                "未找到匹配的任务",
+                                stringResource(R.string.no_matching_tasks),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = Color.Gray
                             )
@@ -312,12 +315,12 @@ fun FilterBottomSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "筛选条件",
+                    stringResource(R.string.filter_criteria),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
                 TextButton(onClick = onClearAll) {
-                    Text("清除全部")
+                    Text(stringResource(R.string.clear_all))
                 }
             }
 
@@ -325,7 +328,7 @@ fun FilterBottomSheet(
 
             // 任务类型
             Text(
-                "任务类型",
+                stringResource(R.string.task_type),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(bottom = 12.dp)
@@ -355,7 +358,7 @@ fun FilterBottomSheet(
 
             // 日期范围快捷选项
             Text(
-                "日期范围",
+                stringResource(R.string.date_range),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(bottom = 12.dp)
@@ -365,14 +368,14 @@ fun FilterBottomSheet(
             val today = calendar.timeInMillis
             
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DateRangeOption("今天", today, today, dateRange, onDateRangeSelected)
+                DateRangeOption(stringResource(R.string.today), today, today, dateRange, onDateRangeSelected)
                 
                 calendar.add(Calendar.DAY_OF_YEAR, -7)
-                DateRangeOption("最近7天", calendar.timeInMillis, today, dateRange, onDateRangeSelected)
+                DateRangeOption(stringResource(R.string.recent_7_days), calendar.timeInMillis, today, dateRange, onDateRangeSelected)
                 
                 calendar.timeInMillis = today
                 calendar.add(Calendar.DAY_OF_YEAR, -30)
-                DateRangeOption("最近30天", calendar.timeInMillis, today, dateRange, onDateRangeSelected)
+                DateRangeOption(stringResource(R.string.recent_30_days), calendar.timeInMillis, today, dateRange, onDateRangeSelected)
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -382,7 +385,7 @@ fun FilterBottomSheet(
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary)
             ) {
-                Text("应用筛选")
+                Text(stringResource(R.string.apply_filter))
             }
         }
     }
@@ -414,12 +417,13 @@ fun DateRangeOption(
     }
 }
 
+@Composable
 private fun getTaskTypeName(type: TaskType): String {
     return when (type) {
-        TaskType.WORK -> "工作"
-        TaskType.LIFE -> "生活"
-        TaskType.URGENT -> "紧急"
-        TaskType.STUDY -> "学习"
+        TaskType.WORK -> stringResource(R.string.task_type_work)
+        TaskType.LIFE -> stringResource(R.string.task_type_life)
+        TaskType.URGENT -> stringResource(R.string.task_type_urgent)
+        TaskType.STUDY -> stringResource(R.string.task_type_study)
         else -> ""
     }
 }

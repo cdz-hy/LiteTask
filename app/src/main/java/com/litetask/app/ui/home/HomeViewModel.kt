@@ -1,5 +1,6 @@
 package com.litetask.app.ui.home
 
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.litetask.app.data.model.Task
@@ -12,9 +13,11 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import javax.inject.Inject
+import com.litetask.app.R
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
+    private val application: Application,
     private val taskRepository: TaskRepositoryImpl,
     private val aiRepository: AIRepository,
     private val speechHelper: com.litetask.app.util.SpeechRecognizerHelper,
@@ -284,19 +287,19 @@ class HomeViewModel @Inject constructor(
             }.onFailure { error ->
                 val errorMessage = when {
                     error.message?.contains("API Key 无效") == true -> 
-                        "API Key 无效，请在设置中检查并重新配置"
+                        application.getString(R.string.error_api_key_invalid)
                     error.message?.contains("未设置 API Key") == true -> 
-                        "请先在设置中配置大模型 API Key"
+                        application.getString(R.string.error_api_key_not_set)
                     error.message?.contains("权限不足") == true -> 
-                        "API Key 权限不足，请检查账户状态"
+                        application.getString(R.string.error_api_key_permission)
                     error.message?.contains("请求过于频繁") == true -> 
-                        "请求过于频繁，请稍后再试"
+                        application.getString(R.string.error_rate_limit)
                     error.message?.contains("无法连接") == true || 
                     error.message?.contains("网络") == true -> 
-                        "网络连接失败，请检查网络设置"
+                        application.getString(R.string.error_network)
                     error.message?.contains("超时") == true -> 
-                        "请求超时，请稍后重试"
-                    else -> error.message ?: "AI 分析失败，请稍后重试"
+                        application.getString(R.string.error_timeout)
+                    else -> error.message ?: application.getString(R.string.error_ai_analysis)
                 }
                 
                 _uiState.value = _uiState.value.copy(

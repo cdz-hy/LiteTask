@@ -72,4 +72,47 @@
     <dimen name="deadline_urgent_label_size">9sp</dimen>
     <dimen name="deadline_type_label_size">10sp</dimen>
     <dimen name="deadline_time_text_size">11sp</dimen>
+    
+    <!-- 语音录制对话框尺寸 -->
+    <dimen name="voice_recorder_close_button_top">48dp</dimen>
+    <dimen name="voice_recorder_close_button_end">24dp</dimen>
+    <dimen name="voice_recorder_close_button_size">40dp</dimen>
+    <dimen name="voice_recorder_close_icon_size">20dp</dimen>
+    <dimen name="voice_recorder_content_padding">32dp</dimen>
+    <dimen name="voice_recorder_title_spacing">12dp</dimen>
+    <dimen name="voice_recorder_section_spacing">32dp</dimen>
+    <dimen name="voice_recorder_visualizer_size">160dp</dimen>
+    <dimen name="voice_recorder_progress_size">64dp</dimen>
+    <dimen name="voice_recorder_progress_stroke">4dp</dimen>
+    <dimen name="voice_recorder_card_padding">16dp</dimen>
+    <dimen name="voice_recorder_card_corner">16dp</dimen>
+    <dimen name="voice_recorder_card_vertical_padding">16dp</dimen>
+    <dimen name="voice_recorder_icon_size">56dp</dimen>
+    <dimen name="voice_recorder_icon_padding">12dp</dimen>
+    <dimen name="voice_recorder_icon_spacing">24dp</dimen>
+    <dimen name="voice_recorder_text_field_min_height">100dp</dimen>
+    <dimen name="voice_recorder_text_field_max_height">200dp</dimen>
+    <dimen name="voice_recorder_hint_spacing">12dp</dimen>
+    <dimen name="voice_recorder_example_spacing">24dp</dimen>
+    <dimen name="voice_recorder_error_icon_size">64dp</dimen>
+    <dimen name="voice_recorder_error_icon_padding">16dp</dimen>
+    <dimen name="voice_recorder_error_spacing">16dp</dimen>
+    <dimen name="voice_recorder_error_message_spacing">8dp</dimen>
+    <dimen name="voice_recorder_error_top_padding">32dp</dimen>
+    <dimen name="voice_recorder_button_bottom">48dp</dimen>
+    <dimen name="voice_recorder_button_horizontal">32dp</dimen>
+    <dimen name="voice_recorder_button_height">56dp</dimen>
+    <dimen name="voice_recorder_button_height_small">48dp</dimen>
+    <dimen name="voice_recorder_button_text_size">18sp</dimen>
+    <dimen name="voice_recorder_button_text_size_small">16sp</dimen>
+    <dimen name="voice_recorder_button_spacing">8dp</dimen>
+    <dimen name="voice_recorder_button_message_spacing">16dp</dimen>
+    <dimen name="voice_recorder_glow_elevation">8dp</dimen>
+    <dimen name="voice_recorder_visualizer_glow_size">140dp</dimen>
+    <dimen name="voice_recorder_visualizer_bar_spacing">6dp</dimen>
+    <dimen name="voice_recorder_visualizer_bar_height">60dp</dimen>
+    <dimen name="voice_recorder_visualizer_bar_width">8dp</dimen>
+    <dimen name="voice_recorder_visualizer_bar_corner">50dp</dimen>
+    <dimen name="voice_recorder_text_line_height">26sp</dimen>
+    <dimen name="voice_recorder_title_letter_spacing">1sp</dimen>
 </resources>

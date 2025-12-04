@@ -239,11 +239,20 @@ class SpeechRecognizerHelper @Inject constructor(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 5000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 5000L)
+            // 减少静默等待时间以提高响应速度
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            // 添加额外参数以提高准确性
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            // 启用网络识别以提高准确度
+            putExtra(RecognizerIntent.EXTRA_WEB_SEARCH_ONLY, false)
+            // 设置识别模式为自由形式，适合任务识别场景
+            putExtra("android.speech.extra.PREFER_OFFLINE", false)
         }
         
         var shouldContinue = true
+        var retryCount = 0
+        val maxRetries = 3
         
         val listener = object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
@@ -269,26 +278,30 @@ class SpeechRecognizerHelper @Inject constructor(
             }
 
             override fun onResults(results: Bundle?) {
+                // 重置重试计数
+                retryCount = 0
+                
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
                     if (recognizedText.isNotEmpty()) {
                         recognizedText += " "
                     }
+                    // 选择置信度最高的结果
                     recognizedText += matches[0]
                     trySend(VoiceRecordResult.RecognitionResult(recognizedText))
                 }
                 
-                // 继续监听
+                // 继续监听，但减少延迟以提高响应速度
                 if (shouldContinue) {
                     mainHandler.postDelayed({
                         if (shouldContinue) {
                             try {
                                 recognizer.startListening(intent)
                             } catch (e: Exception) {
-                                // 忽略
+                                trySend(VoiceRecordResult.Error("语音识别启动失败: ${e.message}"))
                             }
                         }
-                    }, 200)
+                    }, 100)  // 减少延迟时间
                 }
             }
 

@@ -1,7 +1,9 @@
 package com.litetask.app.ui.settings
 
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.litetask.app.R
 import com.litetask.app.data.ai.AIProviderFactory
 import com.litetask.app.data.local.PreferenceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -13,6 +15,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
+    private val application: Application,
     private val preferenceManager: PreferenceManager,
     private val aiProviderFactory: AIProviderFactory // 注入工厂
 ) : ViewModel() {
@@ -52,7 +55,7 @@ class SettingsViewModel @Inject constructor(
     // 测试连接
     fun testConnection(apiKey: String, providerId: String) {
         if (apiKey.isBlank()) {
-            _connectionState.value = ConnectionState.Error("请输入 API Key")
+            _connectionState.value = ConnectionState.Error(application.getString(R.string.please_enter_api_key))
             return
         }
 
@@ -64,7 +67,7 @@ class SettingsViewModel @Inject constructor(
             result.onSuccess {
                 _connectionState.value = ConnectionState.Success
             }.onFailure {
-                _connectionState.value = ConnectionState.Error(it.message ?: "连接失败")
+                _connectionState.value = ConnectionState.Error(it.message ?: application.getString(R.string.error_connection_failed))
             }
         }
     }
