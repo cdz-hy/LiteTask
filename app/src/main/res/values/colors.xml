@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material Design 3 标准颜色 -->
+    <color name="purple_80">#FFD0BCFF</color>
+    <color name="purple_grey_80">#FFCCC2DC</color>
+    <color name="pink_80">#FFEFB8C8</color>
+    <color name="purple_40">#FF6650a4</color>
+    <color name="purple_grey_40">#FF625b71</color>
+    <color name="pink_40">#FF7D5260</color>
+
+    <!-- LiteTask 自定义颜色 (参考原型) -->
+    <color name="primary">#FF0B57D0</color>                 <!-- Google Blue 主色 -->
+    <color name="on_primary">#FFFFFFFF</color>              <!-- 主色上的文字 -->
+    <color name="primary_container">#FFD3E3FD</color>       <!-- 主色容器 -->
+    <color name="on_primary_container">#FF041E49</color>    <!-- 主色容器上的文字 -->
+    <color name="secondary_container">#FFC2E7FF</color>     <!-- 次色容器 -->
+    <color name="on_secondary_container">#FF001D35</color>  <!-- 次色容器上的文字 -->
+    <color name="tertiary_container">#FFFFD8E4</color>      <!-- 第三色容器 -->
+    <color name="on_tertiary_container">#FF31111D</color>   <!-- 第三色容器上的文字 -->
+    <color name="error_container">#FFF9DEDC</color>         <!-- 错误容器 -->
+    <color name="on_error_container">#FF410E0B</color>      <!-- 错误容器上的文字 -->
+    <color name="surface">#FFFFFFFF</color>                 <!-- 表面颜色 -->
+    <color name="surface_container">#FFEEF2F6</color>       <!-- 表面容器颜色 -->
+    <color name="background">#FFF2F6FC</color>              <!-- 背景颜色 -->
+    <color name="on_surface">#FF1F1F1F</color>              <!-- 表面文字颜色 -->
+    <color name="on_surface_variant">#FF444746</color>      <!-- 表面变体文字颜色 -->
+    <color name="outline">#FF747775</color>                 <!-- 轮廓线颜色 -->
+    <color name="outline_variant">#FFC4C7C5</color>         <!-- 轮廓线变体颜色 -->
+
+    <!-- 任务类型颜色 -->
+    <color name="work_task">#FF0B57D0</color>
+    <color name="life_task">#FF146C2E</color>
+    <color name="dev_task">#FF31111D</color>
+    <color name="health_task">#FF410E0B</color>
+    <color name="study_task">#FF65558F</color>
+    <color name="urgent_task">#FFB3261E</color>
+
+    <!-- 其他辅助颜色 -->
+    <color name="indigo_600">#FF4F46E5</color>
+    <color name="indigo_100">#FFE0E7FF</color>
+    <color name="blue_600">#FF2563EB</color>
+    <color name="green_500">#FF22C55E</color>
+    <color name="orange_500">#FFF97316</color>
+    <color name="purple_500">#FFA855F7</color>
+    <color name="red_500">#FFE11D48</color>
+    <color name="gray_500">#FF6B7280</color>
+    <color name="gray_300">#FFF3F4F6</color>
+    <color name="gray_400">#FF9CA3AF</color>
+    <color name="gray_600">#FF4B5563</color>
+    <color name="gray_200">#FFEEEEEE</color>
+    <color name="rose_300">#FFF43F5E</color>
+    <color name="rose_500">#FFFB7185</color>
+    <color name="slate_700">#FF3E4855</color>
+    <color name="slate_100">#FFEEF2F6</color>
+    <color name="slate_50">#FFF8F9FA</color>
+    <color name="slate_200">#FFC4C7C5</color>
+    <color name="slate_300">#FF747775</color>
+    <color name="slate_800">#FF1F1F1F</color>
+    <color name="rose_100">#FFFFEBEE</color>
+    <color name="rose_900">#FF31111D</color>
+    <color name="emerald_50">#FFF0FDF4</color>
+    <color name="orange_50">#FFFFF7ED</color>
+    <color name="violet_50">#FFF5F3FF</color>
+    <color name="blue_50">#FFEFF6FF</color>
+    
+    <!-- 任务卡片相关颜色 -->
+    <color name="task_work_surface">#FFEFF6FF</color>       <!-- Blue-50 -->
+    <color name="task_life_surface">#FFECFDF5</color>       <!-- Emerald-50 -->
+    <color name="task_study_surface">#FFF5F3FF</color>      <!-- Violet-50 -->
+    <color name="task_urgent_surface">#FFFEF2F2</color>     <!-- Red-50 -->
+    <color name="task_health_surface">#FFF0FDF4</color>     <!-- Emerald-50 -->
+    <color name="task_dev_surface">#FFFFF7ED</color>        <!-- Orange-50 -->
+    
+    <!-- 甘特图颜色 -->
+    <color name="gantt_work">#FF0B57D0</color>
+    <color name="gantt_life">#FF146C2E</color>
+    <color name="gantt_study">#FF65558F</color>
+    <color name="gantt_urgent">#FFB3261E</color>
+    <color name="gantt_done_background">#FFE0E0E0</color>
+    <color name="gantt_done_text">#FF9E9E9E</color>
+    <color name="gantt_work_background">#FFEFF6FF</color>
+    <color name="gantt_life_background">#FFECFDF5</color>
+    <color name="gantt_study_background">#FFF5F3FF</color>
+    <color name="gantt_urgent_background">#FFFEF2F2</color>
+    <color name="gantt_work_border">#FFBFDBFE</color>
+    <color name="gantt_life_border">#FFA7F3D0</color>
+    <color name="gantt_study_border">#FFDDD6FE</color>
+    <color name="gantt_urgent_border">#FFFECACA</color>
+    <color name="gantt_grid_line">#FFE5E7EB</color>
+    <color name="gantt_hour_line">#FFF3F4F6</color>
+    <color name="gantt_current_time">#FFEF4444</color>
+    <color name="gantt_today_background">#FFEFF6FF</color>
+    
+    <!-- 截止视图颜色 -->
+    <color name="deadline_urgent">#FFEF4444</color>         <!-- 紧急红色 (24h内) -->
+    <color name="deadline_soon">#FFFF9800</color>           <!-- 临近橙色 (24-48h) -->
+    <color name="deadline_future">#FF10B981</color>         <!-- 未来绿色 (48h以上) -->
+    <color name="deadline_urgent_surface">#FFFEF2F2</color> <!-- 紧急任务背景 -->
+    <color name="deadline_soon_surface">#FFFFF3E0</color>   <!-- 临近任务背景 (橙色浅底) -->
+    <color name="deadline_future_surface">#FFF0FDF4</color> <!-- 未来任务背景 -->
+    
+    <!-- 语音录制对话框颜色 -->
+    <color name="voice_recorder_bg_top">#FF1A1C1E</color>
+    <color name="voice_recorder_bg_bottom">#FF2F343B</color>
+    <color name="voice_recorder_primary">#FFD0BCFF</color>
+    <color name="voice_recorder_text_primary">#FFE6E1E5</color>
+    <color name="voice_recorder_text_secondary">#FFCAC4D0</color>
+    <color name="voice_recorder_success">#FF81C784</color>
+    <color name="voice_recorder_error">#FFFF8A80</color>
+    <color name="voice_recorder_button_bg">#FF381E72</color>
+    
+    <!-- 设置界面颜色 -->
+    <color name="settings_success">#FF4CAF50</color>
+    
+    <!-- 通用颜色 -->
+    <color name="white_transparent_10">#1AFFFFFF</color>
+    <color name="white_transparent_5">#0DFFFFFF</color>
+    <color name="white_transparent_8">#14FFFFFF</color>
+    <color name="white_transparent_20">#33FFFFFF</color>
+    <color name="white_transparent_15">#26FFFFFF</color>
+    <color name="gray">#FF808080</color>
+    <color name="light_gray">#FFD3D3D3</color>
+    
+    <!-- 搜索界面颜色 -->
+    <color name="search_date_range_selected_bg">#FFEFF6FF</color>        <!-- 浅蓝色背景，更明显 -->
+    <color name="search_date_range_unselected_bg">#FFFFFFFF</color>
+    <color name="search_date_range_selected_border">#FFE0E0E0</color>
+    <color name="search_date_range_text_selected">#FF444746</color>
+    <color name="search_date_range_text_unselected">#FF444746</color>
+</resources>

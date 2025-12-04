@@ -22,7 +22,9 @@ object DatabaseModule {
             context,
             AppDatabase::class.java,
             "litetask.db"
-        ).build()
+        )
+            .fallbackToDestructiveMigration() // 允许在schema变化时重建数据库
+            .build()
     }
 
     @Provides

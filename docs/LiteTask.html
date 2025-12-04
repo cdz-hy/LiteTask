@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LiteTask - AI Schedule Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        surface: '#F2F6FC',
+                        onSurface: '#1F1F1F',
+                        primary: '#0B57D0',
+                        primaryContainer: '#D3E3FD',
+                        onPrimaryContainer: '#041E49',
+                        secondaryContainer: '#C2E7FF',
+                        tertiaryContainer: '#FFD8E4',
+                        urgent: '#F43F5E',
+                    },
+                    fontFamily: {
+                        sans: ['Roboto', 'PingFang SC', 'system-ui', 'sans-serif'],
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-out',
+                        'slide-up': 'slideUp 0.3s ease-out',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(100%)' },
+                            '100%': { transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 隐藏滚动条但保留滚动功能 */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        body {
+            background-color: #F2F6FC;
+            color: #1F1F1F;
+            -webkit-tap-highlight-color: transparent;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden relative">
+
+    <div class="sticky top-0 z-10 bg-[#F2F6FC] px-4 pt-12 pb-2 flex flex-col shrink-0">
+        <div class="flex items-center justify-between mb-4">
+            <button class="p-2 -ml-2 rounded-full hover:bg-black/5 transition-colors">
+                <i data-lucide="menu" class="w-6 h-6 text-[#1F1F1F]"></i>
+            </button>
+            <div class="w-10 h-10 rounded-full bg-[#C2E7FF] flex items-center justify-center text-[#001D35] font-bold text-sm border border-white shadow-sm">
+                L
+            </div>
+        </div>
+        <div>
+            <h1 class="text-3xl font-normal text-[#1F1F1F]">LiteTask</h1>
+            <div class="flex items-center gap-2 mt-1 opacity-80">
+                <span class="text-sm font-medium text-[#444746]" id="current-date">11月26日</span>
+                <div class="w-1 h-1 rounded-full bg-slate-400"></div>
+                <span class="text-sm font-medium text-[#444746]"><span id="task-count">4</span> 个任务</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="px-4 my-4 shrink-0">
+        <div class="bg-[#EEF2F6] p-1 rounded-full flex relative">
+            <button onclick="switchView('timeline')" id="btn-timeline" class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-medium transition-all duration-200 bg-white shadow-sm text-primary">
+                <i data-lucide="layout-list" class="w-4 h-4"></i>
+                <span>列表</span>
+            </button>
+            <button onclick="switchView('gantt')" id="btn-gantt" class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-medium transition-all duration-200 text-[#444746] hover:bg-white/50">
+                <i data-lucide="gantt-chart-square" class="w-4 h-4"></i>
+                <span>甘特</span>
+            </button>
+            <button onclick="switchView('deadline')" id="btn-deadline" class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-medium transition-all duration-200 text-[#444746] hover:bg-white/50">
+                <i data-lucide="flag" class="w-4 h-4"></i>
+                <span>截止</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="flex-1 overflow-hidden relative">
+        
+        <div id="view-timeline" class="h-full overflow-y-auto px-4 pb-32 space-y-3 scrollbar-hide">
+            </div>
+
+        <div id="view-gantt" class="hidden h-full flex flex-col bg-white rounded-t-[32px] shadow-[0_-4px_20px_rgba(0,0,0,0.05)] mt-2 overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-white z-10 shrink-0">
+                <h3 class="font-bold text-gray-800 flex items-center gap-2">
+                    <i data-lucide="gantt-chart-square" class="w-4 h-4 text-primary"></i> 今日分布
+                </h3>
+                <span class="text-xs bg-primaryContainer text-onPrimaryContainer px-2 py-1 rounded-md font-bold">Now: 15:30</span>
+            </div>
+            <div class="flex-1 overflow-auto scrollbar-hide relative" id="gantt-container">
+                </div>
+        </div>
+
+        <div id="view-deadline" class="hidden h-full overflow-y-auto px-4 pb-32 space-y-6 scrollbar-hide">
+             <div class="bg-[#3E4855] rounded-[24px] p-6 text-white shadow-lg shadow-gray-300">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="p-2 bg-white/10 rounded-full"><i data-lucide="alert-circle" class="w-6 h-6"></i></div>
+                    <div>
+                    <h3 class="font-bold text-lg">紧迫任务</h3>
+                    <p class="text-white/70 text-xs">今天有 <span id="urgent-count">1</span> 个任务必须完成</p>
+                    </div>
+                </div>
+                <div class="h-1 bg-white/10 rounded-full overflow-hidden">
+                    <div class="h-full bg-rose-400 w-[40%]"></div>
+                </div>
+            </div>
+            
+            <div>
+                <h4 class="text-sm font-bold text-gray-500 mb-3 px-2 uppercase tracking-wider">Counting Down</h4>
+                <div class="space-y-3" id="deadline-list">
+                    </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="absolute bottom-8 right-6 flex flex-col gap-4 items-end z-30 pointer-events-none">
+        <button onclick="alert('手动添加功能（原型示意）')" class="pointer-events-auto w-12 h-12 rounded-[16px] bg-secondaryContainer text-[#001D35] shadow-md flex items-center justify-center hover:scale-105 active:scale-95 transition-transform">
+            <i data-lucide="plus" class="w-6 h-6"></i>
+        </button>
+
+        <button onclick="startListening()" class="pointer-events-auto h-16 pr-6 pl-5 rounded-[20px] bg-primary text-white shadow-xl shadow-blue-200 flex items-center gap-3 hover:bg-[#0842A0] hover:scale-105 active:scale-95 transition-all duration-300">
+            <i data-lucide="mic" class="w-6 h-6"></i>
+            <span class="font-medium text-[15px] tracking-wide">语音安排</span>
+        </button>
+    </div>
+
+    <div id="listening-layer" class="hidden fixed inset-0 z-50 bg-[#1F1F1F]/95 backdrop-blur-md flex flex-col items-center justify-center animate-fade-in">
+        <button onclick="closeListening()" class="absolute top-12 right-6 bg-white/10 p-3 rounded-full text-white hover:bg-white/20">
+            <i data-lucide="x" class="w-6 h-6"></i>
+        </button>
+
+        <div class="w-full max-w-xs text-center space-y-10">
+            <div class="relative flex justify-center">
+                <div class="absolute w-40 h-40 bg-[#A8C7FA]/20 rounded-full animate-ping"></div>
+                <div class="absolute w-40 h-40 bg-[#A8C7FA]/10 rounded-full animate-ping delay-300"></div>
+                <div class="w-32 h-32 bg-gradient-to-b from-[#0B57D0] to-[#0842A0] rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(11,87,208,0.4)] relative z-10">
+                    <i data-lucide="mic" class="w-12 h-12 text-white animate-pulse"></i>
+                </div>
+            </div>
+            <div>
+                <h2 class="text-white text-3xl font-normal mb-4">正在聆听...</h2>
+                <p class="text-[#C4C7C5] text-lg leading-relaxed">
+                    "帮我把下午5点的会议加进去，持续一小时，是关于Q4预算的..."
+                </p>
+            </div>
+        </div>
+
+        <button onclick="finishListening()" class="absolute bottom-24 bg-[#E3E3E3] text-[#1F1F1F] px-10 py-4 rounded-full font-medium text-lg hover:scale-105 transition-transform active:scale-95">
+            说完了
+        </button>
+    </div>
+
+    <div id="ai-sheet-overlay" class="hidden fixed inset-0 z-50 flex items-end">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="cancelAI()"></div>
+        <div class="relative w-full bg-white rounded-t-[32px] p-6 shadow-2xl animate-slide-up flex flex-col max-h-[85vh]">
+            <div class="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-8 opacity-60"></div>
+            
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white">
+                    <i data-lucide="sparkles" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold text-gray-800">AI 识别结果</h3>
+                    <p class="text-sm text-gray-500">已解析关键信息</p>
+                </div>
+            </div>
+
+            <div class="space-y-4 mb-8">
+                <div class="bg-[#F0F4F8] p-4 rounded-2xl">
+                    <label class="text-xs font-bold text-gray-500 uppercase mb-1 block">任务标题</label>
+                    <div class="text-lg text-gray-800">Q4 季度预算会议</div>
+                </div>
+                <div class="flex gap-3">
+                    <div class="flex-1 bg-[#F0F4F8] p-4 rounded-2xl">
+                        <label class="text-xs font-bold text-gray-500 uppercase mb-1 block">时间</label>
+                        <div class="flex items-center gap-2 text-gray-800 font-medium">
+                            <i data-lucide="clock" class="w-4 h-4"></i> 17:00 - 18:00
+                        </div>
+                    </div>
+                    <div class="flex-1 bg-[#F0F4F8] p-4 rounded-2xl">
+                        <label class="text-xs font-bold text-gray-500 uppercase mb-1 block">时长</label>
+                        <div class="text-gray-800 font-medium">1 小时</div>
+                    </div>
+                </div>
+                <div class="border border-rose-100 bg-rose-50 p-4 rounded-2xl flex items-center justify-between">
+                   <div class="flex items-center gap-2 text-rose-700 font-medium">
+                      <i data-lucide="flag" class="w-4 h-4"></i> 截止: 18:00
+                   </div>
+                   <span class="bg-white text-rose-600 text-[10px] px-2 py-1 rounded border border-rose-200 font-bold">URGENT</span>
+                </div>
+            </div>
+
+            <div class="flex gap-3 mt-auto">
+                <button onclick="cancelAI()" class="flex-1 py-4 rounded-full text-blue-600 font-medium hover:bg-blue-50 transition-colors">取消</button>
+                <button onclick="confirmTask()" class="flex-[2] py-4 rounded-full bg-[#0B57D0] text-white font-bold shadow-lg shadow-blue-200 hover:bg-[#0842A0] active:scale-95 transition-transform flex items-center justify-center gap-2">
+                    <i data-lucide="check" class="w-5 h-5"></i> 确认添加
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 数据与配置 ---
+        let tasks = [
+            { id: 1, title: '产品需求评审', type: 'work', startTime: '09:00', endTime: '11:30', duration: 2.5, deadline: null, progress: 100, location: '会议室 A', status: 'done' },
+            { id: 2, title: 'UI 组件库搭建', type: 'work', startTime: '13:00', endTime: '16:00', duration: 3, deadline: '2025-11-26T18:00:00', progress: 45, location: '研发中心', status: 'todo' },
+            { id: 3, title: '紧急修复 Bug #402', type: 'urgent', startTime: '16:30', endTime: '18:30', duration: 2, deadline: '2025-11-26T19:00:00', progress: 10, location: '工位', status: 'todo' },
+            { id: 4, title: '健身房有氧', type: 'life', startTime: '19:30', endTime: '21:00', duration: 1.5, deadline: null, progress: 0, location: 'PowerGym', status: 'todo' }
+        ];
+
+        const aiTask = { 
+            id: 999, 
+            title: 'Q4 季度预算会议', 
+            type: 'work', 
+            startTime: '17:00', 
+            endTime: '18:00', 
+            duration: 1, 
+            deadline: '2025-11-26T18:00:00', 
+            progress: 0, 
+            location: 'Zoom', 
+            status: 'todo' 
+        };
+
+        // --- 渲染逻辑 ---
+
+        function init() {
+            lucide.createIcons();
+            renderAllViews();
+        }
+
+        function renderAllViews() {
+            document.getElementById('task-count').innerText = tasks.length;
+            renderTimeline();
+            renderGantt();
+            renderDeadline();
+            lucide.createIcons();
+        }
+
+        // 1. 渲染列表视图
+        function renderTimeline() {
+            const container = document.getElementById('view-timeline');
+            container.innerHTML = tasks.map(task => {
+                const isUrgent = task.type === 'urgent';
+                const isDone = task.status === 'done';
+                return `
+                <div class="group relative bg-white p-4 rounded-[20px] border border-transparent hover:border-[#C2E7FF] shadow-sm transition-all active:scale-[0.98] ${isDone ? 'opacity-60' : ''}">
+                   <div class="absolute left-0 top-6 w-1 h-8 rounded-r-full ${isUrgent ? 'bg-rose-500' : 'bg-[#0B57D0]'}"></div>
+                   <div class="flex justify-between items-start pl-3">
+                      <div>
+                        <h3 class="text-lg font-medium ${isDone ? 'line-through text-gray-400' : 'text-[#1F1F1F]'}">${task.title}</h3>
+                        <div class="flex items-center gap-2 mt-1 text-xs font-medium text-gray-500">
+                           <i data-lucide="clock" class="w-3 h-3"></i>
+                           <span>${task.startTime} - ${task.endTime}</span>
+                           ${task.location ? `<span>•</span><span>${task.location}</span>` : ''}
+                        </div>
+                      </div>
+                      <div class="flex flex-col items-end gap-2">
+                        ${task.deadline ? `<span class="px-2 py-1 rounded-md text-[10px] font-bold ${isUrgent ? 'bg-rose-100 text-rose-700' : 'bg-blue-50 text-blue-700'}">今天截止</span>` : ''}
+                        ${isDone ? '<i data-lucide="check-circle-2" class="w-5 h-5 text-green-600"></i>' : ''}
+                      </div>
+                   </div>
+                </div>`;
+            }).join('');
+        }
+
+        // 2. 渲染甘特图
+        function renderGantt() {
+            const container = document.getElementById('gantt-container');
+            const startHour = 8;
+            const endHour = 24;
+            const pxPerHour = 100;
+            const totalWidth = (endHour - startHour) * pxPerHour;
+            
+            // 生成背景网格
+            let gridHtml = `<div class="flex absolute inset-0 h-full">`;
+            for(let i = 0; i <= endHour - startHour; i++) {
+                gridHtml += `<div class="border-r border-dashed border-gray-200 h-full relative" style="width: ${pxPerHour}px">
+                    <span class="absolute top-2 left-2 text-xs font-mono text-gray-400 select-none">${(startHour + i).toString().padStart(2, '0')}:00</span>
+                </div>`;
+            }
+            gridHtml += `</div>`;
+
+            // 当前时间线 (15:30)
+            const currentHour = 15.5; 
+            const currentPos = (currentHour - startHour) * pxPerHour;
+            const lineHtml = `
+                <div class="absolute top-0 bottom-0 w-[2px] bg-rose-500 z-20 shadow-[0_0_10px_rgba(244,63,94,0.5)]" style="left: ${currentPos}px">
+                     <div class="absolute -top-1 -translate-x-1/2 w-3 h-3 bg-rose-500 rounded-full"></div>
+                </div>`;
+
+            // 生成任务块
+            let tasksHtml = `<div class="pt-12 px-0 space-y-6 relative z-10">`;
+            tasks.forEach((task, idx) => {
+                const [h, m] = task.startTime.split(':').map(Number);
+                const taskStart = h + m / 60;
+                const offset = (taskStart - startHour) * pxPerHour;
+                const width = task.duration * pxPerHour;
+                
+                let bgClass = 'bg-[#C2E7FF] text-[#001D35] border border-[#7FCFFF]';
+                if (task.type === 'urgent') bgClass = 'bg-[#FFD8E4] text-[#31111D] border border-[#FFB0C8]';
+                if (task.type === 'life') bgClass = 'bg-[#E7F3E8] text-[#144419] border border-[#BDE3C0]';
+                if (task.status === 'done') bgClass = 'bg-gray-100 text-gray-400 border border-gray-200 grayscale';
+
+                tasksHtml += `
+                    <div class="h-16 rounded-2xl absolute flex flex-col justify-center px-4 shadow-sm transition-all hover:shadow-md cursor-pointer overflow-hidden whitespace-nowrap ${bgClass}"
+                        style="left: ${offset}px; width: ${width}px; top: ${12 + idx * 76}px">
+                        <div class="font-bold text-sm flex items-center gap-2">${task.title}</div>
+                        <div class="text-xs opacity-80 mt-1 flex items-center gap-2">
+                             <i data-lucide="clock" class="w-2.5 h-2.5"></i> ${task.duration}h (${task.startTime})
+                        </div>
+                    </div>
+                `;
+            });
+            tasksHtml += `</div>`;
+
+            container.innerHTML = `<div style="width: ${totalWidth + 60}px; height: 100%; min-height: 500px;" class="relative pb-32">
+                ${gridHtml}
+                ${lineHtml}
+                ${tasksHtml}
+            </div>`;
+        }
+
+        // 3. 渲染截止视图
+        function renderDeadline() {
+            const container = document.getElementById('deadline-list');
+            const urgentTasks = tasks.filter(t => t.deadline);
+            document.getElementById('urgent-count').innerText = urgentTasks.length;
+            
+            container.innerHTML = urgentTasks.map(task => `
+                <div class="bg-white rounded-[24px] p-5 border border-gray-100 shadow-sm flex items-center gap-4">
+                    <div class="relative w-14 h-14 flex items-center justify-center">
+                        <svg class="w-full h-full rotate-[-90deg]" viewBox="0 0 36 36">
+                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#eee" stroke-width="3" />
+                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#F43F5E" stroke-width="3" stroke-dasharray="70, 100" />
+                        </svg>
+                        <div class="absolute flex flex-col items-center text-rose-600 leading-none">
+                            <span class="text-sm font-bold">3</span>
+                            <span class="text-[8px]">HRS</span>
+                        </div>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-gray-800">${task.title}</h3>
+                        <p class="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                            <i data-lucide="flag" class="w-2.5 h-2.5 text-rose-500"></i> 截止: ${task.deadline.split('T')[1].slice(0, 5)}
+                        </p>
+                    </div>
+                    <button class="bg-gray-100 p-3 rounded-full hover:bg-green-100 hover:text-green-600 transition-colors">
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // --- 交互逻辑 ---
+
+        function switchView(viewName) {
+            // Hide all
+            document.getElementById('view-timeline').classList.add('hidden');
+            document.getElementById('view-gantt').classList.add('hidden');
+            document.getElementById('view-deadline').classList.add('hidden');
+            
+            // Reset buttons
+            const buttons = ['btn-timeline', 'btn-gantt', 'btn-deadline'];
+            buttons.forEach(id => {
+                const btn = document.getElementById(id);
+                btn.className = "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-medium transition-all duration-200 text-[#444746] hover:bg-white/50";
+            });
+
+            // Show current
+            document.getElementById(`view-${viewName}`).classList.remove('hidden');
+            
+            // Active button style
+            const activeBtn = document.getElementById(`btn-${viewName}`);
+            activeBtn.className = "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-medium transition-all duration-200 bg-white shadow-sm text-primary";
+        }
+
+        function startListening() {
+            document.getElementById('listening-layer').classList.remove('hidden');
+        }
+
+        function closeListening() {
+            document.getElementById('listening-layer').classList.add('hidden');
+        }
+
+        function finishListening() {
+            closeListening();
+            // 模拟延迟后打开 Sheet
+            setTimeout(() => {
+                document.getElementById('ai-sheet-overlay').classList.remove('hidden');
+            }, 300);
+        }
+
+        function cancelAI() {
+            document.getElementById('ai-sheet-overlay').classList.add('hidden');
+        }
+
+        function confirmTask() {
+            // 添加新任务到数组
+            tasks.push(aiTask);
+            cancelAI();
+            // 重新渲染视图
+            renderAllViews();
+            // 自动切到甘特图展示效果
+            switchView('gantt');
+            // 滚动到新任务位置（简单处理）
+            setTimeout(() => {
+                 document.getElementById('gantt-container').scrollTop = 1000;
+            }, 100);
+        }
+
+        // 初始化
+        init();
+    </script>
+</body>
+</html>

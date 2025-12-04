@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.LiteTask" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.LiteTask" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- 设置窗口背景为白色，防止横屏时出现黑边 -->
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:colorBackground">@android:color/white</item>
+        <!-- 状态栏和导航栏颜色 -->
+        <item name="android:statusBarColor">@android:color/white</item>
+        <item name="android:navigationBarColor">@android:color/white</item>
+    </style>
 </resources>

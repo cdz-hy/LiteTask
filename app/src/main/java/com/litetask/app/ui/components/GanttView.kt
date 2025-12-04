@@ -2,203 +2,478 @@ package com.litetask.app.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
+import com.litetask.app.R
 import com.litetask.app.data.model.Task
+import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
-import com.litetask.app.ui.theme.Primary
-import java.util.Calendar
+import java.text.SimpleDateFormat
+import java.util.*
+import kotlin.math.max
+
+enum class GanttViewMode {
+    TODAY,    // 今日视图
+    THREE_DAY, // 3日视图
+    SEVEN_DAY  // 7日视图
+}
+
+// --- Colors from Design ---
+private val ColorWork = Color(0xFF0B57D0)
+private val ColorLife = Color(0xFF146C2E)
+private val ColorStudy = Color(0xFF65558F)
+private val ColorUrgent = Color(0xFFB3261E)
+private val ColorDone = Color(0xFFE0E0E0)
+private val ColorTextDone = Color(0xFF9E9E9E)
+
+private val ColorWorkBg = Color(0xFFEFF6FF)
+private val ColorLifeBg = Color(0xFFECFDF5)
+private val ColorStudyBg = Color(0xFFF5F3FF)
+
+private val ColorWorkBorder = Color(0xFFBFDBFE)
+private val ColorLifeBorder = Color(0xFFA7F3D0)
+private val ColorStudyBorder = Color(0xFFDDD6FE)
 
 @Composable
 fun GanttView(
-    tasks: List<Task>,
+    taskComposites: List<TaskDetailComposite>,
+    onTaskClick: (Task) -> Unit,
+    onNavigateToFullscreen: (GanttViewMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scrollState = rememberScrollState()
-    val startHour = 8
-    val endHour = 24
-    val hourWidth = 100.dp // 每小时的宽度
+    var viewMode by remember { mutableStateOf(GanttViewMode.THREE_DAY) }
     
+    // Time Configuration
+    val now = System.currentTimeMillis()
+    val calendar = Calendar.getInstance()
+    calendar.timeInMillis = now
+    // Reset to start of today (00:00)
+    calendar.set(Calendar.HOUR_OF_DAY, 0)
+    calendar.set(Calendar.MINUTE, 0)
+    calendar.set(Calendar.SECOND, 0)
+    calendar.set(Calendar.MILLISECOND, 0)
+    val startOfToday = calendar.timeInMillis
+    
+    // 根据视图模式配置参数
+    val (dayWidth, daysToShow, startOffset) = when (viewMode) {
+        GanttViewMode.TODAY -> Triple(800.dp, 1, 0)      // 今日视图：更宽，显示1天
+        GanttViewMode.THREE_DAY -> Triple(220.dp, 3, 0)  // 3日视图：今天+未来2天
+        GanttViewMode.SEVEN_DAY -> Triple(180.dp, 7, -2) // 7日视图：前2天+今天+后4天
+    }
+    
+    val totalWidth = dayWidth * daysToShow
+    
+    // 计算视图的起始和结束时间
+    val startOfView = startOfToday + (startOffset * 24 * 60 * 60 * 1000L)
+    val endOfView = startOfView + (daysToShow * 24 * 60 * 60 * 1000L)
+
+    // Filter tasks that overlap with the view
+    val visibleTasks = taskComposites.filter { composite ->
+        val taskStart = composite.task.startTime
+        val taskEnd = composite.task.deadline
+        taskStart < endOfView && taskEnd > startOfView
+    }.sortedBy { it.task.startTime }
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(scrollState)
-            .background(Color.White)
+            .background(Color.White, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
     ) {
-        // 顶部标题栏
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.White)
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.BarChart,
-                contentDescription = null,
-                tint = Primary,
-                modifier = Modifier.padding(end = 8.dp)
-            )
-            Text(
-                text = "今日时间分布",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1F1F1F)
-            )
-            Box(modifier = Modifier.weight(1f))
-            Text(
-                text = "Now: 15:30",
-                style = MaterialTheme.typography.labelMedium,
-                color = Color(0xFF041E49),
-                modifier = Modifier
-                    .background(Color(0xFFD3E3FD), MaterialTheme.shapes.small)
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            )
-        }
+        // 1. Legend Header with View Mode Selector
+        GanttHeader(
+            viewMode = viewMode,
+            onViewModeChange = { viewMode = it }
+        )
+
+        // 2. Scrollable Content
+        val horizontalScrollState = rememberScrollState()
+        val verticalScrollState = rememberScrollState()
+        val density = LocalDensity.current
         
-        // 时间网格和任务条
+        // 7日视图初始滚动到今天的位置（居中）
+        LaunchedEffect(viewMode) {
+            if (viewMode == GanttViewMode.SEVEN_DAY) {
+                val todayOffset = 2 // 今天是第3天（索引2）
+                val scrollToX = (todayOffset * with(density) { dayWidth.toPx() }).toInt()
+                horizontalScrollState.scrollTo(scrollToX)
+            } else {
+                horizontalScrollState.scrollTo(0)
+            }
+        }
+
         Box(
             modifier = Modifier
+                .weight(1f)
                 .fillMaxWidth()
-                .height(400.dp) // 固定高度，实际应用中应动态计算
         ) {
-            // 绘制时间网格
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val width = size.width
-                val height = size.height
-                
-                // 绘制垂直时间线
-                for (i in 0..(endHour - startHour)) {
-                    val x = i * hourWidth.toPx()
-                    drawLine(
-                        color = Color(0xFFC4C7C5),
-                        start = Offset(x, 0f),
-                        end = Offset(x, height),
-                        strokeWidth = 1.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                    )
-                    
-                    // 时间标签
-                    if (i < (endHour - startHour)) {
-                        // 简化文本绘制
-                        // 实际应用中可能需要使用 Compose 的 Text 组件
-                    }
-                }
-                
-                // 绘制当前时间红线
-                val currentHour = 15.5f // 假设现在是15:30
-                val currentX = (currentHour - startHour) * hourWidth.toPx()
-                drawLine(
-                    color = Color(0xFFF43F5E), // 玫红色
-                    start = Offset(currentX, 0f),
-                    end = Offset(currentX, height),
-                    strokeWidth = 2.dp.toPx()
-                )
-                
-                // 当前时间点圆点
-                drawCircle(
-                    color = Color(0xFFF43F5E),
-                    radius = 6.dp.toPx(),
-                    center = Offset(currentX, 0f)
-                )
-            }
-            
-            // 绘制任务条
-            tasks.forEachIndexed { index, task ->
-                val taskStartHour = getHoursFromTimestamp(task.startTime)
-                val taskDurationHours = (task.endTime - task.startTime) / (1000.0f * 60 * 60)
-                val offset = (taskStartHour - startHour) * hourWidth.value
-                val widthDp = taskDurationHours * hourWidth.value
-                
-                // 根据任务类型设置颜色
-                val (bgColor, textColor, borderColor) = when (task.type) {
-                    TaskType.WORK -> Triple(
-                        Color(0xFFC2E7FF),
-                        Color(0xFF001D35),
-                        Color(0xFF7FCFFF)
-                    )
-                    TaskType.LIFE -> Triple(
-                        Color(0xFFE7F3E8),
-                        Color(0xFF144419),
-                        Color(0xFFBDE3C0)
-                    )
-                    TaskType.DEV -> Triple(
-                        Color(0xFFFFD8E4),
-                        Color(0xFF31111D),
-                        Color(0xFFFFB0C8)
-                    )
-                    TaskType.HEALTH -> Triple(
-                        Color(0xFFFFEDD5),
-                        Color(0xFF9A3412),
-                        Color(0xFFFECBA1)
-                    )
-                    else -> Triple(
-                        Color(0xFFE7F3E8),
-                        Color(0xFF144419),
-                        Color(0xFFBDE3C0)
-                    )
-                }
-                
-                Box(
+            // Horizontal Scroll Container
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .horizontalScroll(horizontalScrollState)
+            ) {
+                Column(
                     modifier = Modifier
-                        .offset(x = offset.dp, y = 40.dp + (index * 80).dp)
-                        .width(widthDp.dp)
-                        .height(60.dp)
-                        .background(bgColor, MaterialTheme.shapes.medium)
-                        .padding(12.dp)
+                        .width(totalWidth)
+                        .fillMaxHeight()
                 ) {
-                    Column {
-                        Text(
-                            text = task.title,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = textColor
-                        )
-                        Text(
-                            text = "${String.format("%.1f", taskDurationHours)}h (${formatGanttTime(task.startTime)}-${formatGanttTime(task.endTime)})",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = textColor.copy(alpha = 0.8f),
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    
-                    // 进度条
-                    if (!task.isDone) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .background(Color.Black.copy(alpha = 0.1f))
-                        ) {
+                    // A. Date Headers (Sticky Vertically)
+                    Row(
+                        modifier = Modifier
+                            .height(50.dp)
+                            .fillMaxWidth()
+                            .background(Color.White.copy(alpha = 0.95f))
+                            .border(0.5.dp, Color(0xFFF0F0F0))
+                    ) {
+                        for (i in 0 until daysToShow) {
+                            val dayCal = Calendar.getInstance()
+                            dayCal.timeInMillis = startOfView
+                            dayCal.add(Calendar.DAY_OF_YEAR, i)
+                            
+                            val isToday = dayCal.get(Calendar.YEAR) == Calendar.getInstance().get(Calendar.YEAR) &&
+                                         dayCal.get(Calendar.DAY_OF_YEAR) == Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
+                            
+                            val dateStr = SimpleDateFormat("M/d", Locale.getDefault()).format(dayCal.time)
+                            val dayLabel = when {
+                                isToday -> stringResource(R.string.today)
+                                viewMode == GanttViewMode.TODAY -> SimpleDateFormat("EEEE", Locale.getDefault()).format(dayCal.time)
+                                else -> SimpleDateFormat("EEE", Locale.getDefault()).format(dayCal.time)
+                            }
+                            
                             Box(
                                 modifier = Modifier
-                                    .height(4.dp)
-                                    .fillMaxWidth(task.progress / 100f)
-                                    .background(Color.Black.copy(alpha = 0.2f))
+                                    .width(dayWidth)
+                                    .fillMaxHeight()
+                                    .background(if (isToday) androidx.compose.ui.res.colorResource(id = R.color.gantt_today_background).copy(alpha = 0.4f) else Color.Transparent)
+                                    .border(width = 0.5.dp, color = androidx.compose.ui.res.colorResource(id = R.color.gantt_grid_line)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = dateStr,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isToday) ColorWork else androidx.compose.ui.res.colorResource(id = R.color.gray_600)
+                                    )
+                                    Text(
+                                        text = dayLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        color = if (isToday) ColorWork else androidx.compose.ui.res.colorResource(id = R.color.gray_400)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // B. Task Area (Scrolls Vertically)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(verticalScrollState)
+                    ) {
+                        // Grid Background
+                        GanttGrid(
+                            daysToShow = daysToShow,
+                            dayWidth = dayWidth,
+                            height = max(500.dp, 40.dp + (visibleTasks.size * 70).dp),
+                            startOfView = startOfView,
+                            now = now,
+                            viewMode = viewMode
+                        )
+
+                        // Tasks
+                        GanttTasks(
+                            taskComposites = visibleTasks,
+                            startOfView = startOfView,
+                            dayWidth = dayWidth,
+                            onTaskClick = onTaskClick
+                        )
+                    }
+                }
+            }
+            
+            // 全屏按钮（左下角悬浮）
+            FloatingActionButton(
+                onClick = { onNavigateToFullscreen(viewMode) },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(16.dp),
+                containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.9f),
+                contentColor = ColorWork,
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 4.dp,
+                    pressedElevation = 8.dp
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Fullscreen,
+                    contentDescription = stringResource(R.string.fullscreen),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GanttHeader(
+    viewMode: GanttViewMode,
+    onViewModeChange: (GanttViewMode) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 左侧：视图模式选择器
+        Box {
+            Surface(
+                onClick = { expanded = true },
+                shape = RoundedCornerShape(12.dp),
+                color = androidx.compose.ui.res.colorResource(R.color.gantt_work_background),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DateRange,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = ColorWork
+                    )
+                    Text(
+                        text = when (viewMode) {
+                            GanttViewMode.TODAY -> stringResource(R.string.today_view)
+                            GanttViewMode.THREE_DAY -> stringResource(R.string.three_day_view)
+                            GanttViewMode.SEVEN_DAY -> stringResource(R.string.seven_day_view)
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = ColorWork
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = ColorWork
+                    )
+                }
+            }
+            
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.background(Color.White, RoundedCornerShape(12.dp))
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.today_view), style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        onViewModeChange(GanttViewMode.TODAY)
+                        expanded = false
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.three_day_view), style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        onViewModeChange(GanttViewMode.THREE_DAY)
+                        expanded = false
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.seven_day_view), style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        onViewModeChange(GanttViewMode.SEVEN_DAY)
+                        expanded = false
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                    }
+                )
+            }
+        }
+
+        // 右侧：图例
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            LegendItem(color = ColorWork, label = stringResource(R.string.task_type_work))
+            LegendItem(color = ColorLife, label = stringResource(R.string.task_type_life))
+            LegendItem(color = ColorStudy, label = stringResource(R.string.task_type_study))
+        }
+    }
+}
+
+@Composable
+fun LegendItem(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(RoundedCornerShape(50))
+                .background(color)
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = androidx.compose.ui.res.colorResource(R.color.gray_600)
+        )
+    }
+}
+
+@Composable
+fun GanttGrid(
+    daysToShow: Int,
+    dayWidth: Dp,
+    height: Dp,
+    startOfView: Long,
+    now: Long,
+    viewMode: GanttViewMode
+) {
+    val density = LocalDensity.current
+    
+    // 在 Canvas 外部获取颜色值
+    val gridLineColor = colorResource(id = R.color.gantt_grid_line)
+    val hourLineColor = colorResource(id = R.color.gantt_hour_line)
+    val currentTimeColor = colorResource(id = R.color.gantt_current_time)
+    
+    Canvas(modifier = Modifier
+        .fillMaxWidth()
+        .height(height)) {
+        
+        val dayWidthPx = dayWidth.toPx()
+        
+        // 根据视图模式确定时间刻度
+        val hourIntervals = when (viewMode) {
+            GanttViewMode.TODAY -> (0..23).toList()      // 今日视图：每小时
+            GanttViewMode.THREE_DAY -> listOf(0, 6, 12, 18) // 3日视图：6小时间隔
+            GanttViewMode.SEVEN_DAY -> listOf(0, 12)     // 7日视图：12小时间隔
+        }
+        
+        // Draw Day Columns and Hour Lines
+        for (i in 0 until daysToShow) {
+            val xOffset = i * dayWidthPx
+            
+            // Vertical Day Separators
+            drawLine(
+                color = gridLineColor,
+                start = Offset(xOffset, 0f),
+                end = Offset(xOffset, size.height),
+                strokeWidth = 2.dp.toPx()
+            )
+            
+            // Hour Lines with Time Labels
+            hourIntervals.forEach { h ->
+                if (h == 0 && i > 0) return@forEach // 跳过非第一天的0点（已有日分隔线）
+                
+                val hOffset = xOffset + (h / 24f) * dayWidthPx
+                
+                // 绘制时间刻度线
+                if (h != 0 || i == 0) {
+                    drawLine(
+                        color = hourLineColor,
+                        start = Offset(hOffset, 0f),
+                        end = Offset(hOffset, size.height),
+                        strokeWidth = 1.dp.toPx(),
+                        pathEffect = if (h == 0 || h == 12) null else PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
+                    )
+                }
+            }
+        }
+
+        // Current Time Line
+        val diffMillis = now - startOfView
+        val totalPx = daysToShow * dayWidthPx
+        val totalMs = daysToShow * 24 * 60 * 60 * 1000L
+        
+        if (diffMillis >= 0 && diffMillis <= totalMs) {
+            val nowX = (diffMillis.toFloat() / totalMs) * totalPx
+            
+            drawLine(
+                color = currentTimeColor,
+                start = Offset(nowX, 0f),
+                end = Offset(nowX, size.height),
+                strokeWidth = 2.5.dp.toPx()
+            )
+            
+            // 当前时间指示器圆点
+            drawCircle(
+                color = currentTimeColor,
+                radius = 4.dp.toPx(),
+                center = Offset(nowX, 8.dp.toPx())
+            )
+        }
+    }
+    
+    // 时间刻度标签（叠加在Canvas上方）
+    Box(modifier = Modifier.fillMaxWidth().height(height)) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            for (i in 0 until daysToShow) {
+                Box(modifier = Modifier.width(dayWidth)) {
+                    val hourIntervals = when (viewMode) {
+                        GanttViewMode.TODAY -> (0..23 step 1).toList()
+                        GanttViewMode.THREE_DAY -> listOf(0, 6, 12, 18)
+                        GanttViewMode.SEVEN_DAY -> listOf(0, 12)
+                    }
+                    
+                    hourIntervals.forEach { h ->
+                        if (h == 0 && i > 0) return@forEach
+                        
+                        val offsetFraction = h / 24f
+                        Box(
+                            modifier = Modifier
+                                .offset(x = dayWidth * offsetFraction - 12.dp, y = 2.dp)
+                        ) {
+                            Text(
+                                text = String.format("%02d", h),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                color = androidx.compose.ui.res.colorResource(id = R.color.gray_400),
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
@@ -208,18 +483,269 @@ fun GanttView(
     }
 }
 
-fun getHoursFromTimestamp(timestamp: Long): Float {
-    val calendar = Calendar.getInstance()
-    calendar.timeInMillis = timestamp
-    val hours = calendar.get(Calendar.HOUR_OF_DAY)
-    val minutes = calendar.get(Calendar.MINUTE)
-    return hours + minutes / 60f
+@Composable
+fun GanttTasks(
+    taskComposites: List<TaskDetailComposite>,
+    startOfView: Long,
+    dayWidth: Dp,
+    onTaskClick: (Task) -> Unit
+) {
+    GanttTasksLayout(taskComposites, startOfView, dayWidth, onTaskClick)
 }
 
-fun formatGanttTime(timestamp: Long): String {
-    val calendar = Calendar.getInstance()
-    calendar.timeInMillis = timestamp
-    val hour = calendar.get(Calendar.HOUR_OF_DAY)
-    val minute = calendar.get(Calendar.MINUTE)
-    return String.format("%02d:%02d", hour, minute)
+@Composable
+fun GanttTasksLayout(
+    taskComposites: List<TaskDetailComposite>,
+    startOfView: Long,
+    dayWidth: Dp,
+    onTaskClick: (Task) -> Unit
+) {
+    val density = LocalDensity.current
+    val msPerDay = 24 * 60 * 60 * 1000L
+    
+    Layout(
+        content = {
+            taskComposites.forEach { composite ->
+                GanttTaskCard(composite = composite, onClick = { onTaskClick(composite.task) })
+            }
+        }
+    ) { measurables, constraints ->
+        val dayWidthPx = with(density) { dayWidth.toPx() }
+        val msPerPx = msPerDay / dayWidthPx
+        
+        // 1. Measure children with calculated widths
+        val placeables = measurables.mapIndexed { index, measurable ->
+            val task = taskComposites[index].task
+            val startOffsetMs = task.startTime - startOfView
+            val durationMs = task.deadline - task.startTime
+            
+            val originalXPx = (startOffsetMs / msPerPx).toInt()
+            val originalWidthPx = (durationMs / msPerPx).toInt()
+            
+            // Logic from prototype: if starts before view, clip start and reduce width
+            var visibleWidthPx = originalWidthPx
+            if (originalXPx < 0) {
+                visibleWidthPx = originalWidthPx + originalXPx
+            }
+            
+            // Ensure min width for visibility
+            visibleWidthPx = visibleWidthPx.coerceAtLeast(10)
+            
+            measurable.measure(
+                androidx.compose.ui.unit.Constraints.fixedWidth(visibleWidthPx)
+            )
+        }
+
+        // 2. Place them
+        val totalHeight = (40 + taskComposites.size * 70).dp.roundToPx()
+        
+        layout(constraints.maxWidth, totalHeight) {
+            placeables.forEachIndexed { index, placeable ->
+                val task = taskComposites[index].task
+                val startOffsetMs = task.startTime - startOfView
+                val msPerPxVal = msPerDay / dayWidthPx
+                
+                var xPos = (startOffsetMs / msPerPxVal).toInt()
+                
+                // If starts before view, we clamp position to 0 (since we already adjusted width)
+                if (xPos < 0) xPos = 0
+                
+                val yPos = (40 + index * 70).dp.roundToPx()
+                placeable.place(x = xPos, y = yPos)
+            }
+        }
+    }
+}
+
+@Composable
+fun GanttTaskCard(
+    composite: TaskDetailComposite,
+    onClick: () -> Unit
+) {
+    val task = composite.task
+    val subTasks = composite.subTasks
+    
+    // Calculate Progress
+    val hasSubtasks = subTasks.isNotEmpty()
+    val progress = if (hasSubtasks) {
+        val completed = subTasks.count { it.isCompleted }
+        (completed.toFloat() / subTasks.size.toFloat())
+    } else {
+        0f
+    }
+
+    // Determine Colors
+    val (bg, border, text, fill) = if (task.isDone) {
+        Quad(ColorDone, androidx.compose.ui.res.colorResource(id = R.color.gray_400), ColorTextDone, androidx.compose.ui.res.colorResource(id = R.color.gray_400))
+    } else {
+        when (task.type) {
+            TaskType.WORK -> Quad(ColorWorkBg, ColorWorkBorder, ColorWork, ColorWork)
+            TaskType.LIFE -> Quad(ColorLifeBg, ColorLifeBorder, ColorLife, ColorLife)
+            TaskType.STUDY -> Quad(ColorStudyBg, ColorStudyBorder, ColorStudy, ColorStudy)
+            TaskType.URGENT -> Quad(androidx.compose.ui.res.colorResource(id = R.color.gantt_urgent_background), androidx.compose.ui.res.colorResource(id = R.color.gantt_urgent_border), ColorUrgent, ColorUrgent)
+            else -> Quad(ColorWorkBg, ColorWorkBorder, ColorWork, ColorWork)
+        }
+    }
+    
+    Surface(
+        modifier = Modifier
+            .height(56.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        color = bg,
+        border = androidx.compose.foundation.BorderStroke(1.dp, border),
+        shadowElevation = 2.dp
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Progress Overlay (Background)
+            if (hasSubtasks) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(progress)
+                        .background(fill.copy(alpha = 0.1f))
+                        .align(Alignment.CenterStart)
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Title
+                Text(
+                    text = task.title,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                
+                // Bottom Row: Progress % or Icon + Time
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Left: Time
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (!hasSubtasks) {
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = null,
+                                tint = text.copy(alpha = 0.6f),
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        
+                        val timeStr = formatTaskTimeRange(task.startTime, task.deadline)
+                        Text(
+                            text = timeStr,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 9.sp,
+                            color = text.copy(alpha = 0.8f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    
+                    // Right: Progress % (if has subtasks)
+                    if (hasSubtasks) {
+                        Text(
+                            text = "${(progress * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = text.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+            }
+            
+            // Progress Bar (Bottom Line)
+            if (hasSubtasks) {
+                Box(
+                    modifier = Modifier
+                        .height(2.dp)
+                        .fillMaxWidth(progress)
+                        .background(fill)
+                        .align(Alignment.BottomStart)
+                )
+            }
+        }
+    }
+}
+
+private fun formatTaskTimeRange(start: Long, end: Long): String {
+    val startCal = Calendar.getInstance().apply { timeInMillis = start }
+    val endCal = Calendar.getInstance().apply { timeInMillis = end }
+    
+    val sameDay = startCal.get(Calendar.YEAR) == endCal.get(Calendar.YEAR) &&
+                  startCal.get(Calendar.DAY_OF_YEAR) == endCal.get(Calendar.DAY_OF_YEAR)
+                  
+    val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val dateFormat = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
+    
+    return if (sameDay) {
+        "${timeFormat.format(Date(start))} - ${timeFormat.format(Date(end))}"
+    } else {
+        "${dateFormat.format(Date(start))} - ${dateFormat.format(Date(end))}"
+    }
+}
+
+data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
+@Preview(showBackground = true)
+@Composable
+fun GanttViewPreview() {
+    val now = System.currentTimeMillis()
+    // Mock Data
+    val tasks = listOf(
+        TaskDetailComposite(
+            task = Task(
+                id = 1,
+                title = "软件工程大作业 (含子任务)",
+                type = TaskType.STUDY,
+                startTime = now - 3600000,
+                deadline = now + 86400000 // Cross day
+            ),
+            subTasks = listOf(
+                com.litetask.app.data.model.SubTask(taskId = 1, content = "Sub 1", isCompleted = true),
+                com.litetask.app.data.model.SubTask(taskId = 1, content = "Sub 2", isCompleted = false)
+            ),
+            reminders = emptyList()
+        ),
+        TaskDetailComposite(
+            task = Task(
+                id = 2,
+                title = "前端界面开发",
+                type = TaskType.WORK,
+                startTime = now + 7200000,
+                deadline = now + 18000000
+            ),
+            subTasks = emptyList(),
+            reminders = emptyList()
+        ),
+        TaskDetailComposite(
+            task = Task(
+                id = 3,
+                title = "已完成任务",
+                type = TaskType.LIFE,
+                startTime = now + 3600000,
+                deadline = now + 7200000,
+                isDone = true
+            ),
+            subTasks = emptyList(),
+            reminders = emptyList()
+        )
+    )
+    GanttView(
+        taskComposites = tasks,
+        onTaskClick = {},
+        onNavigateToFullscreen = {}
+    )
 }
