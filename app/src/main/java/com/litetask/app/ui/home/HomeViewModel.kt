@@ -491,6 +491,20 @@ class HomeViewModel @Inject constructor(
             }
         }
     }
+    
+    /**
+     * 初始化 Timeline 数据：首次进入 Timeline 视图时调用
+     * 
+     * 执行流程：
+     * 1. 如果历史列表为空，自动加载第一页历史任务
+     * 2. 避免重复加载
+     */
+    fun initTimelineData() {
+        // 只在历史列表为空且未加载时才加载
+        if (_historyList.value.isEmpty() && !_isLoadingHistory.value && historyPage == 0) {
+            loadMoreHistory()
+        }
+    }
 }
 
 data class HomeUiState(
