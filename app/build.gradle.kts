@@ -6,6 +6,24 @@ plugins {
     id("kotlin-parcelize")
 }
 
+import java.util.Properties
+import java.io.FileInputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+
+// 读取版本配置
+val versionPropsFile = rootProject.file("version.properties")
+val versionProps = Properties()
+if (versionPropsFile.exists()) {
+    versionProps.load(FileInputStream(versionPropsFile))
+}
+
+val versionMajor = versionProps.getProperty("VERSION_MAJOR", "1").toInt()
+val versionMinor = versionProps.getProperty("VERSION_MINOR", "0").toInt()
+val versionPatch = versionProps.getProperty("VERSION_PATCH", "0").toInt()
+val appVersionCode = versionProps.getProperty("VERSION_CODE", "1").toInt()
+val appVersionName = "$versionMajor.$versionMinor.$versionPatch"
+
 android {
     namespace = "com.litetask.app"
     compileSdk = 34
@@ -14,22 +32,50 @@ android {
         applicationId = "com.litetask.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
+        
+        // 在 BuildConfig 中添加版本信息
+        buildConfigField("String", "VERSION_NAME", "\"$appVersionName\"")
+        buildConfigField("int", "VERSION_CODE", "$appVersionCode")
+        buildConfigField("String", "BUILD_TIME", "\"${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date())}\"")
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            isMinifyEnabled = false
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-DEBUG"
+        }
+    }
+    
+    // APK 命名规范配置
+    applicationVariants.all {
+        val variant = this
+        variant.outputs.all {
+            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            
+            // 获取构建时间
+            val buildTime = SimpleDateFormat("yyyyMMdd_HHmm").format(Date())
+            
+            // 构建 APK 名称：LiteTask_v版本号_构建类型_时间.apk
+            // 例如：LiteTask_v1.0.0_release_20241204_1430.apk
+            val apkName = "LiteTask_v${variant.versionName}_${variant.buildType.name}_${buildTime}.apk"
+            
+            output.outputFileName = apkName
         }
     }
     compileOptions {
@@ -41,6 +87,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.10"
