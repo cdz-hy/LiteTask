@@ -218,44 +218,7 @@ class HomeViewModel @Inject constructor(
         }
     }
     
-    @Deprecated("Use finishRecordingWithText instead")
-    fun finishRecordingOld() {
-        // 停止录音和识别
-        recordingJob?.cancel()
-        recordingJob = null
-        
-        val text = _uiState.value.recognizedText
-        
-        // 如果有识别结果，先回放录音
-        if (text.isNotBlank()) {
-            _uiState.value = _uiState.value.copy(
-                recordingState = com.litetask.app.util.RecordingState.PLAYING
-            )
-            
-            val playSuccess = speechHelper.playRecording {
-                // 回放完成后处理文字
-                _uiState.value = _uiState.value.copy(
-                    isRecording = false,
-                    recordingState = com.litetask.app.util.RecordingState.IDLE
-                )
-                processVoiceCommand(text)
-            }
-            
-            if (!playSuccess) {
-                // 回放失败，直接处理文字
-                _uiState.value = _uiState.value.copy(
-                    isRecording = false,
-                    recordingState = com.litetask.app.util.RecordingState.IDLE
-                )
-                processVoiceCommand(text)
-            }
-        } else {
-            _uiState.value = _uiState.value.copy(
-                isRecording = false,
-                recordingState = com.litetask.app.util.RecordingState.IDLE
-            )
-        }
-    }
+
     
     fun cancelRecording() {
         recordingJob?.cancel()

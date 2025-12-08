@@ -131,6 +131,9 @@ dependencies {
     
     // Security
     implementation(libs.androidx.security.crypto)
+    
+    // Vosk 离线语音识别
+    implementation("com.alphacephei:vosk-android:0.3.47")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
