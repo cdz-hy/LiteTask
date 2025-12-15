@@ -347,6 +347,25 @@ class HomeViewModel @Inject constructor(
             taskRepository.insertTask(task)
         }
     }
+    
+    /**
+     * 添加任务并设置提醒
+     */
+    fun addTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
+        viewModelScope.launch {
+            val reminders = reminderConfigs.mapNotNull { config ->
+                val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
+                if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
+                    com.litetask.app.data.model.Reminder(
+                        taskId = 0, // 会在插入时更新
+                        triggerAt = triggerAt,
+                        label = config.generateLabel()
+                    )
+                } else null
+            }
+            taskRepository.insertTaskWithReminders(task, reminders)
+        }
+    }
 
     fun updateTask(task: Task) {
         viewModelScope.launch {
@@ -363,6 +382,47 @@ class HomeViewModel @Inject constructor(
                 _historyList.value = newHistory
             }
         }
+    }
+    
+    /**
+     * 更新任务并更新提醒
+     */
+    fun updateTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
+        viewModelScope.launch {
+            val reminders = reminderConfigs.mapNotNull { config ->
+                val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
+                if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
+                    com.litetask.app.data.model.Reminder(
+                        taskId = task.id,
+                        triggerAt = triggerAt,
+                        label = config.generateLabel()
+                    )
+                } else null
+            }
+            taskRepository.updateTaskWithReminders(task, reminders)
+            
+            // 处理历史列表更新
+            if (!task.isDone) {
+                _historyList.value = _historyList.value.filter { it.task.id != task.id }
+            } else {
+                val newHistory = taskRepository.getHistoryTasks(pageSize * (historyPage + 1), 0)
+                _historyList.value = newHistory
+            }
+        }
+    }
+    
+    /**
+     * 获取任务的提醒列表
+     */
+    fun getRemindersForTask(taskId: Long): kotlinx.coroutines.flow.Flow<List<com.litetask.app.data.model.Reminder>> {
+        return taskRepository.getRemindersByTaskId(taskId)
+    }
+    
+    /**
+     * 同步获取任务的提醒列表
+     */
+    suspend fun getRemindersForTaskSync(taskId: Long): List<com.litetask.app.data.model.Reminder> {
+        return taskRepository.getRemindersByTaskIdSync(taskId)
     }
 
     fun updateTaskWithSubTasks(task: Task, subTasks: List<SubTask>) {

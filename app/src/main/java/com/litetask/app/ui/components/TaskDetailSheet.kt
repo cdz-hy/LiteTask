@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
+import com.litetask.app.data.model.Reminder
 import com.litetask.app.ui.theme.Primary
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -38,6 +39,7 @@ import java.util.*
 fun TaskDetailSheet(
     task: Task,
     subTasks: List<SubTask>,
+    reminders: List<Reminder> = emptyList(),
     onDismiss: () -> Unit,
     onDelete: (Task) -> Unit,
     onUpdateTask: (Task) -> Unit,
@@ -180,6 +182,16 @@ fun TaskDetailSheet(
                         text = "${formatTime(task.startTime)} - ${formatTime(task.deadline)}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                // 提醒信息显示
+                if (reminders.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    ReminderInfoSection(
+                        reminders = reminders,
+                        startTime = task.startTime,
+                        deadline = task.deadline
                     )
                 }
 
@@ -380,4 +392,137 @@ private fun SubTaskItem(
 @Composable
 private fun formatTime(timestamp: Long): String {
     return SimpleDateFormat(stringResource(R.string.date_time_format), Locale.getDefault()).format(Date(timestamp))
+}
+
+/**
+ * 提醒信息显示区域
+ */
+@Composable
+private fun ReminderInfoSection(
+    reminders: List<Reminder>,
+    startTime: Long,
+    deadline: Long
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Primary.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+            .padding(12.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Notifications,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = Primary
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.task_reminders),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = Primary
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        reminders.sortedBy { it.triggerAt }.forEach { reminder ->
+            val reminderLabel = getReminderLabel(reminder, startTime, deadline)
+            val timeStr = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date(reminder.triggerAt))
+            val isFired = reminder.isFired
+            val isPast = reminder.triggerAt < System.currentTimeMillis()
+            
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (isFired) Icons.Default.NotificationsOff else Icons.Default.NotificationsActive,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = when {
+                        isFired -> Color(0xFF9E9E9E)
+                        isPast -> Color(0xFFF43F5E)
+                        else -> Primary
+                    }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = reminderLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isFired) Color(0xFF9E9E9E) else Color(0xFF444746),
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = timeStr,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when {
+                        isFired -> Color(0xFF9E9E9E)
+                        isPast -> Color(0xFFF43F5E)
+                        else -> Color(0xFF747775)
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 根据提醒时间生成标签
+ */
+@Composable
+private fun getReminderLabel(reminder: Reminder, startTime: Long, deadline: Long): String {
+    val triggerAt = reminder.triggerAt
+    
+    // 如果有自定义标签，直接使用
+    if (!reminder.label.isNullOrEmpty()) {
+        return reminder.label
+    }
+    
+    // 尝试匹配预设类型
+    return when {
+        triggerAt == startTime -> stringResource(R.string.reminder_at_start)
+        triggerAt == startTime - 60 * 60 * 1000 -> stringResource(R.string.reminder_before_start_1h)
+        triggerAt == startTime - 24 * 60 * 60 * 1000 -> stringResource(R.string.reminder_before_start_1d)
+        triggerAt == deadline - 60 * 60 * 1000 -> stringResource(R.string.reminder_before_end_1h)
+        triggerAt == deadline - 24 * 60 * 60 * 1000 -> stringResource(R.string.reminder_before_end_1d)
+        else -> {
+            // 计算自定义时间
+            val diffFromStart = startTime - triggerAt
+            val diffFromEnd = deadline - triggerAt
+            
+            when {
+                diffFromStart > 0 -> formatTimeDiff(diffFromStart, true)
+                diffFromEnd > 0 -> formatTimeDiff(diffFromEnd, false)
+                else -> stringResource(R.string.reminder_custom)
+            }
+        }
+    }
+}
+
+/**
+ * 格式化时间差
+ */
+@Composable
+private fun formatTimeDiff(diffMillis: Long, isBeforeStart: Boolean): String {
+    val minutes = diffMillis / (60 * 1000)
+    val hours = diffMillis / (60 * 60 * 1000)
+    val days = diffMillis / (24 * 60 * 60 * 1000)
+    
+    val baseStr = if (isBeforeStart) {
+        stringResource(R.string.reminder_before_start)
+    } else {
+        stringResource(R.string.reminder_before_end)
+    }
+    
+    return when {
+        days > 0 -> "$baseStr${days}${stringResource(R.string.reminder_unit_days)}"
+        hours > 0 -> "$baseStr${hours}${stringResource(R.string.reminder_unit_hours)}"
+        else -> "$baseStr${minutes}${stringResource(R.string.reminder_unit_minutes)}"
+    }
 }

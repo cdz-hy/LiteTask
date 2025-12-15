@@ -213,4 +213,24 @@
     
     <!-- 日期范围选项 -->
     <string name="date_range_selected">已选择</string>
+    
+    <!-- 提醒设置 -->
+    <string name="reminder_settings">提醒设置</string>
+    <string name="reminder_none">不提醒</string>
+    <string name="reminder_at_start">任务开始时</string>
+    <string name="reminder_before_start_1h">开始前1小时</string>
+    <string name="reminder_before_start_1d">开始前1天</string>
+    <string name="reminder_before_end_1h">截止前1小时</string>
+    <string name="reminder_before_end_1d">截止前1天</string>
+    <string name="reminder_custom">自定义提醒</string>
+    <string name="reminder_custom_add">添加自定义提醒</string>
+    <string name="reminder_before_start">开始前</string>
+    <string name="reminder_before_end">截止前</string>
+    <string name="reminder_unit_minutes">分钟</string>
+    <string name="reminder_unit_hours">小时</string>
+    <string name="reminder_unit_days">天</string>
+    <string name="reminder_selected_count">已选择 %d 个提醒</string>
+    <string name="reminder_time_invalid">提醒时间无效（早于当前时间）</string>
+    <string name="task_reminders">任务提醒</string>
+    <string name="no_reminders_set">未设置提醒</string>
 </resources>

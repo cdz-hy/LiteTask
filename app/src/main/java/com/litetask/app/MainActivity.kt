@@ -98,10 +98,21 @@ fun AppContent() {
                     }
                 }
                 
+                // 获取任务提醒
+                val taskReminders by produceState<List<com.litetask.app.data.model.Reminder>>(
+                    initialValue = emptyList(),
+                    key1 = taskId
+                ) {
+                    viewModel.getRemindersForTask(taskId).collect { reminders ->
+                        value = reminders
+                    }
+                }
+                
                 taskComposite?.let { composite ->
                     TaskDetailSheet(
                         task = composite.task,
                         subTasks = composite.subTasks,
+                        reminders = taskReminders,
                         onDismiss = { selectedTaskId = null },
                         onDelete = { 
                             viewModel.deleteTask(it)
@@ -150,8 +161,8 @@ fun AppContent() {
                     Toast.makeText(context, "任务已删除", Toast.LENGTH_SHORT).show()
                 },
                 onEditClick = { task ->
+                    // 只设置 taskToEdit，LaunchedEffect 会负责加载提醒并显示对话框
                     taskToEdit = task
-                    showEditDialog = true
                 },
                 onPinClick = { task ->
                     if (task.isDone) {
@@ -180,10 +191,21 @@ fun AppContent() {
                     }
                 }
                 
+                // 获取任务提醒
+                val taskReminders by produceState<List<com.litetask.app.data.model.Reminder>>(
+                    initialValue = emptyList(),
+                    key1 = taskId
+                ) {
+                    homeViewModel.getRemindersForTask(taskId).collect { reminders ->
+                        value = reminders
+                    }
+                }
+                
                 taskComposite?.let { composite ->
                     TaskDetailSheet(
                         task = composite.task,
                         subTasks = composite.subTasks,
+                        reminders = taskReminders,
                         onDismiss = { selectedTaskId = null },
                         onDelete = { 
                             homeViewModel.deleteTask(it)
@@ -204,18 +226,41 @@ fun AppContent() {
                 }
             }
             
-            // 编辑对话框
-            if (showEditDialog && taskToEdit != null) {
+            // 编辑对话框 - 需要加载已有提醒
+            var editTaskReminders by remember { mutableStateOf<List<com.litetask.app.data.model.Reminder>>(emptyList()) }
+            var isLoadingReminders by remember { mutableStateOf(false) }
+            
+            // 当 taskToEdit 变化时，先加载提醒，加载完成后再显示对话框
+            LaunchedEffect(taskToEdit) {
+                if (taskToEdit != null && !showEditDialog) {
+                    isLoadingReminders = true
+                    editTaskReminders = homeViewModel.getRemindersForTaskSync(taskToEdit!!.id)
+                    isLoadingReminders = false
+                    showEditDialog = true
+                }
+            }
+            
+            if (showEditDialog && taskToEdit != null && !isLoadingReminders) {
                 AddTaskDialog(
                     initialTask = taskToEdit,
+                    initialReminders = editTaskReminders,
                     onDismiss = { 
                         showEditDialog = false
                         taskToEdit = null
+                        editTaskReminders = emptyList()
                     },
                     onConfirm = { task ->
                         homeViewModel.updateTask(task)
                         showEditDialog = false
                         taskToEdit = null
+                        editTaskReminders = emptyList()
+                        Toast.makeText(context, "任务已更新", Toast.LENGTH_SHORT).show()
+                    },
+                    onConfirmWithReminders = { task, reminderConfigs ->
+                        homeViewModel.updateTaskWithReminders(task, reminderConfigs)
+                        showEditDialog = false
+                        taskToEdit = null
+                        editTaskReminders = emptyList()
                         Toast.makeText(context, "任务已更新", Toast.LENGTH_SHORT).show()
                     }
                 )

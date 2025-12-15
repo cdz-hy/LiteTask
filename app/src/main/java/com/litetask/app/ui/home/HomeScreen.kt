@@ -322,8 +322,8 @@ fun HomeScreen(
                             }
                         },
                         onEditClick = {
+                            // 只设置 taskToEdit，LaunchedEffect 会负责加载提醒并显示对话框
                             taskToEdit = it
-                            showEditDialog = true
                         },
                         onLoadMore = { viewModel.loadMoreHistory() },
                         onSearchClick = { onNavigateToSearch() }
@@ -338,8 +338,8 @@ fun HomeScreen(
                         onTaskClick = { task -> selectedTaskId = task.id },
                         onDeleteClick = { task -> viewModel.deleteTask(task) },
                         onEditClick = { task ->
+                            // 只设置 taskToEdit，LaunchedEffect 会负责加载提醒并显示对话框
                             taskToEdit = task
-                            showEditDialog = true
                         },
                         onPinClick = { task ->
                             if (task.isDone) {
@@ -370,29 +370,71 @@ fun HomeScreen(
                     onConfirm = { task ->
                         viewModel.addTask(task)
                         showAddTaskDialog = false
+                    },
+                    onConfirmWithReminders = { task, reminderConfigs ->
+                        viewModel.addTaskWithReminders(task, reminderConfigs)
+                        showAddTaskDialog = false
                     }
                 )
             }
+            
+            // 编辑任务时需要加载已有提醒
+            var editTaskReminders by remember { mutableStateOf<List<com.litetask.app.data.model.Reminder>>(emptyList()) }
+            var isLoadingReminders by remember { mutableStateOf(false) }
+            
+            // 当 taskToEdit 变化时，先加载提醒，加载完成后再显示对话框
+            LaunchedEffect(taskToEdit) {
+                if (taskToEdit != null && !showEditDialog) {
+                    isLoadingReminders = true
+                    editTaskReminders = viewModel.getRemindersForTaskSync(taskToEdit!!.id)
+                    isLoadingReminders = false
+                    showEditDialog = true
+                }
+            }
 
-            if (showEditDialog) {
+            if (showEditDialog && !isLoadingReminders) {
                 AddTaskDialog(
                     initialTask = taskToEdit,
+                    initialReminders = editTaskReminders,
                     onDismiss = {
                         showEditDialog = false
                         taskToEdit = null
+                        editTaskReminders = emptyList()
                     },
                     onConfirm = { task ->
                         viewModel.updateTask(task)
                         showEditDialog = false
                         taskToEdit = null
+                        editTaskReminders = emptyList()
+                    },
+                    onConfirmWithReminders = { task, reminderConfigs ->
+                        viewModel.updateTaskWithReminders(task, reminderConfigs)
+                        showEditDialog = false
+                        taskToEdit = null
+                        editTaskReminders = emptyList()
                     }
                 )
             }
 
+            // 获取选中任务的提醒
+            val selectedTaskReminders by produceState<List<com.litetask.app.data.model.Reminder>>(
+                initialValue = emptyList(),
+                key1 = selectedTaskId
+            ) {
+                selectedTaskId?.let { taskId ->
+                    viewModel.getRemindersForTask(taskId).collect { reminders ->
+                        value = reminders
+                    }
+                } ?: run {
+                    value = emptyList()
+                }
+            }
+            
             selectedTaskComposite?.let { composite ->
                 TaskDetailSheet(
                     task = composite.task,
                     subTasks = composite.subTasks,
+                    reminders = selectedTaskReminders,
                     onDismiss = { selectedTaskId = null },
                     onDelete = {
                         viewModel.deleteTask(it)

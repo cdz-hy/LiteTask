@@ -29,6 +29,11 @@ import androidx.compose.ui.window.DialogProperties
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.data.model.Reminder
+import com.litetask.app.data.model.ReminderConfig
+import com.litetask.app.data.model.ReminderType
+import com.litetask.app.data.model.ReminderTimeUnit
+import com.litetask.app.data.model.ReminderBaseTime
 import com.litetask.app.ui.theme.Primary
 import java.util.Calendar
 import java.text.SimpleDateFormat
@@ -39,8 +44,10 @@ import java.util.Date
 @Composable
 fun AddTaskDialog(
     initialTask: Task? = null,
+    initialReminders: List<Reminder> = emptyList(),
     onDismiss: () -> Unit,
-    onConfirm: (Task) -> Unit
+    onConfirm: (Task) -> Unit,
+    onConfirmWithReminders: ((Task, List<ReminderConfig>) -> Unit)? = null
 ) {
     var title by remember { mutableStateOf(initialTask?.title ?: "") }
     var description by remember { mutableStateOf(initialTask?.description ?: "") }
@@ -61,11 +68,18 @@ fun AddTaskDialog(
     var deadlineHour by remember { mutableStateOf(deadCal.get(Calendar.HOUR_OF_DAY)) }
     var deadlineMinute by remember { mutableStateOf(deadCal.get(Calendar.MINUTE)) }
 
+    // 提醒设置 - 从已有提醒转换为ReminderConfig
+    var selectedReminders by remember { 
+        mutableStateOf(
+            convertRemindersToConfigs(initialReminders, initialStart, initialDead)
+        ) 
+    }
+
     // 对于已完成的任务，即使isPinned为true，我们也应该在UI上显示为false
     val isTaskDone = initialTask?.isDone ?: false
     var showAdvanced by remember { 
         mutableStateOf(
-            if (isTaskDone) false else (initialTask?.isPinned == true)
+            if (isTaskDone) false else (initialTask?.isPinned == true || initialReminders.isNotEmpty())
         ) 
     }
 
@@ -207,7 +221,7 @@ fun AddTaskDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        TaskType.values().take(4).forEach { type -> // 只取前4个类型
+                        TaskType.values().take(4).forEach { type ->
                             val isSelected = selectedType == type
                             FilterChip(
                                 selected = isSelected,
@@ -275,7 +289,6 @@ fun AddTaskDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // 修改截止时间卡片变红逻辑：只在截止时间在未来24小时内才变红
                         val isDeadlineWithin24Hours = deadlineMillis > System.currentTimeMillis() && 
                                                     deadlineMillis < System.currentTimeMillis() + 24 * 60 * 60 * 1000
                         
@@ -362,12 +375,19 @@ fun AddTaskDialog(
                         Column {
                             Spacer(modifier = Modifier.height(12.dp))
                             
-                            // 检查任务是否已过期或已完成
-                            val isTaskExpired = deadlineMillis < System.currentTimeMillis()
-                            val isTaskDone = initialTask?.isDone ?: false
-                            val pinEnabled = !isTaskExpired && !isTaskDone
+                            // 提醒设置
+                            ReminderSelector(
+                                selectedReminders = selectedReminders,
+                                onRemindersChanged = { selectedReminders = it },
+                                startTime = startTimeMillis,
+                                deadline = deadlineMillis
+                            )
                             
-                            // 确保已完成的任务不能置顶
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // 置顶设置
+                            val isTaskExpired = deadlineMillis < System.currentTimeMillis()
+                            val pinEnabled = !isTaskExpired && !isTaskDone
                             val displayIsPinned = if (isTaskDone) false else isPinned
                             
                             Row(
@@ -396,7 +416,6 @@ fun AddTaskDialog(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = Color(0xFF747775)
                                     )
-                                    // 显示置顶不可用的原因
                                     if (isTaskExpired) {
                                         Text(
                                             stringResource(R.string.task_expired_cannot_pin),
@@ -445,8 +464,6 @@ fun AddTaskDialog(
                     Button(
                         onClick = {
                             if (title.isNotBlank() && deadlineMillis > startTimeMillis) {
-                                // 对于已完成的任务，强制将isPinned设置为false
-                                val isTaskDone = initialTask?.isDone ?: false
                                 val effectiveIsPinned = if (isTaskDone) false else isPinned
                                 
                                 val newTask = Task(
@@ -459,7 +476,13 @@ fun AddTaskDialog(
                                     isPinned = effectiveIsPinned,
                                     isDone = initialTask?.isDone ?: false
                                 )
-                                onConfirm(newTask)
+                                
+                                // 如果提供了带提醒的回调，使用它
+                                if (onConfirmWithReminders != null) {
+                                    onConfirmWithReminders(newTask, selectedReminders)
+                                } else {
+                                    onConfirm(newTask)
+                                }
                             }
                         },
                         enabled = title.isNotBlank() && deadlineMillis > startTimeMillis,
@@ -530,6 +553,78 @@ fun AddTaskDialog(
         )
     }
 }
+
+/**
+ * 将已有的Reminder列表转换为ReminderConfig列表
+ * 用于编辑任务时预填充提醒设置
+ */
+private fun convertRemindersToConfigs(
+    reminders: List<Reminder>,
+    startTime: Long,
+    deadline: Long
+): List<ReminderConfig> {
+    return reminders.mapNotNull { reminder ->
+        val triggerAt = reminder.triggerAt
+        
+        // 尝试匹配预设类型
+        when {
+            triggerAt == startTime -> ReminderConfig(ReminderType.AT_START)
+            triggerAt == startTime - 60 * 60 * 1000 -> ReminderConfig(ReminderType.BEFORE_START_1H)
+            triggerAt == startTime - 24 * 60 * 60 * 1000 -> ReminderConfig(ReminderType.BEFORE_START_1D)
+            triggerAt == deadline - 60 * 60 * 1000 -> ReminderConfig(ReminderType.BEFORE_END_1H)
+            triggerAt == deadline - 24 * 60 * 60 * 1000 -> ReminderConfig(ReminderType.BEFORE_END_1D)
+            else -> {
+                // 尝试解析自定义提醒
+                val diffFromStart = startTime - triggerAt
+                val diffFromEnd = deadline - triggerAt
+                
+                when {
+                    diffFromStart > 0 -> {
+                        // 开始前的提醒
+                        val (value, unit) = parseTimeDiff(diffFromStart)
+                        if (value > 0) {
+                            ReminderConfig(
+                                type = ReminderType.CUSTOM,
+                                customValue = value,
+                                customUnit = unit,
+                                customBase = ReminderBaseTime.BEFORE_START
+                            )
+                        } else null
+                    }
+                    diffFromEnd > 0 -> {
+                        // 截止前的提醒
+                        val (value, unit) = parseTimeDiff(diffFromEnd)
+                        if (value > 0) {
+                            ReminderConfig(
+                                type = ReminderType.CUSTOM,
+                                customValue = value,
+                                customUnit = unit,
+                                customBase = ReminderBaseTime.BEFORE_END
+                            )
+                        } else null
+                    }
+                    else -> null
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 解析时间差为值和单位
+ */
+private fun parseTimeDiff(diffMillis: Long): Pair<Int, ReminderTimeUnit> {
+    val minutes = diffMillis / (60 * 1000)
+    val hours = diffMillis / (60 * 60 * 1000)
+    val days = diffMillis / (24 * 60 * 60 * 1000)
+    
+    return when {
+        days > 0 && diffMillis % (24 * 60 * 60 * 1000) == 0L -> Pair(days.toInt(), ReminderTimeUnit.DAYS)
+        hours > 0 && diffMillis % (60 * 60 * 1000) == 0L -> Pair(hours.toInt(), ReminderTimeUnit.HOURS)
+        else -> Pair(minutes.toInt(), ReminderTimeUnit.MINUTES)
+    }
+}
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -626,7 +721,7 @@ fun DateTimePickerCard(
 ) {
     Card(
         onClick = onClick,
-        modifier = modifier.height(100.dp), // 固定高度确保所有卡片一致
+        modifier = modifier.height(100.dp),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isUrgent) Color(0xFFFFEBEE) else Color(0xFFF8F9FA)

@@ -3,6 +3,7 @@ package com.litetask.app.data.local
 import androidx.room.*
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
+import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.TaskDetailComposite
 import kotlinx.coroutines.flow.Flow
 
@@ -119,4 +120,29 @@ interface TaskDao {
     
     @Query("SELECT * FROM tasks WHERE start_time >= :start AND deadline <= :end ORDER BY deadline ASC")
     fun getTasksInRange(start: Long, end: Long): Flow<List<Task>>
+    
+    // --- 提醒相关操作 ---
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReminder(reminder: Reminder): Long
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReminders(reminders: List<Reminder>)
+    
+    @Query("SELECT * FROM reminders WHERE task_id = :taskId ORDER BY trigger_at ASC")
+    fun getRemindersByTaskId(taskId: Long): Flow<List<Reminder>>
+    
+    @Query("SELECT * FROM reminders WHERE task_id = :taskId ORDER BY trigger_at ASC")
+    suspend fun getRemindersByTaskIdSync(taskId: Long): List<Reminder>
+    
+    @Query("DELETE FROM reminders WHERE task_id = :taskId")
+    suspend fun deleteRemindersByTaskId(taskId: Long)
+    
+    @Delete
+    suspend fun deleteReminder(reminder: Reminder)
+    
+    @Query("UPDATE reminders SET is_fired = :fired WHERE id = :reminderId")
+    suspend fun updateReminderFired(reminderId: Long, fired: Boolean)
+    
+    @Query("SELECT * FROM reminders WHERE is_fired = 0 AND trigger_at <= :currentTime")
+    suspend fun getPendingReminders(currentTime: Long): List<Reminder>
 }

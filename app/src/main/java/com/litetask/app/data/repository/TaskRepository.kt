@@ -3,6 +3,7 @@ package com.litetask.app.data.repository
 import com.litetask.app.data.local.TaskDao
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
+import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
 import kotlinx.coroutines.flow.Flow
@@ -60,4 +61,38 @@ class TaskRepositoryImpl @Inject constructor(
     // 兼容
     fun getAllTasks() = taskDao.getAllTasks()
     fun getTasksInRange(start: Long, end: Long) = taskDao.getTasksInRange(start, end)
+    
+    // --- 提醒相关操作 ---
+    suspend fun insertReminder(reminder: Reminder) = taskDao.insertReminder(reminder)
+    suspend fun insertReminders(reminders: List<Reminder>) = taskDao.insertReminders(reminders)
+    fun getRemindersByTaskId(taskId: Long) = taskDao.getRemindersByTaskId(taskId)
+    suspend fun getRemindersByTaskIdSync(taskId: Long) = taskDao.getRemindersByTaskIdSync(taskId)
+    suspend fun deleteRemindersByTaskId(taskId: Long) = taskDao.deleteRemindersByTaskId(taskId)
+    suspend fun deleteReminder(reminder: Reminder) = taskDao.deleteReminder(reminder)
+    suspend fun updateReminderFired(reminderId: Long, fired: Boolean) = taskDao.updateReminderFired(reminderId, fired)
+    suspend fun getPendingReminders(currentTime: Long) = taskDao.getPendingReminders(currentTime)
+    
+    /**
+     * 更新任务及其提醒
+     */
+    suspend fun updateTaskWithReminders(task: Task, reminders: List<Reminder>) {
+        taskDao.updateTask(task)
+        taskDao.deleteRemindersByTaskId(task.id)
+        if (reminders.isNotEmpty()) {
+            val newReminders = reminders.map { it.copy(taskId = task.id, id = 0) }
+            taskDao.insertReminders(newReminders)
+        }
+    }
+    
+    /**
+     * 插入任务并设置提醒
+     */
+    suspend fun insertTaskWithReminders(task: Task, reminders: List<Reminder>): Long {
+        val taskId = taskDao.insertTask(task)
+        if (reminders.isNotEmpty()) {
+            val newReminders = reminders.map { it.copy(taskId = taskId, id = 0) }
+            taskDao.insertReminders(newReminders)
+        }
+        return taskId
+    }
 }
