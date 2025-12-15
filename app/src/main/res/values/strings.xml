@@ -26,6 +26,7 @@
     <string name="mark_undone">标记未完成</string>
     <string name="delete_task">删除任务</string>
     <string name="add_subtask">添加新的子任务...</string>
+    <string name="no_subtasks_hint">暂无子任务</string>
     
     <!-- 任务状态提示 -->
     <string name="task_cannot_pin_completed">已完成的任务不能置顶</string>

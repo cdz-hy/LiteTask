@@ -45,8 +45,6 @@ private object ConfirmTaskColors {
         TaskType.LIFE -> LiteTaskColors.lifeTask()
         TaskType.URGENT -> LiteTaskColors.urgentTask()
         TaskType.STUDY -> LiteTaskColors.studyTask()
-        TaskType.HEALTH -> LiteTaskColors.healthTask()
-        TaskType.DEV -> LiteTaskColors.devTask()
     }
 
     @Composable
@@ -55,8 +53,6 @@ private object ConfirmTaskColors {
         TaskType.LIFE -> LiteTaskColors.lifeTaskSurface()
         TaskType.URGENT -> LiteTaskColors.urgentTaskSurface()
         TaskType.STUDY -> LiteTaskColors.studyTaskSurface()
-        TaskType.HEALTH -> LiteTaskColors.healthTaskSurface()
-        TaskType.DEV -> LiteTaskColors.devTaskSurface()
     }
 }
 
@@ -598,8 +594,6 @@ private fun getTaskTypeName(type: TaskType): String {
         TaskType.LIFE -> stringResource(R.string.task_type_life)
         TaskType.URGENT -> stringResource(R.string.task_type_urgent)
         TaskType.STUDY -> stringResource(R.string.task_type_study)
-        TaskType.HEALTH -> stringResource(R.string.task_type_health)
-        TaskType.DEV -> stringResource(R.string.task_type_dev)
     }
 }
 

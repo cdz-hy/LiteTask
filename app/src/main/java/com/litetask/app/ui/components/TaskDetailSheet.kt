@@ -8,31 +8,64 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Alarm
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Reminder
+import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.theme.Primary
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.TimeUnit
+
+// --- 局部颜色辅助 ---
+// 为了保证无报错，复用 GanttView 中定义的颜色逻辑，或使用默认 Primary
+private fun getTaskThemeColor(type: TaskType): Color {
+    return when (type) {
+        TaskType.WORK -> Color(0xFF0B57D0)
+        TaskType.LIFE -> Color(0xFF146C2E)
+        TaskType.STUDY -> Color(0xFF65558F)
+        TaskType.URGENT -> Color(0xFFB3261E)
+    }
+}
+
+private fun getTaskSurfaceColor(type: TaskType): Color {
+    return when (type) {
+        TaskType.WORK -> Color(0xFFEFF6FF)
+        TaskType.LIFE -> Color(0xFFECFDF5)
+        TaskType.STUDY -> Color(0xFFF5F3FF)
+        TaskType.URGENT -> Color(0xFFFEF2F2)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,14 +83,17 @@ fun TaskDetailSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    
+
     var newSubTaskText by remember { mutableStateOf("") }
     var isFullScreen by remember { mutableStateOf(false) }
 
-    // 优化封装带动画的关闭逻辑
+    // 获取当前任务的主题色
+    val themeColor = if (task.isDone) Color.Gray else getTaskThemeColor(task.type)
+    val surfaceColor = if (task.isDone) Color(0xFFF5F5F5) else getTaskSurfaceColor(task.type)
+
     fun closeSheetWithAnimation() {
         scope.launch {
-            sheetState.hide() 
+            sheetState.hide()
         }.invokeOnCompletion {
             if (!sheetState.isVisible) {
                 onDismiss()
@@ -70,39 +106,37 @@ fun TaskDetailSheet(
         sheetState = sheetState,
         containerColor = Color.White,
         dragHandle = null,
-        // 保持键盘弹出时的处理，WindowInsets.ime 会自动处理底部 Padding
         windowInsets = WindowInsets.ime
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                // 优化更柔和的展开动画
                 .animateContentSize(
                     animationSpec = spring(
                         dampingRatio = 0.85f,
-                        stiffness = 300f      
+                        stiffness = 300f
                     )
                 )
-                // 高度逻辑：全屏95%，非全屏自适应
                 .then(
-                    if (isFullScreen) Modifier.fillMaxHeight(0.95f)
-                    else Modifier.wrapContentHeight()
+                    if (isFullScreen) {
+                        Modifier
+                            .fillMaxHeight()
+                            .statusBarsPadding() // 避免覆盖状态栏
+                    } else {
+                        Modifier.wrapContentHeight()
+                    }
                 )
         ) {
-            // --- 顶部手势区域 ---
-            Column(
+            // --- 顶部手势与 Header ---
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
-                            onDragEnd = { /* 惯性处理可选 */ }
+                            onDragEnd = { /* 惯性处理 */ }
                         ) { change, dragAmount ->
                             change.consume()
-                            
-                            // --- 核心优化 3：手势阈值判断 ---
-                            val sensitivity = 8f 
-                            
+                            val sensitivity = 8f
                             if (dragAmount < -sensitivity) {
                                 if (!isFullScreen) isFullScreen = true
                             } else if (dragAmount > sensitivity) {
@@ -115,183 +149,260 @@ fun TaskDetailSheet(
                         }
                     }
             ) {
-                // 视觉 Handle
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
+                // Header Content
+                Column(modifier = Modifier.padding(horizontal = 24.dp)) {
+                    // Drag Handle
                     Box(
                         modifier = Modifier
-                            .width(40.dp)
-                            .height(4.dp)
-                            .background(Color(0xFFE0E0E0), RoundedCornerShape(2.dp))
-                    )
-                }
+                            .padding(vertical = 12.dp)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(32.dp)
+                                .height(4.dp)
+                                .background(Color(0xFFE0E0E0), RoundedCornerShape(2.dp))
+                        )
+                    }
 
-                // Header 标题栏
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Text(
-                        text = task.title,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = { closeSheetWithAnimation() }) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close), tint = MaterialTheme.colorScheme.outline)
+                    // Title & Actions
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            // Task Type Badge
+                            Surface(
+                                color = surfaceColor,
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            ) {
+                                Text(
+                                    text = getTaskTypeName(task.type),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = themeColor,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+
+                            Text(
+                                text = task.title,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (task.isDone) Color.Gray else MaterialTheme.colorScheme.onSurface,
+                                textDecoration = if (task.isDone) TextDecoration.LineThrough else null
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { closeSheetWithAnimation() },
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .background(Color(0xFFF5F5F5), CircleShape)
+                                .size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = stringResource(R.string.close),
+                                tint = Color.Gray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            // --- 内容区域 ---
+            // --- Scrollable Content ---
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
-                    .padding(bottom = 16.dp)
             ) {
-                // 描述
-                if (!task.description.isNullOrEmpty()) {
-                    Text(
-                        text = task.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.padding(top = 8.dp)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 1. Time Info Card (Visualized)
+                TimeDisplayCard(
+                    startTime = task.startTime,
+                    deadline = task.deadline,
+                    themeColor = themeColor,
+                    isDone = task.isDone
+                )
+
+                // 2. Reminders (Compact)
+                if (reminders.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    CompactReminderRow(
+                        reminders = reminders,
+                        startTime = task.startTime,
+                        deadline = task.deadline,
+                        themeColor = themeColor
                     )
                 }
 
-                // 时间
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.AccessTime,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.outline
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "${formatTime(task.startTime)} - ${formatTime(task.deadline)}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                
-                // 提醒信息显示
-                if (reminders.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    ReminderInfoSection(
-                        reminders = reminders,
-                        startTime = task.startTime,
-                        deadline = task.deadline
-                    )
+                // 3. Description
+                if (!task.description.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Surface(
+                        color = Color(0xFFFAFAFA),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp)) {
+                            Icon(
+                                Icons.Outlined.Description,
+                                contentDescription = null,
+                                tint = Color.Gray,
+                                modifier = Modifier.size(18.dp).padding(top = 2.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = task.description,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                lineHeight = 22.sp
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // 子任务标题
-                Text(
-                    text = stringResource(R.string.subtasks_steps),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 子任务列表
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (isFullScreen) {
-                                Modifier.weight(1f) // 全屏：占满剩余空间
-                            } else {
-                                Modifier
-                                    .heightIn(max = 240.dp) // 非全屏：限制最大高度
-                                    // 关键修改：添加 weight(1f, fill = false)
-                                    // fill = false 保证了内容少时高度自适应（不会强行占满）
-                                    // 但当键盘弹出导致空间不足时，weight 属性会让它优先收缩，从而保护底部按钮不被挤压
-                                    .weight(1f, fill = false) 
-                            }
-                        )
-                ) {
-                    items(items = subTasks.sortedBy { it.id }, key = { it.id }) { subTask ->
-                        SubTaskItem(
-                            subTask = subTask,
-                            onToggleComplete = { onUpdateSubTask(subTask, it) },
-                            onDelete = { onDeleteSubTask(subTask) }
+                // 4. Subtasks Header
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = stringResource(R.string.subtasks_steps),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    if (subTasks.isNotEmpty()) {
+                        val completed = subTasks.count { it.isCompleted }
+                        Text(
+                            text = "$completed/${subTasks.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.Gray
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // 添加子任务输入框
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = newSubTaskText,
-                        onValueChange = { newSubTaskText = it },
-                        placeholder = { Text(stringResource(R.string.add_subtask)) },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                        shape = RoundedCornerShape(24.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Primary,
-                            unfocusedBorderColor = Color.LightGray,
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent
-                        )
-                    )
-                    IconButton(
-                        onClick = {
-                            if (newSubTaskText.isNotBlank()) {
-                                onAddSubTask(newSubTaskText)
-                                newSubTaskText = ""
+                // 5. Subtasks List
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (isFullScreen) {
+                                Modifier.weight(1f)
+                            } else {
+                                Modifier
+                                    .heightIn(max = 240.dp)
+                                    .weight(1f, fill = false)
                             }
-                        },
-                        modifier = Modifier
-                            .padding(start = 8.dp)
-                            .size(56.dp) // 与输入框高度一致
-                    ) {
-                        Icon(
-                            Icons.Default.AddCircle, 
-                            contentDescription = stringResource(R.string.add_subtask), 
-                            tint = Primary,
-                            modifier = Modifier.size(32.dp) // 图标更大
                         )
+                ) {
+                    if (subTasks.isEmpty()) {
+                        item {
+                            Text(
+                                text = stringResource(R.string.no_subtasks_hint), // 需确保 strings.xml 有此资源或使用硬编码
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+                        }
+                    } else {
+                        items(items = subTasks.sortedBy { it.id }, key = { it.id }) { subTask ->
+                            SubTaskItem(
+                                subTask = subTask,
+                                themeColor = themeColor,
+                                onToggleComplete = { onUpdateSubTask(subTask, it) },
+                                onDelete = { onDeleteSubTask(subTask) }
+                            )
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // 底部按钮区
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    OutlinedButton(
-                        onClick = { 
-                            onDelete(task)
-                            closeSheetWithAnimation() 
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                // 6. Add Subtask Input
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color(0xFFF5F7FA),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                        TextField(
+                            value = newSubTaskText,
+                            onValueChange = { newSubTaskText = it },
+                            placeholder = { Text(stringResource(R.string.add_subtask), color = Color.Gray) },
+                            modifier = Modifier.weight(1f),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
+                            ),
+                            singleLine = true
+                        )
+                        IconButton(
+                            onClick = {
+                                if (newSubTaskText.isNotBlank()) {
+                                    onAddSubTask(newSubTaskText)
+                                    newSubTaskText = ""
+                                }
+                            },
+                            enabled = newSubTaskText.isNotBlank()
+                        ) {
+                            Icon(
+                                Icons.Default.ArrowUpward,
+                                contentDescription = null,
+                                tint = if (newSubTaskText.isNotBlank()) themeColor else Color.Gray,
+                                modifier = Modifier
+                                    .background(
+                                        if (newSubTaskText.isNotBlank()) themeColor.copy(alpha = 0.1f) else Color.Transparent,
+                                        CircleShape
+                                    )
+                                    .padding(8.dp)
+                                    .size(20.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 7. Bottom Actions
+                Row(
+                    modifier = Modifier.padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Delete Button
+                    OutlinedButton(
+                        onClick = {
+                            onDelete(task)
+                            closeSheetWithAnimation()
+                        },
+                        modifier = Modifier.weight(1f).height(50.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error,
+                            containerColor = Color.Transparent
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(stringResource(R.string.delete_task))
                     }
 
+                    // Complete/Reopen Button
                     if (!task.isDone || task.deadline >= System.currentTimeMillis()) {
                         Button(
                             onClick = {
@@ -307,14 +418,23 @@ fun TaskDetailSheet(
                                     closeSheetWithAnimation()
                                 }
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1.5f).height(50.dp),
+                            shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (task.isDone) MaterialTheme.colorScheme.outline else Primary
-                            )
+                                containerColor = if (task.isDone) Color(0xFF444746) else themeColor
+                            ),
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                         ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(
+                                if (task.isDone) Icons.Default.Refresh else Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(if (task.isDone) stringResource(R.string.mark_undone) else stringResource(R.string.mark_done))
+                            Text(
+                                text = if (task.isDone) stringResource(R.string.mark_undone) else stringResource(R.string.mark_done),
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -323,10 +443,230 @@ fun TaskDetailSheet(
     }
 }
 
-// 保持原有的 SubTaskItem 和 formatTime 不变
+/**
+ * 美化的时间显示卡片
+ * 显示：开始时间 -> 持续时间 -> 截止时间
+ */
+@Composable
+private fun TimeDisplayCard(
+    startTime: Long,
+    deadline: Long,
+    themeColor: Color,
+    isDone: Boolean
+) {
+    val durationMillis = deadline - startTime
+    val days = TimeUnit.MILLISECONDS.toDays(durationMillis)
+    val hours = TimeUnit.MILLISECONDS.toHours(durationMillis) % 24
+
+    // 计算任务状态
+    val now = System.currentTimeMillis()
+    val isExpired = now > deadline
+    val notStarted = now < startTime
+
+    val statusColor = when {
+        isDone -> Color.Gray
+        isExpired -> Color(0xFFB3261E) // Red
+        notStarted -> Color(0xFF757575) // Gray
+        else -> themeColor // Active
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEEEEEE)),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Start
+            TimeColumn(
+                label = stringResource(R.string.start_time), // 确保strings.xml有此资源
+                time = startTime,
+                isPrimary = false
+            )
+
+            // Visual Connector
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.weight(1f).padding(horizontal = 12.dp)
+            ) {
+                // Duration Label
+                Surface(
+                    color = statusColor.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = if (days > 0) "${days}d ${hours}h" else "${hours}h",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = statusColor,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Arrow Line
+                Box(contentAlignment = Alignment.Center) {
+                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                    Icon(
+                        Icons.Default.ArrowRightAlt,
+                        contentDescription = null,
+                        tint = statusColor
+                    )
+                }
+            }
+
+            // End
+            TimeColumn(
+                label = stringResource(R.string.deadline),
+                time = deadline,
+                isPrimary = true,
+                isUrgent = !isDone && !isExpired && (deadline - now < 24 * 60 * 60 * 1000)
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimeColumn(
+    label: String,
+    time: Long,
+    isPrimary: Boolean,
+    isUrgent: Boolean = false
+) {
+    Column(horizontalAlignment = if (isPrimary) Alignment.End else Alignment.Start) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (isUrgent) {
+                Icon(
+                    Icons.Outlined.Timer,
+                    contentDescription = null,
+                    tint = Color(0xFFB3261E),
+                    modifier = Modifier.size(12.dp)
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isUrgent) Color(0xFFB3261E) else Color.Gray
+            )
+        }
+        Text(
+            text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(time)),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = if (isUrgent) Color(0xFFB3261E) else Color(0xFF1F1F1F)
+        )
+        Text(
+            text = SimpleDateFormat("MM/dd EEE", Locale.getDefault()).format(Date(time)),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (isUrgent) Color(0xFFB3261E) else Color.Gray
+        )
+    }
+}
+
+/**
+ * 紧凑的横向滚动提醒列表
+ */
+@Composable
+private fun CompactReminderRow(
+    reminders: List<Reminder>,
+    startTime: Long,
+    deadline: Long,
+    themeColor: Color
+) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Outlined.Alarm,
+                contentDescription = null,
+                tint = Color.Gray,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.task_reminders),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.Gray,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(reminders.sortedBy { it.triggerAt }) { reminder ->
+                val isFired = reminder.isFired
+                val isPast = reminder.triggerAt < System.currentTimeMillis()
+
+                // Chip Style
+                val bgColor = when {
+                    isFired -> Color(0xFFF5F5F5)
+                    isPast -> Color(0xFFFFF1F2) // Light Red
+                    else -> themeColor.copy(alpha = 0.08f)
+                }
+
+                val contentColor = when {
+                    isFired -> Color.Gray
+                    isPast -> Color(0xFFB3261E)
+                    else -> themeColor
+                }
+
+                val label = getReminderLabel(reminder, startTime, deadline)
+                val timeStr = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date(reminder.triggerAt))
+
+                Surface(
+                    color = bgColor,
+                    shape = RoundedCornerShape(8.dp),
+                    border = if (isPast && !isFired) androidx.compose.foundation.BorderStroke(1.dp, contentColor.copy(alpha = 0.3f)) else null
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (isFired) Icons.Default.NotificationsOff else Icons.Default.NotificationsActive,
+                            contentDescription = null,
+                            tint = contentColor,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = contentColor
+                            )
+                            Text(
+                                text = timeStr,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                color = contentColor.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 美化的子任务项
+ */
 @Composable
 private fun SubTaskItem(
     subTask: SubTask,
+    themeColor: Color,
     onToggleComplete: (Boolean) -> Unit,
     onDelete: () -> Unit
 ) {
@@ -338,7 +678,6 @@ private fun SubTaskItem(
         label = "alpha"
     )
 
-    // 使用 padding 变化代替 offset，通常在列表中表现更稳定
     LaunchedEffect(isDeleting) {
         if (isDeleting) {
             kotlinx.coroutines.delay(300)
@@ -346,145 +685,75 @@ private fun SubTaskItem(
         }
     }
 
-    // 如果正在删除，高度逐渐变为0
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .alpha(alpha)
             .then(if(isDeleting) Modifier.height(0.dp) else Modifier.wrapContentHeight())
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 6.dp)
-                .clickable {
-                    onToggleComplete(!subTask.isCompleted)
-                },
-            verticalAlignment = Alignment.CenterVertically
+        Surface(
+            color = Color.White,
+            modifier = Modifier.fillMaxWidth().clickable { onToggleComplete(!subTask.isCompleted) },
+            shape = RoundedCornerShape(12.dp),
+            // 完成的任务稍微降低一点视觉权重
         ) {
-            Checkbox(
-                checked = subTask.isCompleted,
-                onCheckedChange = { onToggleComplete(it) },
-                colors = CheckboxDefaults.colors(checkedColor = Primary)
-            )
-            Text(
-                text = subTask.content,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (subTask.isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
-                textDecoration = if (subTask.isCompleted) TextDecoration.LineThrough else null,
-                modifier = Modifier.weight(1f)
-            )
-            IconButton(
-                onClick = { isDeleting = true },
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = stringResource(R.string.delete),
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun formatTime(timestamp: Long): String {
-    return SimpleDateFormat(stringResource(R.string.date_time_format), Locale.getDefault()).format(Date(timestamp))
-}
-
-/**
- * 提醒信息显示区域
- */
-@Composable
-private fun ReminderInfoSection(
-    reminders: List<Reminder>,
-    startTime: Long,
-    deadline: Long
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Primary.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
-            .padding(12.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Default.Notifications,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = Primary
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = stringResource(R.string.task_reminders),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = Primary
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        reminders.sortedBy { it.triggerAt }.forEach { reminder ->
-            val reminderLabel = getReminderLabel(reminder, startTime, deadline)
-            val timeStr = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date(reminder.triggerAt))
-            val isFired = reminder.isFired
-            val isPast = reminder.triggerAt < System.currentTimeMillis()
-            
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                modifier = Modifier.padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    if (isFired) Icons.Default.NotificationsOff else Icons.Default.NotificationsActive,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = when {
-                        isFired -> Color(0xFF9E9E9E)
-                        isPast -> Color(0xFFF43F5E)
-                        else -> Primary
-                    }
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+                // Custom Checkbox
+                IconButton(onClick = { onToggleComplete(!subTask.isCompleted) }) {
+                    Icon(
+                        if (subTask.isCompleted) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
+                        contentDescription = null,
+                        tint = if (subTask.isCompleted) Color.Gray else themeColor
+                    )
+                }
+
                 Text(
-                    text = reminderLabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isFired) Color(0xFF9E9E9E) else Color(0xFF444746),
+                    text = subTask.content,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (subTask.isCompleted) Color.Gray else Color(0xFF1F1F1F),
+                    textDecoration = if (subTask.isCompleted) TextDecoration.LineThrough else null,
                     modifier = Modifier.weight(1f)
                 )
-                Text(
-                    text = timeStr,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = when {
-                        isFired -> Color(0xFF9E9E9E)
-                        isPast -> Color(0xFFF43F5E)
-                        else -> Color(0xFF747775)
-                    }
-                )
+
+                IconButton(
+                    onClick = { isDeleting = true },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = stringResource(R.string.delete),
+                        tint = Color.LightGray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
 }
 
+// --- 以下辅助函数保持原逻辑，确保功能不丢失 ---
+
+@Composable
+private fun getTaskTypeName(type: TaskType): String {
+    return when (type) {
+        TaskType.WORK -> stringResource(R.string.task_type_work)
+        TaskType.LIFE -> stringResource(R.string.task_type_life)
+        TaskType.URGENT -> stringResource(R.string.task_type_urgent)
+        TaskType.STUDY -> stringResource(R.string.task_type_study)
+    }
+}
+
 /**
- * 根据提醒时间生成标签
+ * 根据提醒时间生成标签 (逻辑复用原文件)
  */
 @Composable
 private fun getReminderLabel(reminder: Reminder, startTime: Long, deadline: Long): String {
     val triggerAt = reminder.triggerAt
-    
-    // 如果有自定义标签，直接使用
-    if (!reminder.label.isNullOrEmpty()) {
-        return reminder.label
-    }
-    
-    // 尝试匹配预设类型
+    if (!reminder.label.isNullOrEmpty()) return reminder.label
+
     return when {
         triggerAt == startTime -> stringResource(R.string.reminder_at_start)
         triggerAt == startTime - 60 * 60 * 1000 -> stringResource(R.string.reminder_before_start_1h)
@@ -492,10 +761,8 @@ private fun getReminderLabel(reminder: Reminder, startTime: Long, deadline: Long
         triggerAt == deadline - 60 * 60 * 1000 -> stringResource(R.string.reminder_before_end_1h)
         triggerAt == deadline - 24 * 60 * 60 * 1000 -> stringResource(R.string.reminder_before_end_1d)
         else -> {
-            // 计算自定义时间
             val diffFromStart = startTime - triggerAt
             val diffFromEnd = deadline - triggerAt
-            
             when {
                 diffFromStart > 0 -> formatTimeDiff(diffFromStart, true)
                 diffFromEnd > 0 -> formatTimeDiff(diffFromEnd, false)
@@ -505,21 +772,14 @@ private fun getReminderLabel(reminder: Reminder, startTime: Long, deadline: Long
     }
 }
 
-/**
- * 格式化时间差
- */
 @Composable
 private fun formatTimeDiff(diffMillis: Long, isBeforeStart: Boolean): String {
     val minutes = diffMillis / (60 * 1000)
     val hours = diffMillis / (60 * 60 * 1000)
     val days = diffMillis / (24 * 60 * 60 * 1000)
-    
-    val baseStr = if (isBeforeStart) {
-        stringResource(R.string.reminder_before_start)
-    } else {
-        stringResource(R.string.reminder_before_end)
-    }
-    
+
+    val baseStr = if (isBeforeStart) stringResource(R.string.reminder_before_start) else stringResource(R.string.reminder_before_end)
+
     return when {
         days > 0 -> "$baseStr${days}${stringResource(R.string.reminder_unit_days)}"
         hours > 0 -> "$baseStr${hours}${stringResource(R.string.reminder_unit_hours)}"

@@ -379,8 +379,6 @@ private fun getTaskColor(type: TaskType): Color {
         TaskType.LIFE -> LiteTaskColors.lifeTask()
         TaskType.URGENT -> LiteTaskColors.urgentTask()
         TaskType.STUDY -> LiteTaskColors.studyTask()
-        TaskType.HEALTH -> LiteTaskColors.healthTask()
-        TaskType.DEV -> LiteTaskColors.devTask()
     }
 }
 
@@ -391,8 +389,6 @@ private fun getTaskTypeName(type: TaskType): String {
         TaskType.LIFE -> stringResource(R.string.task_type_life)
         TaskType.URGENT -> stringResource(R.string.task_type_urgent)
         TaskType.STUDY -> stringResource(R.string.task_type_study)
-        TaskType.HEALTH -> stringResource(R.string.task_type_health)
-        TaskType.DEV -> stringResource(R.string.task_type_dev)
     }
 }
 

@@ -5,7 +5,5 @@ enum class TaskType {
     URGENT, 
     STUDY, 
     WORK, 
-    LIFE, 
-    HEALTH,
-    DEV
+    LIFE
 }

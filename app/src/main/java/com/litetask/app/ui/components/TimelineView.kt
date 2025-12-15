@@ -91,8 +91,6 @@ private object TaskColors {
         TaskType.LIFE -> Life()
         TaskType.URGENT -> Urgent()
         TaskType.STUDY -> Study()
-        TaskType.HEALTH -> Health()
-        TaskType.DEV -> Dev()
     }
 
     @Composable
@@ -101,8 +99,6 @@ private object TaskColors {
         TaskType.LIFE -> LifeSurface()
         TaskType.URGENT -> UrgentSurface()
         TaskType.STUDY -> StudySurface()
-        TaskType.HEALTH -> HealthSurface()
-        TaskType.DEV -> DevSurface()
     }
 }
 
@@ -568,8 +564,6 @@ private fun getTaskTypeName(type: TaskType): String {
         TaskType.LIFE -> stringResource(R.string.task_type_life)
         TaskType.URGENT -> stringResource(R.string.task_type_urgent)
         TaskType.STUDY -> stringResource(R.string.task_type_study)
-        TaskType.HEALTH -> stringResource(R.string.task_type_health)
-        TaskType.DEV -> stringResource(R.string.task_type_dev)
     }
 }
 
