@@ -151,7 +151,8 @@
     <string name="test_connection">测试连通性</string>
     <string name="connection_success">连接成功</string>
     <string name="save_settings">保存设置</string>
-    <string name="settings_saved">设置保存成功</string>
+    <string name="ai_save_settings">保存大模型设置</string>
+    <string name="settings_saved">AI设置保存成功</string>
     <string name="settings_save_failed">保存失败: %s</string>
     <string name="please_enter_api_key">请输入 API Key</string>
     <string name="api_key_not_configured">请先在设置中配置大模型 API Key</string>
@@ -214,6 +215,25 @@
     
     <!-- 日期范围选项 -->
     <string name="date_range_selected">已选择</string>
+    
+    <!-- 语音识别设置 -->
+    <string name="speech_config">语音识别配置</string>
+    <string name="speech_provider">语音识别服务</string>
+    <string name="speech_credentials">服务凭证</string>
+    <string name="speech_test_connection">测试连接</string>
+    <string name="speech_save_settings">保存语音设置</string>
+    <string name="speech_settings_saved">语音识别设置已保存</string>
+    <string name="speech_not_configured">请先配置语音识别服务</string>
+    <string name="speech_credential_empty">请填写所有必填凭证</string>
+    <string name="speech_provider_xunfei">讯飞-实时语音转写标准版</string>
+    
+    <!-- 文字输入对话框 -->
+    <string name="text_input_title">AI 任务分析</string>
+    <string name="text_input_subtitle">输入你的计划，AI 将自动识别\n时间、任务类型并设置提醒</string>
+    <string name="text_input_placeholder">例如：明天上午10点去开会...</string>
+    <string name="text_input_analyze">开始分析</string>
+    <string name="text_input_analyzing">分析中...</string>
+    <string name="text_add_task">文字添加任务</string>
     
     <!-- 提醒设置 -->
     <string name="reminder_settings">提醒设置</string>

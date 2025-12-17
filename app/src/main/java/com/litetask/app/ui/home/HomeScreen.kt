@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.*
 import androidx.compose.animation.core.*
@@ -46,6 +47,7 @@ import com.litetask.app.ui.components.TaskDetailSheet
 import com.litetask.app.ui.components.TimelineView
 import com.litetask.app.ui.components.VoiceRecorderDialog
 import com.litetask.app.ui.components.TaskConfirmationSheet
+import com.litetask.app.ui.components.TextInputDialog
 import com.litetask.app.ui.theme.Primary
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -129,6 +131,7 @@ fun HomeScreen(
 
     var showAddTaskDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
+    var showTextInputDialog by remember { mutableStateOf(false) }
     var selectedTask by remember { mutableStateOf<Task?>(null) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var selectedTaskId by remember { mutableStateOf<Long?>(null) }
@@ -274,6 +277,17 @@ fun HomeScreen(
             floatingActionButton = {
                 EnhancedFabGroup(
                     onAddClick = { showAddTaskDialog = true },
+                    onTextInputClick = {
+                        // 检查 API Key 是否已配置
+                        when (viewModel.checkApiKey()) {
+                            is ApiKeyCheckResult.NotConfigured -> {
+                                Toast.makeText(context, context.getString(R.string.api_key_not_configured), Toast.LENGTH_LONG).show()
+                            }
+                            is ApiKeyCheckResult.Valid -> {
+                                showTextInputDialog = true
+                            }
+                        }
+                    },
                     onVoiceClick = {
                         // 先检查 API Key 是否已配置
                         when (viewModel.checkApiKey()) {
@@ -376,6 +390,29 @@ fun HomeScreen(
                         showAddTaskDialog = false
                     }
                 )
+            }
+            
+            // 文字输入对话框
+            if (showTextInputDialog) {
+                TextInputDialog(
+                    onDismiss = { 
+                        if (!uiState.isAnalyzing) {
+                            showTextInputDialog = false 
+                        }
+                    },
+                    onAnalyze = { text ->
+                        viewModel.analyzeTextInput(text)
+                        // 不立即关闭，等分析完成后通过 LaunchedEffect 关闭
+                    },
+                    isAnalyzing = uiState.isAnalyzing
+                )
+            }
+            
+            // 分析完成后关闭文字输入对话框
+            LaunchedEffect(uiState.showAiResult, uiState.showAiError) {
+                if ((uiState.showAiResult || uiState.showAiError) && showTextInputDialog) {
+                    showTextInputDialog = false
+                }
             }
             
             // 编辑任务时需要加载已有提醒
@@ -591,6 +628,7 @@ fun ViewOption(
 @Composable
 private fun EnhancedFabGroup(
     onAddClick: () -> Unit,
+    onTextInputClick: () -> Unit,
     onVoiceClick: () -> Unit
 ) {
     // 语音按钮呼吸动画
@@ -618,13 +656,33 @@ private fun EnhancedFabGroup(
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 手动添加按钮 - 中等大小
+        // 手动添加按钮 - 小尺寸
         FloatingActionButton(
             onClick = onAddClick,
             containerColor = MaterialTheme.colorScheme.secondaryContainer,
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            shape = RoundedCornerShape(14.dp),
+            elevation = FloatingActionButtonDefaults.elevation(
+                defaultElevation = 3.dp,
+                pressedElevation = 6.dp,
+                hoveredElevation = 4.dp
+            ),
+            modifier = Modifier.size(48.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Add,
+                contentDescription = stringResource(R.string.add_task),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        
+        // 文字输入按钮 - 中等尺寸
+        FloatingActionButton(
+            onClick = onTextInputClick,
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
             shape = RoundedCornerShape(16.dp),
             elevation = FloatingActionButtonDefaults.elevation(
                 defaultElevation = 3.dp,
@@ -634,8 +692,8 @@ private fun EnhancedFabGroup(
             modifier = Modifier.size(52.dp)
         ) {
             Icon(
-                imageVector = Icons.Rounded.Add,
-                contentDescription = stringResource(R.string.add_task),
+                imageVector = Icons.Rounded.Edit,
+                contentDescription = stringResource(R.string.text_add_task),
                 modifier = Modifier.size(26.dp)
             )
         }

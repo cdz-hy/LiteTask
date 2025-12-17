@@ -312,6 +312,48 @@ class HomeViewModel @Inject constructor(
         }
     }
     
+    /**
+     * 文字输入分析：直接调用 AI 分析文本
+     */
+    fun analyzeTextInput(text: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isAnalyzing = true)
+            
+            val result = aiRepository.parseTasksFromText("", text)
+            
+            result.onSuccess { tasks ->
+                _uiState.value = _uiState.value.copy(
+                    isAnalyzing = false,
+                    showAiResult = true,
+                    aiParsedTasks = tasks
+                )
+            }.onFailure { error ->
+                val errorMessage = when {
+                    error.message?.contains("API Key 无效") == true -> 
+                        application.getString(R.string.error_api_key_invalid)
+                    error.message?.contains("未设置 API Key") == true -> 
+                        application.getString(R.string.error_api_key_not_set)
+                    error.message?.contains("权限不足") == true -> 
+                        application.getString(R.string.error_api_key_permission)
+                    error.message?.contains("请求过于频繁") == true -> 
+                        application.getString(R.string.error_rate_limit)
+                    error.message?.contains("无法连接") == true || 
+                    error.message?.contains("网络") == true -> 
+                        application.getString(R.string.error_network)
+                    error.message?.contains("超时") == true -> 
+                        application.getString(R.string.error_timeout)
+                    else -> error.message ?: application.getString(R.string.error_ai_analysis)
+                }
+                
+                _uiState.value = _uiState.value.copy(
+                    isAnalyzing = false,
+                    showAiError = true,
+                    aiErrorMessage = errorMessage
+                )
+            }
+        }
+    }
+    
     fun dismissAiError() {
         _uiState.value = _uiState.value.copy(showAiError = false, aiErrorMessage = "")
     }
