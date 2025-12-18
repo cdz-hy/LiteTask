@@ -76,6 +76,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     
+    // ========== 加载状态 ==========
+    var isDataLoaded by remember { mutableStateOf(false) }
+    
     // ========== AI 配置状态 ==========
     var apiKey by remember { mutableStateOf("") }
     var selectedAiProvider by remember { mutableStateOf("deepseek-v3.2") }
@@ -105,6 +108,9 @@ fun SettingsScreen(
         val savedCredentials = viewModel.getSpeechCredentials(selectedSpeechProvider)
         speechCredentials.clear()
         speechCredentials.putAll(savedCredentials)
+        
+        // 标记数据加载完成
+        isDataLoaded = true
     }
     
     // 当语音提供商改变时，加载对应的凭证
@@ -134,6 +140,11 @@ fun SettingsScreen(
             )
         }
     ) { paddingValues ->
+        // 等待数据加载完成后再渲染内容，避免 label 动画
+        if (!isDataLoaded) {
+            return@Scaffold
+        }
+        
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -230,7 +241,7 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(stringResource(R.string.save_settings))
+                    Text(stringResource(R.string.ai_save_settings))
                 }
             }
             

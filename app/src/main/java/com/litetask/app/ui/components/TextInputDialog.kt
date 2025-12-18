@@ -90,9 +90,10 @@ fun TextInputDialog(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 32.dp),
+                    .padding(horizontal = 32.dp)
+                    .padding(top = 80.dp), // 整体上移
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                verticalArrangement = Arrangement.Top
             ) {
                 // AI 图标
                 Box(
@@ -148,7 +149,7 @@ fun TextInputDialog(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(160.dp)
+                            .height(220.dp) // 增大输入框高度
                             .focusRequester(focusRequester),
                         enabled = !isAnalyzing,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(

@@ -48,6 +48,7 @@ import com.litetask.app.ui.components.TimelineView
 import com.litetask.app.ui.components.VoiceRecorderDialog
 import com.litetask.app.ui.components.TaskConfirmationSheet
 import com.litetask.app.ui.components.TextInputDialog
+import com.litetask.app.ui.components.GooeyExpandableFab
 import com.litetask.app.ui.theme.Primary
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -275,41 +276,46 @@ fun HomeScreen(
                 }
             },
             floatingActionButton = {
-                EnhancedFabGroup(
-                    onAddClick = { showAddTaskDialog = true },
-                    onTextInputClick = {
-                        // 检查 API Key 是否已配置
-                        when (viewModel.checkApiKey()) {
-                            is ApiKeyCheckResult.NotConfigured -> {
-                                Toast.makeText(context, context.getString(R.string.api_key_not_configured), Toast.LENGTH_LONG).show()
-                            }
-                            is ApiKeyCheckResult.Valid -> {
-                                showTextInputDialog = true
-                            }
+                // 将点击逻辑提取出来，方便复用
+                val onVoiceClickAction = {
+                    when (viewModel.checkApiKey()) {
+                        is ApiKeyCheckResult.NotConfigured -> {
+                            Toast.makeText(context, context.getString(R.string.api_key_not_configured), Toast.LENGTH_LONG).show()
                         }
-                    },
-                    onVoiceClick = {
-                        // 先检查 API Key 是否已配置
-                        when (viewModel.checkApiKey()) {
-                            is ApiKeyCheckResult.NotConfigured -> {
-                                Toast.makeText(context, context.getString(R.string.api_key_not_configured), Toast.LENGTH_LONG).show()
-                            }
-                            is ApiKeyCheckResult.Valid -> {
-                                // API Key 已配置，继续检查录音权限
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                                    val hasPermission = context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
-                                            android.content.pm.PackageManager.PERMISSION_GRANTED
-                                    if (hasPermission) {
-                                        viewModel.startRecording()
-                                    } else {
-                                        permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                                    }
-                                } else {
+                        is ApiKeyCheckResult.Valid -> {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                val hasPermission = context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+                                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                                if (hasPermission) {
                                     viewModel.startRecording()
+                                } else {
+                                    permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                                 }
+                            } else {
+                                viewModel.startRecording()
                             }
                         }
                     }
+                }
+
+                val onTextInputClickAction = {
+                    when (viewModel.checkApiKey()) {
+                        is ApiKeyCheckResult.NotConfigured -> {
+                            Toast.makeText(context, context.getString(R.string.api_key_not_configured), Toast.LENGTH_LONG).show()
+                        }
+                        is ApiKeyCheckResult.Valid -> {
+                            showTextInputDialog = true
+                        }
+                    }
+                }
+
+                // 使用新的 Gooey 悬浮按钮
+                GooeyExpandableFab(
+                    onVoiceClick = { onVoiceClickAction() },
+                    onTextInputClick = { onTextInputClickAction() },
+                    onManualInputClick = { showAddTaskDialog = true },
+                    // 调整位置，确保展开时不被遮挡
+                    modifier = Modifier.padding(bottom = 16.dp, end = 16.dp)
                 )
             }
         ) { paddingValues ->
