@@ -42,7 +42,8 @@ fun VoiceRecorderDialog(
     recognizedText: String = "",
     recordingDuration: Long = 0L,
     isPlaying: Boolean = false, // 复用作为 "AI 分析中" 的状态
-    isRecording: Boolean = true // 是否正在录音
+    isRecording: Boolean = true, // 是否正在录音
+    speechSourceName: String = "Android STT" // 语音识别源名称
 ) {
     // 可编辑的文本状态
     var editableText by remember(recognizedText) { mutableStateOf(recognizedText) }
@@ -148,13 +149,24 @@ fun VoiceRecorderDialog(
                     enter = fadeIn() + expandVertically(),
                     exit = fadeOut() + shrinkVertically()
                 ) {
-                    Text(
-                        text = formatDuration(recordingDuration),
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontFeatureSettings = "tnum"
-                        ),
-                        color = textSecondary.copy(alpha = 0.8f)
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = formatDuration(recordingDuration),
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontFeatureSettings = "tnum"
+                            ),
+                            color = textSecondary.copy(alpha = 0.8f)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // 语音识别源显示
+                        Text(
+                            text = stringResource(R.string.voice_source_hint, speechSourceName),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = textSecondary.copy(alpha = 0.5f)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(dimensionResource(R.dimen.voice_recorder_section_spacing)))
@@ -520,7 +532,8 @@ fun PreviewRecorderListening() {
     VoiceRecorderDialog(
         onDismiss = {},
         recordingDuration = 12000L,
-        isRecording = true
+        isRecording = true,
+        speechSourceName = "Android STT"
     )
 }
 
@@ -530,6 +543,7 @@ fun PreviewRecorderResult() {
     VoiceRecorderDialog(
         onDismiss = {},
         recognizedText = "明天下午三点开会讨论项目进度",
-        isRecording = false
+        isRecording = false,
+        speechSourceName = "讯飞语音转写"
     )
 }

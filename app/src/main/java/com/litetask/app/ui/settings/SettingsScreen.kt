@@ -230,10 +230,7 @@ fun SettingsScreen(
 
                 Button(
                     onClick = { 
-                        if (apiKey.isBlank()) {
-                            Toast.makeText(context, context.getString(R.string.please_enter_api_key), Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
+                        // 允许保存空值，空值表示不使用 AI 分析功能
                         viewModel.saveApiKey(apiKey)
                         viewModel.saveAiProvider(selectedAiProvider)
                         Toast.makeText(context, context.getString(R.string.settings_saved), Toast.LENGTH_SHORT).show()
@@ -338,15 +335,7 @@ fun SettingsScreen(
 
                 Button(
                     onClick = { 
-                        // 检查必填字段
-                        val missingFields = speechCredentialFields.filter { field ->
-                            field.isRequired && speechCredentials[field.id].isNullOrBlank()
-                        }
-                        if (missingFields.isNotEmpty()) {
-                            Toast.makeText(context, context.getString(R.string.speech_credential_empty), Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        
+                        // 允许保存空值，空值表示不使用该服务
                         viewModel.saveSpeechProvider(selectedSpeechProvider)
                         viewModel.saveSpeechCredentials(selectedSpeechProvider, speechCredentials.toMap())
                         Toast.makeText(context, context.getString(R.string.speech_settings_saved), Toast.LENGTH_SHORT).show()

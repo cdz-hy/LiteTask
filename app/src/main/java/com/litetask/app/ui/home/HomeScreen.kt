@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Mic
@@ -504,6 +505,7 @@ fun HomeScreen(
                     uiState.showVoiceResult // 新增状态：录音结束后显示结果（无论有无文字）
 
             if (showVoiceDialog) {
+                val speechSourceInfo = remember { viewModel.getSpeechSourceInfo() }
                 VoiceRecorderDialog(
                     onDismiss = { viewModel.cancelRecording() },
                     onStopRecording = { viewModel.finishRecording() }, // 停止录音，进入确认状态
@@ -511,7 +513,8 @@ fun HomeScreen(
                     recognizedText = uiState.recognizedText,
                     recordingDuration = recordingDuration,
                     isPlaying = uiState.recordingState == com.litetask.app.util.RecordingState.PLAYING,
-                    isRecording = uiState.recordingState == com.litetask.app.util.RecordingState.RECORDING
+                    isRecording = uiState.recordingState == com.litetask.app.util.RecordingState.RECORDING,
+                    speechSourceName = speechSourceInfo.displayName
                 )
             }
 
@@ -532,6 +535,18 @@ fun HomeScreen(
                     onDismiss = { viewModel.dismissAiError() },
                     onGoToSettings = {
                         viewModel.dismissAiError()
+                        onNavigateToSettings()
+                    }
+                )
+            }
+            
+            // 语音识别错误提示对话框
+            if (uiState.showSpeechError) {
+                SpeechErrorDialog(
+                    errorMessage = uiState.speechErrorMessage,
+                    onDismiss = { viewModel.dismissSpeechError() },
+                    onGoToSettings = {
+                        viewModel.dismissSpeechError()
                         onNavigateToSettings()
                     }
                 )
@@ -572,6 +587,59 @@ private fun AiErrorDialog(
         },
         confirmButton = {
             if (errorMessage.contains("API Key") || errorMessage.contains("设置")) {
+                TextButton(onClick = onGoToSettings) {
+                    Text(stringResource(R.string.go_to_settings))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.close))
+            }
+        }
+    )
+}
+
+@Composable
+private fun SpeechErrorDialog(
+    errorMessage: String,
+    onDismiss: () -> Unit,
+    onGoToSettings: () -> Unit
+) {
+    // 判断是否需要显示"去设置"按钮
+    val needSettings = errorMessage.contains("设置") || 
+                       errorMessage.contains("API Key") || 
+                       errorMessage.contains("App ID") ||
+                       errorMessage.contains("未配置") ||
+                       errorMessage.contains("权限") ||
+                       errorMessage.contains("充值")
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.MicOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(48.dp)
+            )
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.speech_error_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                text = errorMessage,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        confirmButton = {
+            if (needSettings) {
                 TextButton(onClick = onGoToSettings) {
                     Text(stringResource(R.string.go_to_settings))
                 }

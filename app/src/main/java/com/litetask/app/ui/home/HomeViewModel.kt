@@ -149,6 +149,13 @@ class HomeViewModel @Inject constructor(
         }
     }
     
+    /**
+     * 获取当前语音识别源信息
+     */
+    fun getSpeechSourceInfo(): com.litetask.app.util.SpeechSourceInfo {
+        return speechHelper.getCurrentSourceInfo()
+    }
+    
     fun startRecording() {
         recordingJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
@@ -159,7 +166,7 @@ class HomeViewModel @Inject constructor(
             )
             try {
                 // 使用录音+实时识别
-                speechHelper.startRecordingWithRecognition()
+                speechHelper.startRecognition()
                     .collect { result ->
                         when (result) {
                             is com.litetask.app.util.VoiceRecordResult.RecordingStarted -> {
@@ -171,15 +178,75 @@ class HomeViewModel @Inject constructor(
                                 _uiState.value = _uiState.value.copy(recognizedText = result.text)
                             }
                             is com.litetask.app.util.VoiceRecordResult.Error -> {
-                                // 显示错误但不关闭
+                                // 处理语音识别错误
+                                val errorMessage = parseSpeechError(result.message)
+                                _uiState.value = _uiState.value.copy(
+                                    isRecording = false,
+                                    showSpeechError = true,
+                                    speechErrorMessage = errorMessage,
+                                    recordingState = com.litetask.app.util.RecordingState.IDLE
+                                )
+                                speechHelper.release()
                             }
                             else -> {}
                         }
                     }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // 协程被取消是正常行为（用户按返回键等），不显示错误
+                _uiState.value = _uiState.value.copy(
+                    isRecording = false,
+                    recordingState = com.litetask.app.util.RecordingState.IDLE
+                )
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isRecording = false)
+                val errorMessage = parseSpeechError(e.message ?: "")
+                _uiState.value = _uiState.value.copy(
+                    isRecording = false,
+                    showSpeechError = true,
+                    speechErrorMessage = errorMessage,
+                    recordingState = com.litetask.app.util.RecordingState.IDLE
+                )
             }
         }
+    }
+    
+    /**
+     * 解析语音识别错误信息
+     */
+    private fun parseSpeechError(errorMsg: String): String {
+        return when {
+            // 讯飞错误码
+            errorMsg.contains("App ID 不存在") -> 
+                application.getString(R.string.error_speech_appid_not_exist)
+            errorMsg.contains("App ID 已被禁用") -> 
+                application.getString(R.string.error_speech_appid_disabled)
+            errorMsg.contains("没有实时语音转写权限") -> 
+                application.getString(R.string.error_speech_no_permission)
+            errorMsg.contains("签名错误") || errorMsg.contains("API Key") -> 
+                application.getString(R.string.error_speech_apikey_invalid)
+            errorMsg.contains("签名无效") -> 
+                application.getString(R.string.error_speech_signa_invalid)
+            errorMsg.contains("时间戳过期") -> 
+                application.getString(R.string.error_speech_timestamp_expired)
+            errorMsg.contains("转写时长已用完") -> 
+                application.getString(R.string.error_speech_quota_exhausted)
+            errorMsg.contains("并发数超限") -> 
+                application.getString(R.string.error_speech_concurrent_limit)
+            errorMsg.contains("凭证未配置") -> 
+                application.getString(R.string.error_speech_not_configured)
+            // 通用错误
+            errorMsg.contains("连接失败") || errorMsg.contains("网络") -> 
+                application.getString(R.string.error_speech_network)
+            errorMsg.contains("超时") -> 
+                application.getString(R.string.error_speech_timeout)
+            else -> errorMsg.ifEmpty { application.getString(R.string.error_speech_unknown) }
+        }
+    }
+    
+    /**
+     * 关闭语音识别错误提示
+     */
+    fun dismissSpeechError() {
+        _uiState.value = _uiState.value.copy(showSpeechError = false, speechErrorMessage = "")
     }
     
     // 录音时长
@@ -215,45 +282,6 @@ class HomeViewModel @Inject constructor(
             processVoiceCommand(editedText)
         } else {
             cancelRecording()
-        }
-    }
-    
-    @Deprecated("Use finishRecordingWithText instead")
-    fun finishRecordingOld() {
-        // 停止录音和识别
-        recordingJob?.cancel()
-        recordingJob = null
-        
-        val text = _uiState.value.recognizedText
-        
-        // 如果有识别结果，先回放录音
-        if (text.isNotBlank()) {
-            _uiState.value = _uiState.value.copy(
-                recordingState = com.litetask.app.util.RecordingState.PLAYING
-            )
-            
-            val playSuccess = speechHelper.playRecording {
-                // 回放完成后处理文字
-                _uiState.value = _uiState.value.copy(
-                    isRecording = false,
-                    recordingState = com.litetask.app.util.RecordingState.IDLE
-                )
-                processVoiceCommand(text)
-            }
-            
-            if (!playSuccess) {
-                // 回放失败，直接处理文字
-                _uiState.value = _uiState.value.copy(
-                    isRecording = false,
-                    recordingState = com.litetask.app.util.RecordingState.IDLE
-                )
-                processVoiceCommand(text)
-            }
-        } else {
-            _uiState.value = _uiState.value.copy(
-                isRecording = false,
-                recordingState = com.litetask.app.util.RecordingState.IDLE
-            )
         }
     }
     
@@ -616,6 +644,8 @@ data class HomeUiState(
     val showVoiceResult: Boolean = false,   // 录音结束后显示结果界面（无论有无识别文字）
     val showAiError: Boolean = false,       // 显示 AI 错误界面
     val aiErrorMessage: String = "",        // AI 错误信息
+    val showSpeechError: Boolean = false,   // 显示语音识别错误界面
+    val speechErrorMessage: String = "",    // 语音识别错误信息
     val aiParsedTasks: List<Task> = emptyList(),
     val recognizedText: String = "",        // 实时识别的文字
     val finalRecognizedText: String = "",   // 最终识别结果
