@@ -46,7 +46,9 @@ fun VoiceRecorderDialog(
     speechSourceName: String = "Android STT" // 语音识别源名称
 ) {
     // 可编辑的文本状态
-    var editableText by remember(recognizedText) { mutableStateOf(recognizedText) }
+    // 注意：recognizedText 来自 Provider，已经是完整的累积文本，不需要在这里拼接
+    // 只在用户开始编辑后才停止同步，避免覆盖用户的修改
+    var editableText by remember { mutableStateOf(recognizedText) }
     var isEditing by remember { mutableStateOf(false) }
     
     // 颜色资源
@@ -59,7 +61,8 @@ fun VoiceRecorderDialog(
     val errorColor = colorResource(R.color.voice_recorder_error)
     val buttonBg = colorResource(R.color.voice_recorder_button_bg)
     
-    // 当 recognizedText 更新时同步
+    // 当 recognizedText 更新时同步到 editableText
+    // Provider 返回的是完整文本，直接替换即可，不要拼接
     LaunchedEffect(recognizedText) {
         if (!isEditing) {
             editableText = recognizedText

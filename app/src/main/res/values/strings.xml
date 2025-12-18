@@ -226,6 +226,10 @@
     <!-- 截止视图 -->
     <string name="no_upcoming_deadlines">没有即将截止的任务</string>
     
+    <!-- 空状态提示 -->
+    <string name="no_tasks_yet">暂无任务</string>
+    <string name="no_tasks_hint">点击右下角按钮添加你的第一个任务</string>
+    
     <!-- 搜索界面提示 -->
     <string name="try_adjust_filters">尝试调整搜索条件或筛选选项</string>
     

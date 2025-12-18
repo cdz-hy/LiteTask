@@ -396,6 +396,40 @@ class HomeViewModel @Inject constructor(
         }
     }
     
+    /**
+     * 确认添加任务（带提醒）
+     */
+    fun confirmAddTasksWithReminders(
+        tasks: List<Task>, 
+        taskReminders: Map<Int, List<com.litetask.app.data.model.ReminderConfig>>
+    ) {
+        viewModelScope.launch {
+            if (tasks.isNotEmpty()) {
+                tasks.forEachIndexed { index, task ->
+                    val reminderConfigs = taskReminders[index] ?: emptyList()
+                    if (reminderConfigs.isNotEmpty()) {
+                        // 有提醒配置，使用带提醒的插入方法
+                        val reminders = reminderConfigs.mapNotNull { config ->
+                            val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
+                            if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
+                                com.litetask.app.data.model.Reminder(
+                                    taskId = 0, // 会在插入时更新
+                                    triggerAt = triggerAt,
+                                    label = config.generateLabel()
+                                )
+                            } else null
+                        }
+                        taskRepository.insertTaskWithReminders(task, reminders)
+                    } else {
+                        // 没有提醒配置，直接插入任务
+                        taskRepository.insertTask(task)
+                    }
+                }
+            }
+            _uiState.value = _uiState.value.copy(showAiResult = false, aiParsedTasks = emptyList())
+        }
+    }
+    
     fun updateAiParsedTask(index: Int, task: Task) {
         val currentTasks = _uiState.value.aiParsedTasks.toMutableList()
         if (index in currentTasks.indices) {

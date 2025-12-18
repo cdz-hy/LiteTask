@@ -522,7 +522,7 @@ fun HomeScreen(
                 TaskConfirmationSheet(
                     tasks = uiState.aiParsedTasks,
                     onDismiss = { viewModel.dismissAiResult() },
-                    onConfirm = { viewModel.confirmAddTasks() },
+                    onConfirm = { tasks, reminders -> viewModel.confirmAddTasksWithReminders(tasks, reminders) },
                     onEditTask = { index, task -> viewModel.updateAiParsedTask(index, task) },
                     onDeleteTask = { index -> viewModel.deleteAiParsedTask(index) }
                 )

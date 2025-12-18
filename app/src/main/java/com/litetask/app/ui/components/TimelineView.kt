@@ -174,6 +174,15 @@ fun TimelineView(
             )
         }
 
+        // 空状态提示
+        if (items.isEmpty()) {
+            EmptyStateView(
+                icon = Icons.Default.Inbox,
+                title = stringResource(R.string.no_tasks_yet),
+                subtitle = stringResource(R.string.no_tasks_hint)
+            )
+        }
+
         LazyColumn(
             state = listState,
             modifier = Modifier

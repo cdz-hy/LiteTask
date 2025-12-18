@@ -61,7 +61,7 @@ private object ConfirmTaskColors {
 fun TaskConfirmationSheet(
     tasks: List<Task>,
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
+    onConfirm: (List<Task>, Map<Int, List<com.litetask.app.data.model.ReminderConfig>>) -> Unit,
     onEditTask: (Int, Task) -> Unit = { _, _ -> },
     onDeleteTask: (Int) -> Unit = {}
 ) {
@@ -69,6 +69,9 @@ fun TaskConfirmationSheet(
     
     // 内部管理任务列表状态
     var taskList by remember(tasks) { mutableStateOf(tasks) }
+    
+    // 存储每个任务的提醒配置 (key: 任务在列表中的索引)
+    var taskReminders by remember { mutableStateOf<Map<Int, List<com.litetask.app.data.model.ReminderConfig>>>(emptyMap()) }
     
     // 编辑对话框状态
     var showEditDialog by remember { mutableStateOf(false) }
@@ -145,7 +148,7 @@ fun TaskConfirmationSheet(
                 onDismiss = onDismiss,
                 onConfirm = {
                     if (taskList.isNotEmpty()) {
-                        onConfirm()
+                        onConfirm(taskList, taskReminders)
                     }
                 }
             )
@@ -165,6 +168,21 @@ fun TaskConfirmationSheet(
                 if (editingTaskIndex >= 0 && editingTaskIndex < taskList.size) {
                     taskList = taskList.toMutableList().apply { 
                         set(editingTaskIndex, updatedTask) 
+                    }
+                    onEditTask(editingTaskIndex, updatedTask)
+                }
+                showEditDialog = false
+                editingTask = null
+                editingTaskIndex = -1
+            },
+            onConfirmWithReminders = { updatedTask, reminders ->
+                if (editingTaskIndex >= 0 && editingTaskIndex < taskList.size) {
+                    taskList = taskList.toMutableList().apply { 
+                        set(editingTaskIndex, updatedTask) 
+                    }
+                    // 保存提醒配置
+                    taskReminders = taskReminders.toMutableMap().apply {
+                        put(editingTaskIndex, reminders)
                     }
                     onEditTask(editingTaskIndex, updatedTask)
                 }
