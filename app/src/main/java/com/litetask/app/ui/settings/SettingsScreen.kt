@@ -1,5 +1,9 @@
 package com.litetask.app.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -25,7 +29,9 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -45,6 +51,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -65,6 +72,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.litetask.app.R
 import com.litetask.app.data.speech.CredentialField
+import com.litetask.app.reminder.FloatingReminderService
+import com.litetask.app.reminder.PermissionHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -347,7 +356,205 @@ fun SettingsScreen(
                 }
             }
             
+            // ========== 提醒设置卡片 ==========
+            ReminderSettingsCard(context)
+            
             Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+/**
+ * 提醒设置卡片
+ * 引导用户开启必要的系统权限，确保提醒功能正常工作
+ */
+@Composable
+private fun ReminderSettingsCard(context: android.content.Context) {
+    // 检查各项权限状态
+    var hasNotificationPermission by remember { mutableStateOf(true) }
+    var hasExactAlarmPermission by remember { mutableStateOf(true) }
+    var hasOverlayPermission by remember { mutableStateOf(true) }
+    
+    // 用于触发权限状态刷新
+    var refreshTrigger by remember { mutableStateOf(0) }
+    
+    // 监听生命周期，当页面重新获得焦点时刷新权限状态
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                refreshTrigger++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    
+    // 刷新权限状态
+    LaunchedEffect(refreshTrigger) {
+        hasNotificationPermission = PermissionHelper.hasNotificationPermission(context)
+        hasExactAlarmPermission = PermissionHelper.canScheduleExactAlarms(context)
+        hasOverlayPermission = FloatingReminderService.canDrawOverlays(context)
+    }
+    
+    SettingsCard(
+        title = "提醒设置",
+        icon = Icons.Default.Notifications
+    ) {
+        // 说明文字
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+//            Icon(
+//                Icons.Default.Warning,
+//                contentDescription = null,
+//                tint = Color(0xFFFF9800),
+//                modifier = Modifier.size(18.dp)
+//            )
+//            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "部分手机系统需要手动开启以下权限，否则应用不在后台时提醒可能无法正常触发",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        
+        // 权限状态列表
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // 通知权限
+            PermissionItem(
+                title = "通知权限",
+                description = "允许显示提醒通知",
+                isGranted = hasNotificationPermission,
+                onClick = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        }
+                        context.startActivity(intent)
+                    }
+                }
+            )
+            
+            // 精确闹钟权限
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PermissionItem(
+                    title = "精确闹钟权限",
+                    description = "允许设置精确的提醒时间",
+                    isGranted = hasExactAlarmPermission,
+                    onClick = {
+                        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                        }
+                        context.startActivity(intent)
+                    }
+                )
+            }
+            
+            // 悬浮窗权限
+            PermissionItem(
+                title = "悬浮窗权限",
+                description = "允许显示悬浮提醒弹窗",
+                isGranted = hasOverlayPermission,
+                onClick = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:${context.packageName}")
+                        )
+                        context.startActivity(intent)
+                    }
+                }
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        // 跳转到应用详情设置
+        Text(
+            text = "如果提醒仍然无法正常工作，请在系统设置中：",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Medium
+        )
+        
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        Text(
+            text = "• 开启「自启动」权限\n• 将后台限制设为「无限制」\n• 关闭应用「电池优化」",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        Button(
+            onClick = {
+                // 跳转到应用详情设置页面
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                }
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text("打开应用设置")
+        }
+    }
+}
+
+/**
+ * 权限项组件
+ */
+@Composable
+private fun PermissionItem(
+    title: String,
+    description: String,
+    isGranted: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        
+        if (isGranted) {
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = "已开启",
+                tint = Color(0xFF4CAF50),
+                modifier = Modifier.size(24.dp)
+            )
+        } else {
+            TextButton(onClick = onClick) {
+                Text("去开启")
+            }
         }
     }
 }

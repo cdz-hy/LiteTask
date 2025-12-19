@@ -18,13 +18,18 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
-        return Room.databaseBuilder(
+        val database = Room.databaseBuilder(
             context,
             AppDatabase::class.java,
             "litetask.db"
         )
             .fallbackToDestructiveMigration() // 允许在schema变化时重建数据库
             .build()
+        
+        // 设置单例，供 BroadcastReceiver 等无法使用 Hilt 的地方使用
+        AppDatabase.setInstance(database)
+        
+        return database
     }
 
     @Provides

@@ -1,7 +1,15 @@
 package com.litetask.app
 
 import android.app.Application
+import android.util.Log
+import com.litetask.app.data.local.AppDatabase
+import com.litetask.app.reminder.NotificationHelper
+import com.litetask.app.reminder.ReminderScheduler
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * LiteTask 应用入口
@@ -9,8 +17,75 @@ import dagger.hilt.android.HiltAndroidApp
  */
 @HiltAndroidApp
 class LiteTaskApplication : Application() {
+    
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    
     override fun onCreate() {
         super.onCreate()
-        // 初始化操作
+        
+        // 创建通知渠道
+        NotificationHelper.createNotificationChannel(this)
+        
+        // 恢复所有待触发的提醒
+        // 这是为了应对小米等国产 ROM 在杀后台时清除 AlarmManager 的问题
+        restoreReminders()
+    }
+    
+    /**
+     * 恢复所有待触发的提醒
+     * 
+     * 小米 MIUI 等国产 ROM 在用户手动杀掉后台时会清除 App 注册的所有闹钟，
+     * 所以每次 App 启动时都需要重新注册。
+     */
+    private fun restoreReminders() {
+        applicationScope.launch {
+            try {
+                val database = AppDatabase.getInstance(this@LiteTaskApplication)
+                val taskDao = database.taskDao()
+                val scheduler = ReminderScheduler(this@LiteTaskApplication)
+                
+                val now = System.currentTimeMillis()
+                
+                // 查询所有未触发且触发时间在未来的提醒
+                val pendingReminders = taskDao.getFutureReminders(now)
+                
+                if (pendingReminders.isEmpty()) {
+                    Log.d(TAG, "No pending reminders to restore on app start")
+                    return@launch
+                }
+                
+                var successCount = 0
+                
+                for (reminder in pendingReminders) {
+                    val task = taskDao.getTaskByIdSync(reminder.taskId)
+                    
+                    // 跳过已完成或不存在的任务
+                    if (task == null || task.isDone) {
+                        continue
+                    }
+                    
+                    // 使用带任务信息的方法注册
+                    val success = scheduler.scheduleReminderWithTaskInfo(
+                        reminder = reminder,
+                        taskTitle = task.title,
+                        taskType = task.type.name
+                    )
+                    
+                    if (success) {
+                        successCount++
+                    }
+                }
+                
+                if (successCount > 0) {
+                    Log.i(TAG, "★ Restored $successCount/${pendingReminders.size} reminders on app start")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error restoring reminders: ${e.message}", e)
+            }
+        }
+    }
+    
+    companion object {
+        private const val TAG = "LiteTaskApplication"
     }
 }

@@ -274,4 +274,30 @@
     <string name="reminder_time_invalid">提醒时间无效（早于当前时间）</string>
     <string name="task_reminders">任务提醒</string>
     <string name="no_reminders_set">未设置提醒</string>
+    
+    <!-- 提醒通知 -->
+    <string name="reminder_default">任务即将到期，请注意查看</string>
+    <string name="reminder_urgent_default">紧急任务即将到期！</string>
+    <string name="reminder_work_default">工作任务提醒</string>
+    <string name="reminder_study_default">学习任务提醒</string>
+    <string name="reminder_life_default">生活任务提醒</string>
+    
+    <!-- 权限相关 -->
+    <string name="permission_alarm_title">需要精确闹钟权限</string>
+    <string name="permission_alarm_message">为了确保任务提醒准时送达，请允许 LiteTask 设置精确闹钟</string>
+    <string name="permission_notification_title">需要通知权限</string>
+    <string name="permission_notification_message">为了接收任务提醒，请允许 LiteTask 发送通知</string>
+    <string name="go_to_permission_settings">去设置</string>
+    
+    <!-- 提醒权限设置 -->
+    <string name="reminder_permission_settings">提醒权限设置</string>
+    <string name="reminder_permission_guide">为确保提醒正常工作，请完成以下设置：</string>
+    <string name="permission_notification_status">通知权限</string>
+    <string name="permission_alarm_status">精确闹钟权限</string>
+    <string name="permission_granted">已授权</string>
+    <string name="permission_denied">未授权</string>
+    <string name="permission_battery_optimization">电池优化</string>
+    <string name="permission_battery_hint">建议设置为"无限制"以确保后台提醒正常</string>
+    <string name="permission_autostart">自启动权限</string>
+    <string name="permission_autostart_hint">部分手机需要开启自启动才能收到提醒</string>
 </resources>

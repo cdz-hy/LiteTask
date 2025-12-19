@@ -456,34 +456,39 @@ class HomeViewModel @Inject constructor(
      * 添加任务并设置提醒
      */
     fun addTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
+        android.util.Log.i("HomeViewModel", "addTaskWithReminders called: task=${task.title}, configs=${reminderConfigs.size}")
         viewModelScope.launch {
             val reminders = reminderConfigs.mapNotNull { config ->
                 val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
+                android.util.Log.d("HomeViewModel", "Config: type=${config.type}, triggerAt=$triggerAt, now=${System.currentTimeMillis()}")
                 if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
                     com.litetask.app.data.model.Reminder(
                         taskId = 0, // 会在插入时更新
                         triggerAt = triggerAt,
                         label = config.generateLabel()
                     )
-                } else null
+                } else {
+                    android.util.Log.w("HomeViewModel", "Skipping config: triggerAt=$triggerAt, type=${config.type}")
+                    null
+                }
             }
+            android.util.Log.i("HomeViewModel", "Created ${reminders.size} reminders from ${reminderConfigs.size} configs")
             taskRepository.insertTaskWithReminders(task, reminders)
         }
     }
 
     fun updateTask(task: Task) {
         viewModelScope.launch {
-            taskRepository.updateTask(task)
-            
-            // 如果任务状态从已完成变为未完成，需要从历史列表中移除
-            if (!task.isDone) {
-                _historyList.value = _historyList.value.filter { it.task.id != task.id }
-            }
-            // 如果任务状态从未完成变为已完成，需要重新加载历史列表
-            else {
+            // 如果任务被标记为完成，使用 markTaskDone 来同时取消闹钟
+            if (task.isDone) {
+                taskRepository.markTaskDone(task)
                 // 重新加载历史列表以包含新完成的任务
                 val newHistory = taskRepository.getHistoryTasks(pageSize * (historyPage + 1), 0)
                 _historyList.value = newHistory
+            } else {
+                taskRepository.updateTask(task)
+                // 如果任务状态从已完成变为未完成，需要从历史列表中移除
+                _historyList.value = _historyList.value.filter { it.task.id != task.id }
             }
         }
     }
@@ -493,6 +498,14 @@ class HomeViewModel @Inject constructor(
      */
     fun updateTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
         viewModelScope.launch {
+            // 如果任务已完成，使用 markTaskDone 取消闹钟，不注册新提醒
+            if (task.isDone) {
+                taskRepository.markTaskDone(task)
+                val newHistory = taskRepository.getHistoryTasks(pageSize * (historyPage + 1), 0)
+                _historyList.value = newHistory
+                return@launch
+            }
+            
             val reminders = reminderConfigs.mapNotNull { config ->
                 val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
                 if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
@@ -505,13 +518,8 @@ class HomeViewModel @Inject constructor(
             }
             taskRepository.updateTaskWithReminders(task, reminders)
             
-            // 处理历史列表更新
-            if (!task.isDone) {
-                _historyList.value = _historyList.value.filter { it.task.id != task.id }
-            } else {
-                val newHistory = taskRepository.getHistoryTasks(pageSize * (historyPage + 1), 0)
-                _historyList.value = newHistory
-            }
+            // 从历史列表中移除（因为任务未完成）
+            _historyList.value = _historyList.value.filter { it.task.id != task.id }
         }
     }
     
@@ -537,7 +545,8 @@ class HomeViewModel @Inject constructor(
 
     fun deleteTask(task: Task) {
         viewModelScope.launch {
-            taskRepository.deleteTask(task)
+            // 使用 deleteTaskWithReminders 来同时取消闹钟
+            taskRepository.deleteTaskWithReminders(task)
         }
     }
 

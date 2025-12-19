@@ -1,10 +1,14 @@
 package com.litetask.app
 
+import android.Manifest
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -13,6 +17,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.litetask.app.data.model.Task
+import com.litetask.app.reminder.FloatingReminderService
+import com.litetask.app.reminder.NotificationHelper
+import com.litetask.app.reminder.PermissionHelper
 import com.litetask.app.ui.components.AddTaskDialog
 import com.litetask.app.ui.components.TaskDetailSheet
 import com.litetask.app.ui.home.HomeViewModel
@@ -21,30 +28,100 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    
+    // 用于传递从通知点击的任务 ID
+    private var pendingTaskId: Long? = null
+    
+    // 通知权限请求
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            android.util.Log.d("MainActivity", "Notification permission granted")
+        } else {
+            android.util.Log.w("MainActivity", "Notification permission denied")
+        }
+    }
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // 处理从通知点击进入的情况
+        handleNotificationIntent(intent)
+        
+        // 请求必要的权限
+        requestRequiredPermissions()
+        
         setContent {
             LiteTaskTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    AppContent()
+                    AppContent(initialTaskId = pendingTaskId)
                 }
             }
+        }
+    }
+    
+    /**
+     * 请求提醒功能所需的权限
+     */
+    private fun requestRequiredPermissions() {
+        // 1. 请求通知权限 (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (!PermissionHelper.hasNotificationPermission(this)) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        
+        // 2. 检查精确闹钟权限 (Android 12+)
+        // 注意：SCHEDULE_EXACT_ALARM 不能通过 requestPermissions 请求，需要引导用户去设置
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!PermissionHelper.canScheduleExactAlarms(this)) {
+                // 可以在这里显示一个对话框引导用户去设置
+                android.util.Log.w("MainActivity", "Exact alarm permission not granted, reminders may not work")
+            }
+        }
+        
+        // 3. 检查悬浮窗权限 (Android 6+)
+        // 3. 悬浮窗权限 - 不自动跳转，改为在设置页面引导用户开启
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!FloatingReminderService.canDrawOverlays(this)) {
+                android.util.Log.w("MainActivity", "Overlay permission not granted, user can enable in Settings")
+            }
+        }
+    }
+    
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // 处理 App 已在前台时从通知点击的情况
+        handleNotificationIntent(intent)
+    }
+    
+    private fun handleNotificationIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(NotificationHelper.EXTRA_FROM_NOTIFICATION, false) == true) {
+            pendingTaskId = intent.getLongExtra(NotificationHelper.EXTRA_TASK_ID, -1).takeIf { it != -1L }
         }
     }
 }
 
 @Composable
-fun AppContent() {
+fun AppContent(initialTaskId: Long? = null) {
     var currentScreen by remember { mutableStateOf("home") }
     var currentHomeView by remember { mutableStateOf("timeline") } // 记住 HomeScreen 的当前视图，初始为列表
-    var selectedTaskId by remember { mutableStateOf<Long?>(null) }
+    var selectedTaskId by remember { mutableStateOf<Long?>(initialTaskId) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
     var ganttViewMode by remember { mutableStateOf<com.litetask.app.ui.components.GanttViewMode>(com.litetask.app.ui.components.GanttViewMode.THREE_DAY) }
     val context = LocalContext.current
+    
+    // 如果有从通知传入的任务 ID，自动打开任务详情
+    LaunchedEffect(initialTaskId) {
+        if (initialTaskId != null && initialTaskId > 0) {
+            selectedTaskId = initialTaskId
+        }
+    }
 
     when (currentScreen) {
         "home" -> {
