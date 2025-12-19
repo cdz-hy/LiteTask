@@ -1,6 +1,10 @@
 package com.litetask.app.ui.home
 
+import android.Manifest
+import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,6 +16,7 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Warning
@@ -41,6 +46,7 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
+import com.litetask.app.reminder.PermissionHelper
 import com.litetask.app.ui.components.AddTaskDialog
 import com.litetask.app.ui.components.DeadlineView
 import com.litetask.app.ui.components.GanttView
@@ -137,6 +143,10 @@ fun HomeScreen(
     var selectedTask by remember { mutableStateOf<Task?>(null) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var selectedTaskId by remember { mutableStateOf<Long?>(null) }
+    
+    // 权限相关状态
+    var showAlarmPermissionDialog by remember { mutableStateOf(false) }
+    var showNotificationPermissionDialog by remember { mutableStateOf(false) }
 
     val selectedTaskComposite by produceState<com.litetask.app.data.model.TaskDetailComposite?>(
         initialValue = null,
@@ -152,8 +162,34 @@ fun HomeScreen(
     }
 
     val context = LocalContext.current
-    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    
+    // 通知权限请求
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            // 用户拒绝了权限，显示引导对话框
+            showNotificationPermissionDialog = true
+        }
+    }
+    
+    // 检查并请求通知权限
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (!PermissionHelper.hasNotificationPermission(context)) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        // 检查精确闹钟权限
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!PermissionHelper.canScheduleExactAlarms(context)) {
+                showAlarmPermissionDialog = true
+            }
+        }
+    }
+    
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
             viewModel.startRecording()
@@ -551,6 +587,28 @@ fun HomeScreen(
                     }
                 )
             }
+            
+            // 精确闹钟权限引导对话框
+            if (showAlarmPermissionDialog) {
+                AlarmPermissionDialog(
+                    onDismiss = { showAlarmPermissionDialog = false },
+                    onGoToSettings = {
+                        showAlarmPermissionDialog = false
+                        context.startActivity(PermissionHelper.getExactAlarmSettingsIntent(context))
+                    }
+                )
+            }
+            
+            // 通知权限引导对话框
+            if (showNotificationPermissionDialog) {
+                NotificationPermissionDialog(
+                    onDismiss = { showNotificationPermissionDialog = false },
+                    onGoToSettings = {
+                        showNotificationPermissionDialog = false
+                        context.startActivity(PermissionHelper.getNotificationSettingsIntent(context))
+                    }
+                )
+            }
         }
     } // ModalNavigationDrawer 闭合
 }
@@ -811,4 +869,94 @@ private fun EnhancedFabGroup(
             }
         }
     }
+}
+
+/**
+ * 精确闹钟权限引导对话框
+ */
+@Composable
+private fun AlarmPermissionDialog(
+    onDismiss: () -> Unit,
+    onGoToSettings: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Notifications,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(48.dp)
+            )
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.permission_alarm_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                text = stringResource(R.string.permission_alarm_message),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onGoToSettings) {
+                Text(stringResource(R.string.go_to_permission_settings))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.close))
+            }
+        }
+    )
+}
+
+/**
+ * 通知权限引导对话框
+ */
+@Composable
+private fun NotificationPermissionDialog(
+    onDismiss: () -> Unit,
+    onGoToSettings: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Notifications,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(48.dp)
+            )
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.permission_notification_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                text = stringResource(R.string.permission_notification_message),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onGoToSettings) {
+                Text(stringResource(R.string.go_to_permission_settings))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.close))
+            }
+        }
+    )
 }

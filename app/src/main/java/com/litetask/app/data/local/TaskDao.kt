@@ -145,4 +145,16 @@ interface TaskDao {
     
     @Query("SELECT * FROM reminders WHERE is_fired = 0 AND trigger_at <= :currentTime")
     suspend fun getPendingReminders(currentTime: Long): List<Reminder>
+    
+    // 获取所有未触发且触发时间在未来的提醒（用于开机恢复）
+    @Query("SELECT * FROM reminders WHERE is_fired = 0 AND trigger_at > :currentTime")
+    suspend fun getFutureReminders(currentTime: Long): List<Reminder>
+    
+    // 同步获取任务（用于广播接收器中的校验）
+    @Query("SELECT * FROM tasks WHERE id = :id")
+    suspend fun getTaskByIdSync(id: Long): Task?
+    
+    // 同步获取提醒
+    @Query("SELECT * FROM reminders WHERE id = :id")
+    suspend fun getReminderByIdSync(id: Long): Reminder?
 }
