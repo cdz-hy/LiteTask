@@ -19,14 +19,14 @@
         android:orientation="vertical"
         android:background="@drawable/floating_reminder_bg"
         android:elevation="24dp"
-        android:clipChildren="false">
+        android:clipToOutline="true">
 
-        <!-- 顶部装饰条 -->
+        <!-- 顶部装饰条（带顶部圆角） -->
         <View
             android:id="@+id/accentBar"
             android:layout_width="match_parent"
             android:layout_height="6dp"
-            android:background="#0B57D0" />
+            android:background="@drawable/accent_bar_bg" />
 
         <!-- 内容区域 -->
         <LinearLayout

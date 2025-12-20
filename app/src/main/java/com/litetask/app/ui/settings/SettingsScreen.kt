@@ -48,6 +48,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -369,11 +372,18 @@ fun SettingsScreen(
  * 引导用户开启必要的系统权限，确保提醒功能正常工作
  */
 @Composable
-private fun ReminderSettingsCard(context: android.content.Context) {
+private fun ReminderSettingsCard(
+    context: android.content.Context,
+    viewModel: SettingsViewModel = hiltViewModel()
+) {
     // 检查各项权限状态
     var hasNotificationPermission by remember { mutableStateOf(true) }
     var hasExactAlarmPermission by remember { mutableStateOf(true) }
     var hasOverlayPermission by remember { mutableStateOf(true) }
+    
+    // 铃声和震动开关状态
+    var soundEnabled by remember { mutableStateOf(viewModel.isReminderSoundEnabled()) }
+    var vibrationEnabled by remember { mutableStateOf(viewModel.isReminderVibrationEnabled()) }
     
     // 用于触发权限状态刷新
     var refreshTrigger by remember { mutableStateOf(0) }
@@ -410,13 +420,6 @@ private fun ReminderSettingsCard(context: android.content.Context) {
                 .padding(bottom = 12.dp),
             verticalAlignment = Alignment.Top
         ) {
-//            Icon(
-//                Icons.Default.Warning,
-//                contentDescription = null,
-//                tint = Color(0xFFFF9800),
-//                modifier = Modifier.size(18.dp)
-//            )
-//            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "部分手机系统需要手动开启以下权限，否则应用不在后台时提醒可能无法正常触发",
                 style = MaterialTheme.typography.bodySmall,
@@ -476,7 +479,49 @@ private fun ReminderSettingsCard(context: android.content.Context) {
             )
         }
         
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // 提醒方式设置
+        Text(
+            text = "提醒方式",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        
         Spacer(modifier = Modifier.height(12.dp))
+        
+        // 铃声开关
+        SwitchItem(
+            icon = Icons.Default.VolumeUp,
+            title = "提醒铃声",
+            description = "悬浮提醒时播放闹钟铃声",
+            checked = soundEnabled,
+            onCheckedChange = {
+                soundEnabled = it
+                viewModel.setReminderSoundEnabled(it)
+            }
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // 震动开关
+        SwitchItem(
+            icon = Icons.Default.Vibration,
+            title = "提醒震动",
+            description = "悬浮提醒时震动提示",
+            checked = vibrationEnabled,
+            onCheckedChange = {
+                vibrationEnabled = it
+                viewModel.setReminderVibrationEnabled(it)
+            }
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
         
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         
@@ -513,6 +558,53 @@ private fun ReminderSettingsCard(context: android.content.Context) {
         ) {
             Text("打开应用设置")
         }
+    }
+}
+
+/**
+ * 开关项组件
+ */
+@Composable
+private fun SwitchItem(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
     }
 }
 

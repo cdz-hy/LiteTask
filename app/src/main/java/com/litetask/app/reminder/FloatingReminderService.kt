@@ -39,7 +39,7 @@ import com.litetask.app.data.model.TaskType
  * 特性：
  * - 全屏遮罩 + 居中弹窗（仿 HTML 原型）
  * - 60秒持续显示
- * - 震动 + 闹钟铃声
+ * - 震动 + 闹钟铃声（可在设置中关闭）
  * - 只能通过按钮关闭
  * - Material Design 3 风格
  * - 支持深色模式
@@ -50,6 +50,10 @@ class FloatingReminderService : Service() {
         private const val TAG = "FloatingReminder"
         private const val AUTO_DISMISS_DELAY = 60_000L // 60秒
         private const val VIBRATE_INTERVAL = 3000L // 每3秒震动一次
+        
+        private const val PREFS_NAME = "litetask_prefs"
+        private const val KEY_SOUND_ENABLED = "reminder_sound_enabled"
+        private const val KEY_VIBRATION_ENABLED = "reminder_vibration_enabled"
 
         private const val EXTRA_TASK_ID = "task_id"
         private const val EXTRA_TASK_TITLE = "task_title"
@@ -88,10 +92,14 @@ class FloatingReminderService : Service() {
     private var mediaPlayer: MediaPlayer? = null
     private var pulseAnimator: ObjectAnimator? = null
     
+    // 设置项
+    private var soundEnabled = true
+    private var vibrationEnabled = true
+    
     private val handler = Handler(Looper.getMainLooper())
     private val vibrateRunnable = object : Runnable {
         override fun run() {
-            vibrate()
+            if (vibrationEnabled) vibrate()
             handler.postDelayed(this, VIBRATE_INTERVAL)
         }
     }
@@ -101,6 +109,12 @@ class FloatingReminderService : Service() {
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        
+        // 读取设置
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        soundEnabled = prefs.getBoolean(KEY_SOUND_ENABLED, true)
+        vibrationEnabled = prefs.getBoolean(KEY_VIBRATION_ENABLED, true)
+        Log.d(TAG, "Settings: sound=$soundEnabled, vibration=$vibrationEnabled")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -187,8 +201,10 @@ class FloatingReminderService : Service() {
             (it.background?.mutate() as? GradientDrawable)?.setColor(surfaceColor)
         }
 
-        // 顶部装饰条
-        view.findViewById<View>(R.id.accentBar)?.setBackgroundColor(primaryColor)
+        // 顶部装饰条（使用 GradientDrawable 设置颜色）
+        view.findViewById<View>(R.id.accentBar)?.let {
+            (it.background?.mutate() as? GradientDrawable)?.setColor(primaryColor)
+        }
 
         // 图标容器
         view.findViewById<FrameLayout>(R.id.iconBox)?.let {
@@ -252,11 +268,15 @@ class FloatingReminderService : Service() {
     }
 
     private fun startAlertEffects() {
-        // 播放闹钟铃声
-        playAlarmSound()
-        // 开始震动
-        vibrate()
-        handler.postDelayed(vibrateRunnable, VIBRATE_INTERVAL)
+        // 播放闹钟铃声（根据设置）
+        if (soundEnabled) {
+            playAlarmSound()
+        }
+        // 开始震动（根据设置）
+        if (vibrationEnabled) {
+            vibrate()
+            handler.postDelayed(vibrateRunnable, VIBRATE_INTERVAL)
+        }
     }
 
     private fun playAlarmSound() {

@@ -142,4 +142,26 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
+    
+    // ========== 提醒配置 ==========
+    
+    /**
+     * 获取提醒铃声是否启用
+     */
+    fun isReminderSoundEnabled(): Boolean = preferenceManager.isReminderSoundEnabled()
+    
+    /**
+     * 设置提醒铃声是否启用
+     */
+    fun setReminderSoundEnabled(enabled: Boolean) = preferenceManager.setReminderSoundEnabled(enabled)
+    
+    /**
+     * 获取提醒震动是否启用
+     */
+    fun isReminderVibrationEnabled(): Boolean = preferenceManager.isReminderVibrationEnabled()
+    
+    /**
+     * 设置提醒震动是否启用
+     */
+    fun setReminderVibrationEnabled(enabled: Boolean) = preferenceManager.setReminderVibrationEnabled(enabled)
 }

@@ -22,6 +22,10 @@ class PreferenceManager @Inject constructor(
         private const val KEY_SPEECH_PROVIDER = "speech_provider"
         private const val KEY_SPEECH_CREDENTIALS_PREFIX = "speech_cred_"
         const val DEFAULT_SPEECH_PROVIDER = "xunfei-rtasr"
+        
+        // 提醒相关
+        private const val KEY_REMINDER_SOUND_ENABLED = "reminder_sound_enabled"
+        private const val KEY_REMINDER_VIBRATION_ENABLED = "reminder_vibration_enabled"
     }
 
     // ========== AI 配置 ==========
@@ -113,5 +117,35 @@ class PreferenceManager @Inject constructor(
             return !appId.isNullOrBlank() && !apiKey.isNullOrBlank()
         }
         return false
+    }
+    
+    // ========== 提醒配置 ==========
+    
+    /**
+     * 获取提醒铃声是否启用（默认开启）
+     */
+    fun isReminderSoundEnabled(): Boolean {
+        return prefs.getBoolean(KEY_REMINDER_SOUND_ENABLED, true)
+    }
+    
+    /**
+     * 设置提醒铃声是否启用
+     */
+    fun setReminderSoundEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_REMINDER_SOUND_ENABLED, enabled).apply()
+    }
+    
+    /**
+     * 获取提醒震动是否启用（默认开启）
+     */
+    fun isReminderVibrationEnabled(): Boolean {
+        return prefs.getBoolean(KEY_REMINDER_VIBRATION_ENABLED, true)
+    }
+    
+    /**
+     * 设置提醒震动是否启用
+     */
+    fun setReminderVibrationEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_REMINDER_VIBRATION_ENABLED, enabled).apply()
     }
 }
