@@ -15,8 +15,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -27,7 +25,7 @@ import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.components.HtmlStyleTaskCard
 import com.litetask.app.ui.components.SwipeRevealItem
-import com.litetask.app.ui.theme.Primary
+import com.litetask.app.ui.theme.LocalExtendedColors
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -46,9 +44,10 @@ fun SearchScreen(
     val selectedTypes by viewModel.selectedTypes.collectAsState()
     val dateRange by viewModel.dateRange.collectAsState()
     var showFilterSheet by remember { mutableStateOf(false) }
+    val extendedColors = LocalExtendedColors.current
 
     Scaffold(
-        containerColor = colorResource(R.color.background),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { },
@@ -58,7 +57,7 @@ fun SearchScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = colorResource(R.color.background)
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -76,32 +75,48 @@ fun SearchScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .shadow(elevation = 2.dp, shape = RoundedCornerShape(24.dp)),
-                placeholder = { Text(stringResource(R.string.search_placeholder)) },
+                placeholder = { 
+                    Text(
+                        stringResource(R.string.search_placeholder),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    ) 
+                },
                 leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray)
+                    Icon(
+                        Icons.Default.Search, 
+                        contentDescription = null, 
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 },
                 trailingIcon = {
                     Row {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear_all), tint = Color.Gray)
+                                Icon(
+                                    Icons.Default.Clear, 
+                                    contentDescription = stringResource(R.string.clear_all), 
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                         IconButton(onClick = { showFilterSheet = true }) {
                             Icon(
                                 Icons.Default.FilterList,
                                 contentDescription = stringResource(R.string.filter_criteria),
-                                tint = if (selectedTypes.isNotEmpty() || dateRange != null) Primary else Color.Gray
+                                tint = if (selectedTypes.isNotEmpty() || dateRange != null) 
+                                    MaterialTheme.colorScheme.primary 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 },
                 shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color.Transparent,
-                    unfocusedBorderColor = Color.Transparent,
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White
+                    focusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
                 ),
                 singleLine = true
             )
@@ -128,8 +143,8 @@ fun SearchScreen(
                                 )
                             },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Primary.copy(alpha = 0.15f),
-                                selectedLabelColor = Primary
+                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                selectedLabelColor = MaterialTheme.colorScheme.primary
                             )
                         )
                     }
@@ -154,8 +169,8 @@ fun SearchScreen(
                                 )
                             },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Primary.copy(alpha = 0.15f),
-                                selectedLabelColor = Primary
+                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                selectedLabelColor = MaterialTheme.colorScheme.primary
                             )
                         )
                     }
@@ -174,7 +189,7 @@ fun SearchScreen(
                     Icon(
                         Icons.Default.Search,
                         contentDescription = null,
-                        tint = Primary,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -182,7 +197,7 @@ fun SearchScreen(
                         text = stringResource(R.string.search_results_count, searchResults.size),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
-                        color = colorResource(R.color.on_surface)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -207,7 +222,7 @@ fun SearchScreen(
                                 text = stringResource(R.string.active_tasks_count, activeTasks.size),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = colorResource(R.color.on_surface)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -244,17 +259,17 @@ fun SearchScreen(
                         ) {
                             HorizontalDivider(
                                 modifier = Modifier.weight(1f),
-                                color = Color.LightGray.copy(alpha = 0.5f)
+                                color = extendedColors.divider.copy(alpha = 0.5f)
                             )
                             Text(
                                 stringResource(R.string.done_tasks_count, doneTasks.size),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.Gray,
+                                color = extendedColors.textTertiary,
                                 modifier = Modifier.padding(horizontal = 12.dp)
                             )
                             HorizontalDivider(
                                 modifier = Modifier.weight(1f),
-                                color = Color.LightGray.copy(alpha = 0.5f)
+                                color = extendedColors.divider.copy(alpha = 0.5f)
                             )
                         }
                     }
@@ -290,7 +305,7 @@ fun SearchScreen(
                         ) {
                             Surface(
                                 shape = CircleShape,
-                                color = Color(0xFFF5F5F5),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
                                 modifier = Modifier.size(96.dp)
                             ) {
                                 Box(
@@ -301,7 +316,7 @@ fun SearchScreen(
                                         Icons.Default.SearchOff,
                                         contentDescription = null,
                                         modifier = Modifier.size(48.dp),
-                                        tint = Color.Gray.copy(alpha = 0.6f)
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                     )
                                 }
                             }
@@ -310,13 +325,13 @@ fun SearchScreen(
                                 stringResource(R.string.no_matching_tasks),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
-                                color = colorResource(R.color.on_surface)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 stringResource(R.string.try_adjust_filters),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color.Gray
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -349,11 +364,12 @@ fun FilterBottomSheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val extendedColors = LocalExtendedColors.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = colorResource(R.color.background),
+        containerColor = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp,
         dragHandle = {
             Column(
@@ -364,7 +380,10 @@ fun FilterBottomSheet(
                     modifier = Modifier
                         .width(40.dp)
                         .height(4.dp)
-                        .background(Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
+                        .background(
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), 
+                            RoundedCornerShape(2.dp)
+                        )
                 )
             }
         }
@@ -384,7 +403,7 @@ fun FilterBottomSheet(
                     Icon(
                         Icons.Default.FilterList,
                         contentDescription = null,
-                        tint = Primary,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
@@ -392,7 +411,7 @@ fun FilterBottomSheet(
                         stringResource(R.string.filter_criteria),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = colorResource(R.color.on_surface)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
                 
@@ -402,7 +421,10 @@ fun FilterBottomSheet(
                 ) {
                     Text(
                         stringResource(R.string.clear_all),
-                        color = if (selectedTypes.isNotEmpty() || dateRange != null) Primary else Color.Gray
+                        color = if (selectedTypes.isNotEmpty() || dateRange != null) 
+                            MaterialTheme.colorScheme.primary 
+                        else 
+                            MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -413,7 +435,7 @@ fun FilterBottomSheet(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                color = Color.White,
+                color = extendedColors.cardBackground,
                 shadowElevation = 1.dp
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -424,7 +446,7 @@ fun FilterBottomSheet(
                         Icon(
                             Icons.Default.Category,
                             contentDescription = null,
-                            tint = Primary,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -432,20 +454,20 @@ fun FilterBottomSheet(
                             stringResource(R.string.task_type),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = colorResource(R.color.on_surface)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         if (selectedTypes.isNotEmpty()) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 shape = CircleShape,
-                                color = Primary.copy(alpha = 0.15f)
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                             ) {
                                 Text(
                                     text = "${selectedTypes.size}",
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = Primary
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
@@ -477,11 +499,11 @@ fun FilterBottomSheet(
                                     }
                                 } else null,
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = Primary,
-                                    selectedLabelColor = Color.White,
-                                    selectedLeadingIconColor = Color.White,
-                                    containerColor = Color(0xFFF5F5F5),
-                                    labelColor = Color(0xFF666666)
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             )
                         }
@@ -495,7 +517,7 @@ fun FilterBottomSheet(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                color = Color.White,
+                color = extendedColors.cardBackground,
                 shadowElevation = 1.dp
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -506,7 +528,7 @@ fun FilterBottomSheet(
                         Icon(
                             Icons.Default.DateRange,
                             contentDescription = null,
-                            tint = Primary,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -514,18 +536,18 @@ fun FilterBottomSheet(
                             stringResource(R.string.date_range),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = colorResource(R.color.on_surface)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         if (dateRange != null) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 shape = CircleShape,
-                                color = Primary.copy(alpha = 0.15f)
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                             ) {
                                 Icon(
                                     Icons.Default.Check,
                                     contentDescription = null,
-                                    tint = Primary,
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier
                                         .padding(4.dp)
                                         .size(12.dp)
@@ -559,7 +581,7 @@ fun FilterBottomSheet(
                     .fillMaxWidth()
                     .height(52.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
                 Icon(
                     Icons.Default.Check,
@@ -605,11 +627,14 @@ fun DateRangeOption(
             .fillMaxWidth()
             .clickable { onSelect(start, end) },
         shape = RoundedCornerShape(12.dp),
-        color = if (isSelected) colorResource(R.color.search_date_range_selected_bg) else colorResource(R.color.search_date_range_unselected_bg),
+        color = if (isSelected) 
+            MaterialTheme.colorScheme.primaryContainer 
+        else 
+            MaterialTheme.colorScheme.surfaceVariant,
         border = if (isSelected) {
-            androidx.compose.foundation.BorderStroke(2.dp, Primary)
+            androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
         } else {
-            androidx.compose.foundation.BorderStroke(1.dp, colorResource(R.color.search_date_range_selected_border))
+            androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         }
     ) {
         Row(
@@ -623,14 +648,17 @@ fun DateRangeOption(
                 text = label,
                 fontSize = 15.sp,
                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (isSelected) Primary else colorResource(R.color.search_date_range_text_unselected)
+                color = if (isSelected) 
+                    MaterialTheme.colorScheme.primary 
+                else 
+                    MaterialTheme.colorScheme.onSurfaceVariant
             )
             
             if (isSelected) {
                 Icon(
                     Icons.Default.CheckCircle,
                     contentDescription = stringResource(R.string.date_range_selected),
-                    tint = Primary,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
             } else {
@@ -639,7 +667,7 @@ fun DateRangeOption(
                         .size(20.dp)
                         .border(
                             width = 2.dp,
-                            color = colorResource(R.color.search_date_range_selected_border),
+                            color = MaterialTheme.colorScheme.outlineVariant,
                             shape = CircleShape
                         )
                 )

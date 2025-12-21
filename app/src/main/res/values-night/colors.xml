@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material Design 3 夜间模式颜色 -->
+    
+    <!-- 主色系 - 夜间模式使用更亮的色调 -->
+    <color name="primary">#FFA8C7FA</color>                 <!-- 浅蓝色主色 -->
+    <color name="on_primary">#FF062E6F</color>              <!-- 主色上的文字 -->
+    <color name="primary_container">#FF0842A0</color>       <!-- 主色容器 -->
+    <color name="on_primary_container">#FFD3E3FD</color>    <!-- 主色容器上的文字 -->
+    <color name="secondary_container">#FF004A77</color>     <!-- 次色容器 -->
+    <color name="on_secondary_container">#FFC2E7FF</color>  <!-- 次色容器上的文字 -->
+    <color name="tertiary_container">#FF633B48</color>      <!-- 第三色容器 -->
+    <color name="on_tertiary_container">#FFFFD8E4</color>   <!-- 第三色容器上的文字 -->
+    <color name="error_container">#FF8C1D18</color>         <!-- 错误容器 -->
+    <color name="on_error_container">#FFF9DEDC</color>      <!-- 错误容器上的文字 -->
+    
+    <!-- 表面和背景 -->
+    <color name="surface">#FF1C1B1F</color>                 <!-- 表面颜色 -->
+    <color name="surface_container">#FF2B2930</color>       <!-- 表面容器颜色 -->
+    <color name="background">#FF1C1B1F</color>              <!-- 背景颜色 -->
+    <color name="on_surface">#FFE6E1E5</color>              <!-- 表面文字颜色 -->
+    <color name="on_surface_variant">#FFCAC4D0</color>      <!-- 表面变体文字颜色 -->
+    <color name="outline">#FF938F99</color>                 <!-- 轮廓线颜色 -->
+    <color name="outline_variant">#FF49454F</color>         <!-- 轮廓线变体颜色 -->
+
+    <!-- 任务类型颜色 - 夜间模式使用更亮的色调 -->
+    <color name="work_task">#FFA8C7FA</color>               <!-- 工作 - 浅蓝 -->
+    <color name="life_task">#FF81C995</color>               <!-- 生活 - 浅绿 -->
+    <color name="study_task">#FFCFBCFF</color>              <!-- 学习 - 浅紫 -->
+    <color name="urgent_task">#FFF2B8B5</color>             <!-- 紧急 - 浅红 -->
+
+    <!-- 任务卡片表面颜色 - 夜间模式使用深色背景 -->
+    <color name="task_work_surface">#FF1E3A5F</color>       <!-- 工作任务背景 -->
+    <color name="task_life_surface">#FF1E3B2F</color>       <!-- 生活任务背景 -->
+    <color name="task_study_surface">#FF2D2640</color>      <!-- 学习任务背景 -->
+    <color name="task_urgent_surface">#FF3D2020</color>     <!-- 紧急任务背景 -->
+    
+    <!-- 甘特图颜色 - 夜间模式 -->
+    <color name="gantt_work">#FFA8C7FA</color>
+    <color name="gantt_life">#FF81C995</color>
+    <color name="gantt_study">#FFCFBCFF</color>
+    <color name="gantt_urgent">#FFF2B8B5</color>
+    <color name="gantt_done_background">#FF3C3C3C</color>
+    <color name="gantt_done_text">#FF8E8E8E</color>
+    <color name="gantt_work_background">#FF1E3A5F</color>
+    <color name="gantt_life_background">#FF1E3B2F</color>
+    <color name="gantt_study_background">#FF2D2640</color>
+    <color name="gantt_urgent_background">#FF3D2020</color>
+    <color name="gantt_work_border">#FF3D5A80</color>
+    <color name="gantt_life_border">#FF3D6B50</color>
+    <color name="gantt_study_border">#FF4D4670</color>
+    <color name="gantt_urgent_border">#FF6D4040</color>
+    <color name="gantt_grid_line">#FF3C3C3C</color>
+    <color name="gantt_hour_line">#FF2C2C2C</color>
+    <color name="gantt_current_time">#FFFF6B6B</color>
+    <color name="gantt_today_background">#FF1E3A5F</color>
+    
+    <!-- 截止视图颜色 - 夜间模式 -->
+    <color name="deadline_urgent">#FFFF6B6B</color>         <!-- 紧急红色 -->
+    <color name="deadline_soon">#FFFFB74D</color>           <!-- 临近橙色 -->
+    <color name="deadline_future">#FF4DB6AC</color>         <!-- 未来绿色 -->
+    <color name="deadline_urgent_surface">#FF3D2020</color> <!-- 紧急任务背景 -->
+    <color name="deadline_soon_surface">#FF3D3020</color>   <!-- 临近任务背景 -->
+    <color name="deadline_future_surface">#FF1E3B2F</color> <!-- 未来任务背景 -->
+    
+    <!-- 灰度颜色 - 夜间模式 -->
+    <color name="gray_200">#FF3C3C3C</color>
+    <color name="gray_300">#FF2C2C2C</color>
+    <color name="gray_400">#FF8E8E8E</color>
+    <color name="gray_500">#FFA0A0A0</color>
+    <color name="gray_600">#FFBDBDBD</color>
+    <color name="slate_50">#FF2B2930</color>
+    <color name="slate_100">#FF3C3A42</color>
+    <color name="slate_200">#FF49454F</color>
+    <color name="slate_300">#FF938F99</color>
+    <color name="slate_700">#FFCAC4D0</color>
+    <color name="slate_800">#FFE6E1E5</color>
+    
+    <!-- 搜索界面颜色 - 夜间模式 -->
+    <color name="search_date_range_selected_bg">#FF1E3A5F</color>
+    <color name="search_date_range_unselected_bg">#FF2B2930</color>
+    <color name="search_date_range_selected_border">#FF3D5A80</color>
+    <color name="search_date_range_text_selected">#FFE6E1E5</color>
+    <color name="search_date_range_text_unselected">#FFCAC4D0</color>
+    
+    <!-- 通用颜色 - 夜间模式 -->
+    <color name="white_transparent_10">#1AFFFFFF</color>
+    <color name="white_transparent_5">#0DFFFFFF</color>
+    <color name="white_transparent_8">#14FFFFFF</color>
+    <color name="white_transparent_20">#33FFFFFF</color>
+    <color name="white_transparent_15">#26FFFFFF</color>
+    <color name="gray">#FF9E9E9E</color>
+    <color name="light_gray">#FF5C5C5C</color>
+    
+    <!-- 其他辅助颜色 - 夜间模式 -->
+    <color name="rose_100">#FF3D2020</color>
+    <color name="rose_300">#FFFF6B6B</color>
+    <color name="rose_500">#FFFF8A80</color>
+    <color name="rose_900">#FFF2B8B5</color>
+    <color name="emerald_50">#FF1E3B2F</color>
+    <color name="orange_50">#FF3D3020</color>
+    <color name="violet_50">#FF2D2640</color>
+    <color name="blue_50">#FF1E3A5F</color>
+</resources>

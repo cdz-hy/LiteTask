@@ -43,6 +43,7 @@ import com.litetask.app.data.model.TaskType
  * - 只能通过按钮关闭
  * - Material Design 3 风格
  * - 支持深色模式
+ * - Android 12+支持毛玻璃模糊效果
  */
 class FloatingReminderService : Service() {
 
@@ -193,6 +194,9 @@ class FloatingReminderService : Service() {
         val onSurface = if (isDark) 0xFFE6E1E5.toInt() else 0xFF1F1F1F.toInt()
         val onSurfaceVariant = if (isDark) 0xFFCAC4D0.toInt() else 0xFF757575.toInt()
 
+        // 设置毛玻璃效果
+        setupBlurEffect(view)
+
         // 遮罩层 - 点击不关闭
         view.findViewById<FrameLayout>(R.id.overlayContainer)?.setOnClickListener { /* 不处理 */ }
 
@@ -253,6 +257,44 @@ class FloatingReminderService : Service() {
         }
 
         return view
+    }
+
+    private fun setupBlurEffect(view: View) {
+        val blurLayer = view.findViewById<View>(R.id.blurLayer)
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Android 12+ 使用 RenderEffect 实现毛玻璃效果
+            try {
+                val renderEffectClass = Class.forName("android.view.RenderEffect")
+                val createBlurEffectMethod = renderEffectClass.getMethod(
+                    "createBlurEffect", 
+                    Float::class.java, 
+                    Float::class.java, 
+                    android.graphics.Shader.TileMode::class.java, 
+                    android.graphics.Shader.TileMode::class.java
+                )
+                
+                val tileModeClamp = android.graphics.Shader.TileMode::class.java.getField("CLAMP").get(null)
+                
+                val blurEffect = createBlurEffectMethod.invoke(
+                    null, 
+                    12f, // 模糊半径
+                    12f, // 模糊半径
+                    tileModeClamp, 
+                    tileModeClamp
+                )
+                
+                val setRenderEffectMethod = View::class.java.getMethod("setRenderEffect", renderEffectClass)
+                setRenderEffectMethod.invoke(blurLayer, blurEffect)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to apply blur effect: ${e.message}")
+                // 降级到半透明遮罩
+                blurLayer.setBackgroundColor(0x4D000000) // 30% 不透明度的黑色
+            }
+        } else {
+            // 低版本 Android 使用半透明遮罩
+            blurLayer.setBackgroundColor(0x4D000000) // 30% 不透明度的黑色
+        }
     }
 
     private fun startPulseAnimation(view: View, color: Int) {

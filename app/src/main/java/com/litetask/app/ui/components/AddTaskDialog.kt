@@ -34,7 +34,7 @@ import com.litetask.app.data.model.ReminderConfig
 import com.litetask.app.data.model.ReminderType
 import com.litetask.app.data.model.ReminderTimeUnit
 import com.litetask.app.data.model.ReminderBaseTime
-import com.litetask.app.ui.theme.Primary
+import com.litetask.app.ui.theme.LocalExtendedColors
 import java.util.Calendar
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -49,6 +49,7 @@ fun AddTaskDialog(
     onConfirm: (Task) -> Unit,
     onConfirmWithReminders: ((Task, List<ReminderConfig>) -> Unit)? = null
 ) {
+    val extendedColors = LocalExtendedColors.current
     var title by remember { mutableStateOf(initialTask?.title ?: "") }
     var description by remember { mutableStateOf(initialTask?.description ?: "") }
     var selectedType by remember { mutableStateOf(initialTask?.type ?: TaskType.STUDY) }
@@ -119,7 +120,7 @@ fun AddTaskDialog(
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.85f),
             shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = extendedColors.cardBackground),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
@@ -129,7 +130,7 @@ fun AddTaskDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Primary.copy(alpha = 0.05f))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.05f))
                         .padding(24.dp)
                 ) {
                     Row(
@@ -147,19 +148,19 @@ fun AddTaskDialog(
                             Text(
                                 text = if (initialTask != null) stringResource(R.string.confirm_modify) else stringResource(R.string.create_task),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFF444746)
+                                color = extendedColors.textSecondary
                             )
                         }
                         IconButton(
                             onClick = onDismiss,
                             modifier = Modifier
                                 .size(40.dp)
-                                .background(Color.White, RoundedCornerShape(12.dp))
+                                .background(extendedColors.cardBackground, RoundedCornerShape(12.dp))
                         ) {
                             Icon(
                                 Icons.Default.Close,
                                 contentDescription = stringResource(R.string.close),
-                                tint = Color(0xFF444746)
+                                tint = extendedColors.textSecondary
                             )
                         }
                     }
@@ -182,11 +183,11 @@ fun AddTaskDialog(
                         shape = RoundedCornerShape(16.dp),
                         singleLine = true,
                         leadingIcon = {
-                            Icon(Icons.Default.Edit, contentDescription = null, tint = Primary)
+                            Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Primary,
-                            focusedLabelColor = Primary
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            focusedLabelColor = MaterialTheme.colorScheme.primary
                         )
                     )
 
@@ -202,7 +203,7 @@ fun AddTaskDialog(
                         shape = RoundedCornerShape(16.dp),
                         maxLines = 4,
                         leadingIcon = {
-                            Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFF444746))
+                            Icon(Icons.Default.Description, contentDescription = null, tint = extendedColors.textSecondary)
                         }
                     )
 
@@ -213,7 +214,7 @@ fun AddTaskDialog(
                         text = stringResource(R.string.task_type),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF1F1F1F),
+                        color = extendedColors.textPrimary,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
                     
@@ -236,9 +237,9 @@ fun AddTaskDialog(
                                     { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
                                 } else null,
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = Primary,
-                                    selectedLabelColor = Color.White,
-                                    selectedLeadingIconColor = Color.White
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary
                                 )
                             )
                         }
@@ -251,7 +252,7 @@ fun AddTaskDialog(
                         text = stringResource(R.string.start_time),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF1F1F1F),
+                        color = extendedColors.textPrimary,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
 
@@ -281,7 +282,7 @@ fun AddTaskDialog(
                         text = stringResource(R.string.deadline),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF1F1F1F),
+                        color = extendedColors.textPrimary,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
 
@@ -321,7 +322,7 @@ fun AddTaskDialog(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
                             containerColor = if (deadlineMillis <= startTimeMillis) 
-                                Color(0xFFFFEBEE) else Color(0xFFF0F4F8)
+                                extendedColors.deadlineUrgentSurface else MaterialTheme.colorScheme.surfaceVariant
                         ),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -332,7 +333,7 @@ fun AddTaskDialog(
                             Icon(
                                 if (deadlineMillis <= startTimeMillis) Icons.Default.Warning else Icons.Default.Timer,
                                 contentDescription = null,
-                                tint = if (deadlineMillis <= startTimeMillis) Color(0xFFF43F5E) else Primary,
+                                tint = if (deadlineMillis <= startTimeMillis) extendedColors.deadlineUrgent else MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -345,7 +346,7 @@ fun AddTaskDialog(
                                     stringResource(R.string.duration_info_hours, String.format("%.1f", durationHours))
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = if (deadlineMillis <= startTimeMillis) Color(0xFFF43F5E) else Color(0xFF444746),
+                                color = if (deadlineMillis <= startTimeMillis) extendedColors.deadlineUrgent else extendedColors.textSecondary,
                                 fontWeight = FontWeight.Medium
                             )
                         }
@@ -395,38 +396,38 @@ fun AddTaskDialog(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(12.dp))
                                     .clickable(enabled = pinEnabled) { isPinned = !isPinned }
-                                    .background(if (displayIsPinned && pinEnabled) Primary.copy(alpha = 0.1f) else Color.Transparent)
+                                    .background(if (displayIsPinned && pinEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
                                     .padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     Icons.Default.PushPin,
                                     contentDescription = null,
-                                    tint = if (displayIsPinned && pinEnabled) Primary else Color(0xFF444746)
+                                    tint = if (displayIsPinned && pinEnabled) MaterialTheme.colorScheme.primary else extendedColors.textSecondary
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         stringResource(R.string.pin_task),
                                         fontWeight = FontWeight.Medium,
-                                        color = Color(0xFF1F1F1F)
+                                        color = extendedColors.textPrimary
                                     )
                                     Text(
                                         stringResource(R.string.task_fixed_top),
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = Color(0xFF747775)
+                                        color = extendedColors.textTertiary
                                     )
                                     if (isTaskExpired) {
                                         Text(
                                             stringResource(R.string.task_expired_cannot_pin),
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = Color(0xFFF43F5E)
+                                            color = extendedColors.deadlineUrgent
                                         )
                                     } else if (isTaskDone) {
                                         Text(
                                             stringResource(R.string.task_cannot_pin_completed),
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = Color(0xFFF43F5E)
+                                            color = extendedColors.deadlineUrgent
                                         )
                                     }
                                 }
@@ -435,8 +436,8 @@ fun AddTaskDialog(
                                     enabled = pinEnabled,
                                     onCheckedChange = { isPinned = it },
                                     colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Primary,
-                                        checkedTrackColor = Primary.copy(alpha = 0.5f)
+                                        checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                                     )
                                 )
                             }
@@ -448,7 +449,7 @@ fun AddTaskDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFF8F9FA))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         .padding(horizontal = 24.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -488,8 +489,8 @@ fun AddTaskDialog(
                         enabled = title.isNotBlank() && deadlineMillis > startTimeMillis,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Primary,
-                            disabledContainerColor = Color(0xFFE0E0E0)
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
                         ),
                         shape = RoundedCornerShape(16.dp),
                         contentPadding = PaddingValues(vertical = 14.dp)
@@ -643,7 +644,7 @@ fun MaterialDatePicker(
             TextButton(onClick = {
                 datePickerState.selectedDateMillis?.let { onDateSelected(it) }
             }) {
-                Text(stringResource(R.string.confirm), color = Primary, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.confirm), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -652,15 +653,15 @@ fun MaterialDatePicker(
             }
         },
         colors = DatePickerDefaults.colors(
-            containerColor = Color.White
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         DatePicker(
             state = datePickerState,
             colors = DatePickerDefaults.colors(
-                selectedDayContainerColor = Primary,
-                todayContentColor = Primary,
-                todayDateBorderColor = Primary
+                selectedDayContainerColor = MaterialTheme.colorScheme.primary,
+                todayContentColor = MaterialTheme.colorScheme.primary,
+                todayDateBorderColor = MaterialTheme.colorScheme.primary
             )
         )
     }
@@ -686,7 +687,7 @@ fun MaterialTimePicker(
             TextButton(onClick = {
                 onTimeSelected(timePickerState.hour, timePickerState.minute)
             }) {
-                Text(stringResource(R.string.confirm), color = Primary, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.confirm), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -698,14 +699,14 @@ fun MaterialTimePicker(
             TimePicker(
                 state = timePickerState,
                 colors = TimePickerDefaults.colors(
-                    clockDialColor = Primary.copy(alpha = 0.1f),
-                    selectorColor = Primary,
-                    timeSelectorSelectedContainerColor = Primary,
-                    timeSelectorSelectedContentColor = Color.White
+                    clockDialColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    selectorColor = MaterialTheme.colorScheme.primary,
+                    timeSelectorSelectedContainerColor = MaterialTheme.colorScheme.primary,
+                    timeSelectorSelectedContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
         },
-        containerColor = Color.White
+        containerColor = MaterialTheme.colorScheme.surface
     )
 }
 
@@ -719,12 +720,14 @@ fun DateTimePickerCard(
     modifier: Modifier = Modifier,
     isUrgent: Boolean = false
 ) {
+    val extendedColors = LocalExtendedColors.current
+    
     Card(
         onClick = onClick,
         modifier = modifier.height(100.dp),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isUrgent) Color(0xFFFFEBEE) else Color(0xFFF8F9FA)
+            containerColor = if (isUrgent) extendedColors.deadlineUrgentSurface else MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
         Row(
@@ -736,7 +739,7 @@ fun DateTimePickerCard(
             Icon(
                 icon,
                 contentDescription = null,
-                tint = if (isUrgent) Color(0xFFF43F5E) else Primary,
+                tint = if (isUrgent) extendedColors.deadlineUrgent else MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -747,7 +750,7 @@ fun DateTimePickerCard(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF747775),
+                    color = extendedColors.textTertiary,
                     maxLines = 1
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -755,7 +758,7 @@ fun DateTimePickerCard(
                     text = value,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (isUrgent) Color(0xFFF43F5E) else Color(0xFF1F1F1F),
+                    color = if (isUrgent) extendedColors.deadlineUrgent else extendedColors.textPrimary,
                     maxLines = 2,
                     lineHeight = 20.sp
                 )

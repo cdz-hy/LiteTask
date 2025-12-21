@@ -31,28 +31,34 @@ import androidx.compose.ui.unit.sp
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
-import com.litetask.app.ui.theme.LiteTaskColors
+import com.litetask.app.ui.theme.LocalExtendedColors
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
 
-// 颜色系统
+// 颜色系统 - 使用主题
 private object ConfirmTaskColors {
     @Composable
-    fun getPrimary(type: TaskType): Color = when (type) {
-        TaskType.WORK -> LiteTaskColors.workTask()
-        TaskType.LIFE -> LiteTaskColors.lifeTask()
-        TaskType.URGENT -> LiteTaskColors.urgentTask()
-        TaskType.STUDY -> LiteTaskColors.studyTask()
+    fun getPrimary(type: TaskType): Color {
+        val extendedColors = LocalExtendedColors.current
+        return when (type) {
+            TaskType.WORK -> extendedColors.workTask
+            TaskType.LIFE -> extendedColors.lifeTask
+            TaskType.URGENT -> extendedColors.urgentTask
+            TaskType.STUDY -> extendedColors.studyTask
+        }
     }
 
     @Composable
-    fun getSurface(type: TaskType): Color = when (type) {
-        TaskType.WORK -> LiteTaskColors.workTaskSurface()
-        TaskType.LIFE -> LiteTaskColors.lifeTaskSurface()
-        TaskType.URGENT -> LiteTaskColors.urgentTaskSurface()
-        TaskType.STUDY -> LiteTaskColors.studyTaskSurface()
+    fun getSurface(type: TaskType): Color {
+        val extendedColors = LocalExtendedColors.current
+        return when (type) {
+            TaskType.WORK -> extendedColors.workTaskSurface
+            TaskType.LIFE -> extendedColors.lifeTaskSurface
+            TaskType.URGENT -> extendedColors.urgentTaskSurface
+            TaskType.STUDY -> extendedColors.studyTaskSurface
+        }
     }
 }
 
@@ -81,7 +87,7 @@ fun TaskConfirmationSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFFF2F6FC),
+        containerColor = MaterialTheme.colorScheme.background,
         tonalElevation = 0.dp,
         modifier = Modifier.fillMaxHeight(0.92f),
         dragHandle = {
@@ -94,7 +100,7 @@ fun TaskConfirmationSheet(
                     modifier = Modifier
                         .width(40.dp)
                         .height(4.dp)
-                        .background(Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
                 )
             }
         }
@@ -416,10 +422,11 @@ private fun SwipeActionIcon(icon: ImageVector, color: Color, onClick: () -> Unit
 private fun AITaskCard(task: Task) {
     val primaryColor = ConfirmTaskColors.getPrimary(task.type)
     val surfaceColor = ConfirmTaskColors.getSurface(task.type)
+    val extendedColors = LocalExtendedColors.current
 
     Surface(
         shape = RoundedCornerShape(24.dp),
-        color = Color.White,
+        color = extendedColors.cardBackground,
         shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -448,7 +455,7 @@ private fun AITaskCard(task: Task) {
                         text = task.title,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF1F1F1F),
+                        color = extendedColors.textPrimary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(end = 8.dp)
@@ -476,7 +483,7 @@ private fun AITaskCard(task: Task) {
                     Text(
                         text = task.description,
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF666666),
+                        color = extendedColors.textSecondary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -489,7 +496,7 @@ private fun AITaskCard(task: Task) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    val infoColor = Color(0xFF444746).copy(alpha = 0.8f)
+                    val infoColor = extendedColors.textSecondary.copy(alpha = 0.8f)
 
                     Icon(
                         imageVector = Icons.Default.AccessTime,
@@ -511,7 +518,7 @@ private fun AITaskCard(task: Task) {
                             Spacer(modifier = Modifier.width(8.dp))
                             val isVeryUrgent = timeLeft < (3 * 3600 * 1000)
                             Surface(
-                                color = if (isVeryUrgent) Color(0xFFFFE4E6) else Color(0xFFE0F2FE),
+                                color = if (isVeryUrgent) extendedColors.deadlineUrgentSurface else extendedColors.deadlineSoonSurface,
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
@@ -519,7 +526,7 @@ private fun AITaskCard(task: Task) {
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
-                                    color = if (isVeryUrgent) Color(0xFFBE123C) else Color(0xFF0369A1)
+                                    color = if (isVeryUrgent) extendedColors.deadlineUrgent else extendedColors.deadlineSoon
                                 )
                             }
                         }
@@ -531,13 +538,13 @@ private fun AITaskCard(task: Task) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .background(Color(0xFFF5F7FA), RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Timer,
                         contentDescription = null,
-                        tint = Color.Gray,
+                        tint = extendedColors.textTertiary,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -545,7 +552,7 @@ private fun AITaskCard(task: Task) {
                     Text(
                         text = formatDuration(durationHours),
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
+                        color = extendedColors.textTertiary
                     )
                 }
             }
@@ -560,7 +567,7 @@ private fun BottomActionBar(
     onConfirm: () -> Unit
 ) {
     Surface(
-        color = Color(0xFFF2F6FC),
+        color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(

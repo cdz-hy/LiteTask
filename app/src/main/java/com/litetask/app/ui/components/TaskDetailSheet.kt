@@ -41,29 +41,37 @@ import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.TaskType
-import com.litetask.app.ui.theme.Primary
+import com.litetask.app.ui.theme.LocalExtendedColors
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 
-// --- 局部颜色辅助 ---
-// 为了保证无报错，复用 GanttView 中定义的颜色逻辑，或使用默认 Primary
+/**
+ * 获取任务类型主题色
+ */
+@Composable
 private fun getTaskThemeColor(type: TaskType): Color {
+    val extendedColors = LocalExtendedColors.current
     return when (type) {
-        TaskType.WORK -> Color(0xFF0B57D0)
-        TaskType.LIFE -> Color(0xFF146C2E)
-        TaskType.STUDY -> Color(0xFF65558F)
-        TaskType.URGENT -> Color(0xFFB3261E)
+        TaskType.WORK -> extendedColors.workTask
+        TaskType.LIFE -> extendedColors.lifeTask
+        TaskType.STUDY -> extendedColors.studyTask
+        TaskType.URGENT -> extendedColors.urgentTask
     }
 }
 
+/**
+ * 获取任务类型表面色
+ */
+@Composable
 private fun getTaskSurfaceColor(type: TaskType): Color {
+    val extendedColors = LocalExtendedColors.current
     return when (type) {
-        TaskType.WORK -> Color(0xFFEFF6FF)
-        TaskType.LIFE -> Color(0xFFECFDF5)
-        TaskType.STUDY -> Color(0xFFF5F3FF)
-        TaskType.URGENT -> Color(0xFFFEF2F2)
+        TaskType.WORK -> extendedColors.workTaskSurface
+        TaskType.LIFE -> extendedColors.lifeTaskSurface
+        TaskType.STUDY -> extendedColors.studyTaskSurface
+        TaskType.URGENT -> extendedColors.urgentTaskSurface
     }
 }
 
@@ -83,13 +91,14 @@ fun TaskDetailSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val extendedColors = LocalExtendedColors.current
 
     var newSubTaskText by remember { mutableStateOf("") }
     var isFullScreen by remember { mutableStateOf(false) }
 
     // 获取当前任务的主题色
-    val themeColor = if (task.isDone) Color.Gray else getTaskThemeColor(task.type)
-    val surfaceColor = if (task.isDone) Color(0xFFF5F5F5) else getTaskSurfaceColor(task.type)
+    val themeColor = if (task.isDone) extendedColors.ganttDoneText else getTaskThemeColor(task.type)
+    val surfaceColor = if (task.isDone) MaterialTheme.colorScheme.surfaceVariant else getTaskSurfaceColor(task.type)
 
     fun closeSheetWithAnimation() {
         scope.launch {
@@ -104,7 +113,7 @@ fun TaskDetailSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color.White,
+        containerColor = extendedColors.cardBackground,
         dragHandle = null,
         windowInsets = WindowInsets.ime
     ) {
@@ -162,7 +171,7 @@ fun TaskDetailSheet(
                             modifier = Modifier
                                 .width(32.dp)
                                 .height(4.dp)
-                                .background(Color(0xFFE0E0E0), RoundedCornerShape(2.dp))
+                                .background(extendedColors.divider, RoundedCornerShape(2.dp))
                         )
                     }
 
@@ -201,13 +210,13 @@ fun TaskDetailSheet(
                             onClick = { closeSheetWithAnimation() },
                             modifier = Modifier
                                 .padding(start = 8.dp)
-                                .background(Color(0xFFF5F5F5), CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
                                 .size(32.dp)
                         ) {
                             Icon(
                                 Icons.Default.Close,
                                 contentDescription = stringResource(R.string.close),
-                                tint = Color.Gray,
+                                tint = extendedColors.textTertiary,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -246,7 +255,7 @@ fun TaskDetailSheet(
                 if (!task.description.isNullOrEmpty()) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Surface(
-                        color = Color(0xFFFAFAFA),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -254,7 +263,7 @@ fun TaskDetailSheet(
                             Icon(
                                 Icons.Outlined.Description,
                                 contentDescription = null,
-                                tint = Color.Gray,
+                                tint = extendedColors.textTertiary,
                                 modifier = Modifier.size(18.dp).padding(top = 2.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
@@ -310,7 +319,7 @@ fun TaskDetailSheet(
                             Text(
                                 text = stringResource(R.string.no_subtasks_hint), // 需确保 strings.xml 有此资源或使用硬编码
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color.Gray.copy(alpha = 0.6f),
+                                color = extendedColors.textTertiary.copy(alpha = 0.6f),
                                 modifier = Modifier.padding(vertical = 12.dp)
                             )
                         }
@@ -331,7 +340,7 @@ fun TaskDetailSheet(
                 // 6. Add Subtask Input
                 Surface(
                     shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFFF5F7FA),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -341,7 +350,7 @@ fun TaskDetailSheet(
                         TextField(
                             value = newSubTaskText,
                             onValueChange = { newSubTaskText = it },
-                            placeholder = { Text(stringResource(R.string.add_subtask), color = Color.Gray) },
+                            placeholder = { Text(stringResource(R.string.add_subtask), color = extendedColors.textTertiary) },
                             modifier = Modifier.weight(1f),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -363,7 +372,7 @@ fun TaskDetailSheet(
                             Icon(
                                 Icons.Default.ArrowUpward,
                                 contentDescription = null,
-                                tint = if (newSubTaskText.isNotBlank()) themeColor else Color.Gray,
+                                tint = if (newSubTaskText.isNotBlank()) themeColor else extendedColors.textTertiary,
                                 modifier = Modifier
                                     .background(
                                         if (newSubTaskText.isNotBlank()) themeColor.copy(alpha = 0.1f) else Color.Transparent,
@@ -421,7 +430,7 @@ fun TaskDetailSheet(
                             modifier = Modifier.weight(1.5f).height(50.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (task.isDone) Color(0xFF444746) else themeColor
+                                containerColor = if (task.isDone) extendedColors.textSecondary else themeColor
                             ),
                             elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                         ) {
@@ -457,6 +466,7 @@ private fun TimeDisplayCard(
     val durationMillis = deadline - startTime
     val days = TimeUnit.MILLISECONDS.toDays(durationMillis)
     val hours = TimeUnit.MILLISECONDS.toHours(durationMillis) % 24
+    val extendedColors = LocalExtendedColors.current
 
     // 计算任务状态
     val now = System.currentTimeMillis()
@@ -464,15 +474,15 @@ private fun TimeDisplayCard(
     val notStarted = now < startTime
 
     val statusColor = when {
-        isDone -> Color.Gray
-        isExpired -> Color(0xFFB3261E) // Red
-        notStarted -> Color(0xFF757575) // Gray
-        else -> themeColor // Active
+        isDone -> extendedColors.ganttDoneText
+        isExpired -> extendedColors.deadlineUrgent
+        notStarted -> extendedColors.textTertiary
+        else -> themeColor
     }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEEEEEE)),
+        colors = CardDefaults.cardColors(containerColor = extendedColors.cardBackground),
+        border = androidx.compose.foundation.BorderStroke(1.dp, extendedColors.divider),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = Modifier.fillMaxWidth()
@@ -484,7 +494,7 @@ private fun TimeDisplayCard(
         ) {
             // Start
             TimeColumn(
-                label = stringResource(R.string.start_time), // 确保strings.xml有此资源
+                label = stringResource(R.string.start_time),
                 time = startTime,
                 isPrimary = false
             )
@@ -539,13 +549,15 @@ private fun TimeColumn(
     isPrimary: Boolean,
     isUrgent: Boolean = false
 ) {
+    val extendedColors = LocalExtendedColors.current
+    
     Column(horizontalAlignment = if (isPrimary) Alignment.End else Alignment.Start) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (isUrgent) {
                 Icon(
                     Icons.Outlined.Timer,
                     contentDescription = null,
-                    tint = Color(0xFFB3261E),
+                    tint = extendedColors.deadlineUrgent,
                     modifier = Modifier.size(12.dp)
                 )
                 Spacer(modifier = Modifier.width(2.dp))
@@ -553,19 +565,19 @@ private fun TimeColumn(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (isUrgent) Color(0xFFB3261E) else Color.Gray
+                color = if (isUrgent) extendedColors.deadlineUrgent else extendedColors.textTertiary
             )
         }
         Text(
             text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(time)),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = if (isUrgent) Color(0xFFB3261E) else Color(0xFF1F1F1F)
+            color = if (isUrgent) extendedColors.deadlineUrgent else extendedColors.textPrimary
         )
         Text(
             text = SimpleDateFormat("MM/dd EEE", Locale.getDefault()).format(Date(time)),
             style = MaterialTheme.typography.bodySmall,
-            color = if (isUrgent) Color(0xFFB3261E) else Color.Gray
+            color = if (isUrgent) extendedColors.deadlineUrgent else extendedColors.textTertiary
         )
     }
 }
@@ -580,19 +592,21 @@ private fun CompactReminderRow(
     deadline: Long,
     themeColor: Color
 ) {
+    val extendedColors = LocalExtendedColors.current
+    
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 Icons.Outlined.Alarm,
                 contentDescription = null,
-                tint = Color.Gray,
+                tint = extendedColors.textTertiary,
                 modifier = Modifier.size(16.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = stringResource(R.string.task_reminders),
                 style = MaterialTheme.typography.labelMedium,
-                color = Color.Gray,
+                color = extendedColors.textTertiary,
                 fontWeight = FontWeight.Medium
             )
         }
@@ -609,14 +623,14 @@ private fun CompactReminderRow(
 
                 // Chip Style
                 val bgColor = when {
-                    isFired -> Color(0xFFF5F5F5)
-                    isPast -> Color(0xFFFFF1F2) // Light Red
+                    isFired -> MaterialTheme.colorScheme.surfaceVariant
+                    isPast -> extendedColors.deadlineUrgentSurface
                     else -> themeColor.copy(alpha = 0.08f)
                 }
 
                 val contentColor = when {
-                    isFired -> Color.Gray
-                    isPast -> Color(0xFFB3261E)
+                    isFired -> extendedColors.textTertiary
+                    isPast -> extendedColors.deadlineUrgent
                     else -> themeColor
                 }
 
@@ -671,6 +685,7 @@ private fun SubTaskItem(
     onDelete: () -> Unit
 ) {
     var isDeleting by remember { mutableStateOf(false) }
+    val extendedColors = LocalExtendedColors.current
 
     val alpha by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (isDeleting) 0f else 1f,
@@ -692,10 +707,9 @@ private fun SubTaskItem(
             .then(if(isDeleting) Modifier.height(0.dp) else Modifier.wrapContentHeight())
     ) {
         Surface(
-            color = Color.White,
+            color = extendedColors.cardBackground,
             modifier = Modifier.fillMaxWidth().clickable { onToggleComplete(!subTask.isCompleted) },
             shape = RoundedCornerShape(12.dp),
-            // 完成的任务稍微降低一点视觉权重
         ) {
             Row(
                 modifier = Modifier.padding(vertical = 8.dp),
@@ -706,14 +720,14 @@ private fun SubTaskItem(
                     Icon(
                         if (subTask.isCompleted) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
                         contentDescription = null,
-                        tint = if (subTask.isCompleted) Color.Gray else themeColor
+                        tint = if (subTask.isCompleted) extendedColors.textTertiary else themeColor
                     )
                 }
 
                 Text(
                     text = subTask.content,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = if (subTask.isCompleted) Color.Gray else Color(0xFF1F1F1F),
+                    color = if (subTask.isCompleted) extendedColors.textTertiary else extendedColors.textPrimary,
                     textDecoration = if (subTask.isCompleted) TextDecoration.LineThrough else null,
                     modifier = Modifier.weight(1f)
                 )
@@ -725,7 +739,7 @@ private fun SubTaskItem(
                     Icon(
                         Icons.Default.Close,
                         contentDescription = stringResource(R.string.delete),
-                        tint = Color.LightGray,
+                        tint = extendedColors.divider,
                         modifier = Modifier.size(18.dp)
                     )
                 }

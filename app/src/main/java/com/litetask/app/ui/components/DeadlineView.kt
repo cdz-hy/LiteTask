@@ -33,6 +33,7 @@ import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.theme.LiteTaskColors
+import com.litetask.app.ui.theme.LocalExtendedColors
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.max
@@ -103,6 +104,7 @@ fun DeadlineView(
                 DeadlineTaskItem(
                     composite = item,
                     isUrgent = false,
+                    isSoon = true,
                     onTaskClick = onTaskClick,
                     onDeleteClick = onDeleteClick,
                     onPinClick = onPinClick,
@@ -125,6 +127,7 @@ fun DeadlineView(
                 DeadlineTaskItem(
                     composite = item,
                     isUrgent = false,
+                    isSoon = false,
                     onTaskClick = onTaskClick,
                     onDeleteClick = onDeleteClick,
                     onPinClick = onPinClick,
@@ -144,7 +147,7 @@ fun DeadlineView(
                     Text(
                         text = "没有即将截止的任务",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = Color.Gray
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -168,7 +171,7 @@ fun DeadlineSectionHeader(title: String, count: Int, color: Color) {
             text = title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF1F2937)
+            color = MaterialTheme.colorScheme.onSurface
         )
         Spacer(modifier = Modifier.width(8.dp))
         Surface(
@@ -186,7 +189,7 @@ fun DeadlineSectionHeader(title: String, count: Int, color: Color) {
         Spacer(modifier = Modifier.weight(1f))
         HorizontalDivider(
             modifier = Modifier.width(100.dp),
-            color = Color.Gray.copy(alpha = 0.2f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
         )
     }
 }
@@ -195,6 +198,7 @@ fun DeadlineSectionHeader(title: String, count: Int, color: Color) {
 fun DeadlineTaskItem(
     composite: TaskDetailComposite,
     isUrgent: Boolean,
+    isSoon: Boolean = false,
     onTaskClick: (Task) -> Unit,
     onDeleteClick: (Task) -> Unit,
     onPinClick: (Task) -> Unit,
@@ -223,14 +227,19 @@ fun DeadlineTaskItem(
     // Colors
     val primaryColor = getTaskColor(task.type)
     val urgentColor = LiteTaskColors.urgentTask()
+    val soonColor = Color(0xFFEAB308) // Amber/Yellow for soon tasks
+    val extendedColors = LocalExtendedColors.current
     
-    // Urgent Animation
+    // Get appropriate card background based on theme
+    val cardBackgroundColor = MaterialTheme.colorScheme.surface
+    
+    // Urgent Animation - 修改动画周期为3000毫秒（3秒）
     val infiniteTransition = rememberInfiniteTransition(label = "urgent_pulse")
     val borderAlpha by infiniteTransition.animateFloat(
         initialValue = 0.2f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000),
+            animation = tween(3000), // 从1000毫秒改为3000毫秒
             repeatMode = RepeatMode.Reverse
         ),
         label = "border_alpha"
@@ -245,40 +254,27 @@ fun DeadlineTaskItem(
         Surface(
             onClick = { onTaskClick(task) },
             shape = RoundedCornerShape(24.dp),
-            color = Color.White,
-            shadowElevation = if (isUrgent) 4.dp else 1.dp,
+            color = cardBackgroundColor,
+            shadowElevation = if (isUrgent) 4.dp else if (isSoon) 2.dp else 1.dp,
             border = if (isUrgent) {
                 androidx.compose.foundation.BorderStroke(
                     2.dp, 
                     urgentColor.copy(alpha = borderAlpha)
                 )
+            } else if (isSoon) {
+                androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    soonColor.copy(alpha = 0.5f) //淡化一些的橙色边缘
+                )
             } else {
                 androidx.compose.foundation.BorderStroke(
                     1.dp,
-                    Color(0xFFF3F4F6)
+                    MaterialTheme.colorScheme.outlineVariant
                 )
             },
             modifier = Modifier.fillMaxWidth()
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
-                // Urgent Badge
-                if (isUrgent) {
-                    Surface(
-                        color = urgentColor,
-                        shape = RoundedCornerShape(bottomStart = 12.dp),
-                        modifier = Modifier.align(Alignment.TopEnd)
-                    ) {
-                        Text(
-                            text = "URGENT",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                }
-
                 Row(
                     modifier = Modifier.padding(20.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -292,13 +288,17 @@ fun DeadlineTaskItem(
                             text = timeDisplay,
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Black,
-                            color = if (isUrgent) urgentColor else primaryColor
+                            color = when {
+                                isUrgent -> urgentColor
+                                isSoon -> soonColor
+                                else -> primaryColor
+                            }
                         )
                         Text(
                             text = unitDisplay,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 10.sp
                         )
                     }
@@ -309,7 +309,7 @@ fun DeadlineTaskItem(
                             .padding(horizontal = 16.dp)
                             .width(1.dp)
                             .height(40.dp)
-                            .background(Color(0xFFF3F4F6))
+                            .background(MaterialTheme.colorScheme.outlineVariant)
                     )
 
                     // Right: Info
@@ -319,13 +319,13 @@ fun DeadlineTaskItem(
                                 text = task.title,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1F2937),
+                                color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f)
                             )
                             
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(16.dp)) // 稍微右移一些
                             
                             // Type Badge
                             Surface(
@@ -341,11 +341,6 @@ fun DeadlineTaskItem(
                                     color = primaryColor
                                 )
                             }
-                            
-                            // Spacer for Urgent Badge if needed
-                            if (isUrgent) {
-                                Spacer(modifier = Modifier.width(40.dp))
-                            }
                         }
                         
                         Spacer(modifier = Modifier.height(4.dp))
@@ -354,14 +349,22 @@ fun DeadlineTaskItem(
                             Icon(
                                 imageVector = Icons.Default.Flag,
                                 contentDescription = null,
-                                tint = if (isUrgent) urgentColor else Color.Gray,
+                                tint = when {
+                                    isUrgent -> urgentColor
+                                    isSoon -> soonColor
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = stringResource(R.string.deadline_label, formatDeadline(task.deadline)),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (isUrgent) urgentColor else Color.Gray,
+                                color = when {
+                                    isUrgent -> urgentColor
+                                    isSoon -> soonColor
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                                 fontWeight = if (isUrgent) FontWeight.Bold else FontWeight.Normal
                             )
                         }
