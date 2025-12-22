@@ -149,6 +149,13 @@ class HomeViewModel @Inject constructor(
         }
     }
     
+    /**
+     * 获取当前语音识别源信息
+     */
+    fun getSpeechSourceInfo(): com.litetask.app.util.SpeechSourceInfo {
+        return speechHelper.getCurrentSourceInfo()
+    }
+    
     fun startRecording() {
         recordingJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
@@ -159,7 +166,7 @@ class HomeViewModel @Inject constructor(
             )
             try {
                 // 使用录音+实时识别
-                speechHelper.startRecordingWithRecognition()
+                speechHelper.startRecognition()
                     .collect { result ->
                         when (result) {
                             is com.litetask.app.util.VoiceRecordResult.RecordingStarted -> {
@@ -171,15 +178,75 @@ class HomeViewModel @Inject constructor(
                                 _uiState.value = _uiState.value.copy(recognizedText = result.text)
                             }
                             is com.litetask.app.util.VoiceRecordResult.Error -> {
-                                // 显示错误但不关闭
+                                // 处理语音识别错误
+                                val errorMessage = parseSpeechError(result.message)
+                                _uiState.value = _uiState.value.copy(
+                                    isRecording = false,
+                                    showSpeechError = true,
+                                    speechErrorMessage = errorMessage,
+                                    recordingState = com.litetask.app.util.RecordingState.IDLE
+                                )
+                                speechHelper.release()
                             }
                             else -> {}
                         }
                     }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // 协程被取消是正常行为（用户按返回键等），不显示错误
+                _uiState.value = _uiState.value.copy(
+                    isRecording = false,
+                    recordingState = com.litetask.app.util.RecordingState.IDLE
+                )
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isRecording = false)
+                val errorMessage = parseSpeechError(e.message ?: "")
+                _uiState.value = _uiState.value.copy(
+                    isRecording = false,
+                    showSpeechError = true,
+                    speechErrorMessage = errorMessage,
+                    recordingState = com.litetask.app.util.RecordingState.IDLE
+                )
             }
         }
+    }
+    
+    /**
+     * 解析语音识别错误信息
+     */
+    private fun parseSpeechError(errorMsg: String): String {
+        return when {
+            // 讯飞错误码
+            errorMsg.contains("App ID 不存在") -> 
+                application.getString(R.string.error_speech_appid_not_exist)
+            errorMsg.contains("App ID 已被禁用") -> 
+                application.getString(R.string.error_speech_appid_disabled)
+            errorMsg.contains("没有实时语音转写权限") -> 
+                application.getString(R.string.error_speech_no_permission)
+            errorMsg.contains("签名错误") || errorMsg.contains("API Key") -> 
+                application.getString(R.string.error_speech_apikey_invalid)
+            errorMsg.contains("签名无效") -> 
+                application.getString(R.string.error_speech_signa_invalid)
+            errorMsg.contains("时间戳过期") -> 
+                application.getString(R.string.error_speech_timestamp_expired)
+            errorMsg.contains("转写时长已用完") -> 
+                application.getString(R.string.error_speech_quota_exhausted)
+            errorMsg.contains("并发数超限") -> 
+                application.getString(R.string.error_speech_concurrent_limit)
+            errorMsg.contains("凭证未配置") -> 
+                application.getString(R.string.error_speech_not_configured)
+            // 通用错误
+            errorMsg.contains("连接失败") || errorMsg.contains("网络") -> 
+                application.getString(R.string.error_speech_network)
+            errorMsg.contains("超时") -> 
+                application.getString(R.string.error_speech_timeout)
+            else -> errorMsg.ifEmpty { application.getString(R.string.error_speech_unknown) }
+        }
+    }
+    
+    /**
+     * 关闭语音识别错误提示
+     */
+    fun dismissSpeechError() {
+        _uiState.value = _uiState.value.copy(showSpeechError = false, speechErrorMessage = "")
     }
     
     // 录音时长
@@ -215,45 +282,6 @@ class HomeViewModel @Inject constructor(
             processVoiceCommand(editedText)
         } else {
             cancelRecording()
-        }
-    }
-    
-    @Deprecated("Use finishRecordingWithText instead")
-    fun finishRecordingOld() {
-        // 停止录音和识别
-        recordingJob?.cancel()
-        recordingJob = null
-        
-        val text = _uiState.value.recognizedText
-        
-        // 如果有识别结果，先回放录音
-        if (text.isNotBlank()) {
-            _uiState.value = _uiState.value.copy(
-                recordingState = com.litetask.app.util.RecordingState.PLAYING
-            )
-            
-            val playSuccess = speechHelper.playRecording {
-                // 回放完成后处理文字
-                _uiState.value = _uiState.value.copy(
-                    isRecording = false,
-                    recordingState = com.litetask.app.util.RecordingState.IDLE
-                )
-                processVoiceCommand(text)
-            }
-            
-            if (!playSuccess) {
-                // 回放失败，直接处理文字
-                _uiState.value = _uiState.value.copy(
-                    isRecording = false,
-                    recordingState = com.litetask.app.util.RecordingState.IDLE
-                )
-                processVoiceCommand(text)
-            }
-        } else {
-            _uiState.value = _uiState.value.copy(
-                isRecording = false,
-                recordingState = com.litetask.app.util.RecordingState.IDLE
-            )
         }
     }
     
@@ -312,6 +340,48 @@ class HomeViewModel @Inject constructor(
         }
     }
     
+    /**
+     * 文字输入分析：直接调用 AI 分析文本
+     */
+    fun analyzeTextInput(text: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isAnalyzing = true)
+            
+            val result = aiRepository.parseTasksFromText("", text)
+            
+            result.onSuccess { tasks ->
+                _uiState.value = _uiState.value.copy(
+                    isAnalyzing = false,
+                    showAiResult = true,
+                    aiParsedTasks = tasks
+                )
+            }.onFailure { error ->
+                val errorMessage = when {
+                    error.message?.contains("API Key 无效") == true -> 
+                        application.getString(R.string.error_api_key_invalid)
+                    error.message?.contains("未设置 API Key") == true -> 
+                        application.getString(R.string.error_api_key_not_set)
+                    error.message?.contains("权限不足") == true -> 
+                        application.getString(R.string.error_api_key_permission)
+                    error.message?.contains("请求过于频繁") == true -> 
+                        application.getString(R.string.error_rate_limit)
+                    error.message?.contains("无法连接") == true || 
+                    error.message?.contains("网络") == true -> 
+                        application.getString(R.string.error_network)
+                    error.message?.contains("超时") == true -> 
+                        application.getString(R.string.error_timeout)
+                    else -> error.message ?: application.getString(R.string.error_ai_analysis)
+                }
+                
+                _uiState.value = _uiState.value.copy(
+                    isAnalyzing = false,
+                    showAiError = true,
+                    aiErrorMessage = errorMessage
+                )
+            }
+        }
+    }
+    
     fun dismissAiError() {
         _uiState.value = _uiState.value.copy(showAiError = false, aiErrorMessage = "")
     }
@@ -321,6 +391,40 @@ class HomeViewModel @Inject constructor(
             val tasksToAdd = _uiState.value.aiParsedTasks
             if (tasksToAdd.isNotEmpty()) {
                 taskRepository.insertTasks(tasksToAdd)
+            }
+            _uiState.value = _uiState.value.copy(showAiResult = false, aiParsedTasks = emptyList())
+        }
+    }
+    
+    /**
+     * 确认添加任务（带提醒）
+     */
+    fun confirmAddTasksWithReminders(
+        tasks: List<Task>, 
+        taskReminders: Map<Int, List<com.litetask.app.data.model.ReminderConfig>>
+    ) {
+        viewModelScope.launch {
+            if (tasks.isNotEmpty()) {
+                tasks.forEachIndexed { index, task ->
+                    val reminderConfigs = taskReminders[index] ?: emptyList()
+                    if (reminderConfigs.isNotEmpty()) {
+                        // 有提醒配置，使用带提醒的插入方法
+                        val reminders = reminderConfigs.mapNotNull { config ->
+                            val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
+                            if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
+                                com.litetask.app.data.model.Reminder(
+                                    taskId = 0, // 会在插入时更新
+                                    triggerAt = triggerAt,
+                                    label = config.generateLabel()
+                                )
+                            } else null
+                        }
+                        taskRepository.insertTaskWithReminders(task, reminders)
+                    } else {
+                        // 没有提醒配置，直接插入任务
+                        taskRepository.insertTask(task)
+                    }
+                }
             }
             _uiState.value = _uiState.value.copy(showAiResult = false, aiParsedTasks = emptyList())
         }
@@ -347,22 +451,90 @@ class HomeViewModel @Inject constructor(
             taskRepository.insertTask(task)
         }
     }
+    
+    /**
+     * 添加任务并设置提醒
+     */
+    fun addTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
+        android.util.Log.i("HomeViewModel", "addTaskWithReminders called: task=${task.title}, configs=${reminderConfigs.size}")
+        viewModelScope.launch {
+            val reminders = reminderConfigs.mapNotNull { config ->
+                val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
+                android.util.Log.d("HomeViewModel", "Config: type=${config.type}, triggerAt=$triggerAt, now=${System.currentTimeMillis()}")
+                if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
+                    com.litetask.app.data.model.Reminder(
+                        taskId = 0, // 会在插入时更新
+                        triggerAt = triggerAt,
+                        label = config.generateLabel()
+                    )
+                } else {
+                    android.util.Log.w("HomeViewModel", "Skipping config: triggerAt=$triggerAt, type=${config.type}")
+                    null
+                }
+            }
+            android.util.Log.i("HomeViewModel", "Created ${reminders.size} reminders from ${reminderConfigs.size} configs")
+            taskRepository.insertTaskWithReminders(task, reminders)
+        }
+    }
 
     fun updateTask(task: Task) {
         viewModelScope.launch {
-            taskRepository.updateTask(task)
-            
-            // 如果任务状态从已完成变为未完成，需要从历史列表中移除
-            if (!task.isDone) {
-                _historyList.value = _historyList.value.filter { it.task.id != task.id }
-            }
-            // 如果任务状态从未完成变为已完成，需要重新加载历史列表
-            else {
+            // 如果任务被标记为完成，使用 markTaskDone 来同时取消闹钟
+            if (task.isDone) {
+                taskRepository.markTaskDone(task)
                 // 重新加载历史列表以包含新完成的任务
                 val newHistory = taskRepository.getHistoryTasks(pageSize * (historyPage + 1), 0)
                 _historyList.value = newHistory
+            } else {
+                taskRepository.updateTask(task)
+                // 如果任务状态从已完成变为未完成，需要从历史列表中移除
+                _historyList.value = _historyList.value.filter { it.task.id != task.id }
             }
         }
+    }
+    
+    /**
+     * 更新任务并更新提醒
+     */
+    fun updateTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
+        viewModelScope.launch {
+            // 如果任务已完成，使用 markTaskDone 取消闹钟，不注册新提醒
+            if (task.isDone) {
+                taskRepository.markTaskDone(task)
+                val newHistory = taskRepository.getHistoryTasks(pageSize * (historyPage + 1), 0)
+                _historyList.value = newHistory
+                return@launch
+            }
+            
+            val reminders = reminderConfigs.mapNotNull { config ->
+                val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
+                if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
+                    com.litetask.app.data.model.Reminder(
+                        taskId = task.id,
+                        triggerAt = triggerAt,
+                        label = config.generateLabel()
+                    )
+                } else null
+            }
+            taskRepository.updateTaskWithReminders(task, reminders)
+            
+            // 从历史列表中移除（因为任务未完成）
+            _historyList.value = _historyList.value.filter { it.task.id != task.id }
+        }
+    }
+    
+    /**
+     * 获取任务的提醒列表
+     */
+    fun getRemindersForTask(taskId: Long): kotlinx.coroutines.flow.Flow<List<com.litetask.app.data.model.Reminder>> {
+        return taskRepository.getRemindersByTaskId(taskId)
+    }
+    
+    /**
+     * 同步获取任务的提醒列表
+     */
+    suspend fun getRemindersForTaskSync(taskId: Long): List<com.litetask.app.data.model.Reminder> {
+        return taskRepository.getRemindersByTaskIdSync(taskId)
     }
 
     fun updateTaskWithSubTasks(task: Task, subTasks: List<SubTask>) {
@@ -373,7 +545,8 @@ class HomeViewModel @Inject constructor(
 
     fun deleteTask(task: Task) {
         viewModelScope.launch {
-            taskRepository.deleteTask(task)
+            // 使用 deleteTaskWithReminders 来同时取消闹钟
+            taskRepository.deleteTaskWithReminders(task)
         }
     }
 
@@ -491,6 +664,20 @@ class HomeViewModel @Inject constructor(
             }
         }
     }
+    
+    /**
+     * 初始化 Timeline 数据：首次进入 Timeline 视图时调用
+     * 
+     * 执行流程：
+     * 1. 如果历史列表为空，自动加载第一页历史任务
+     * 2. 避免重复加载
+     */
+    fun initTimelineData() {
+        // 只在历史列表为空且未加载时才加载
+        if (_historyList.value.isEmpty() && !_isLoadingHistory.value && historyPage == 0) {
+            loadMoreHistory()
+        }
+    }
 }
 
 data class HomeUiState(
@@ -500,6 +687,8 @@ data class HomeUiState(
     val showVoiceResult: Boolean = false,   // 录音结束后显示结果界面（无论有无识别文字）
     val showAiError: Boolean = false,       // 显示 AI 错误界面
     val aiErrorMessage: String = "",        // AI 错误信息
+    val showSpeechError: Boolean = false,   // 显示语音识别错误界面
+    val speechErrorMessage: String = "",    // 语音识别错误信息
     val aiParsedTasks: List<Task> = emptyList(),
     val recognizedText: String = "",        // 实时识别的文字
     val finalRecognizedText: String = "",   // 最终识别结果

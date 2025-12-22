@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.LiteTask" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- 夜间模式窗口背景 -->
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:colorBackground">@color/background</item>
+        <!-- 状态栏和导航栏颜色 -->
+        <item name="android:statusBarColor">@color/surface</item>
+        <item name="android:navigationBarColor">@color/surface</item>
+        <!-- 夜间模式状态栏图标为浅色 -->
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

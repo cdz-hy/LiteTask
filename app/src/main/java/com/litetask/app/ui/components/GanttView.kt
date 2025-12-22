@@ -37,6 +37,7 @@ import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.ui.theme.LocalExtendedColors
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.max
@@ -47,22 +48,6 @@ enum class GanttViewMode {
     SEVEN_DAY  // 7日视图
 }
 
-// --- Colors from Design ---
-private val ColorWork = Color(0xFF0B57D0)
-private val ColorLife = Color(0xFF146C2E)
-private val ColorStudy = Color(0xFF65558F)
-private val ColorUrgent = Color(0xFFB3261E)
-private val ColorDone = Color(0xFFE0E0E0)
-private val ColorTextDone = Color(0xFF9E9E9E)
-
-private val ColorWorkBg = Color(0xFFEFF6FF)
-private val ColorLifeBg = Color(0xFFECFDF5)
-private val ColorStudyBg = Color(0xFFF5F3FF)
-
-private val ColorWorkBorder = Color(0xFFBFDBFE)
-private val ColorLifeBorder = Color(0xFFA7F3D0)
-private val ColorStudyBorder = Color(0xFFDDD6FE)
-
 @Composable
 fun GanttView(
     taskComposites: List<TaskDetailComposite>,
@@ -71,6 +56,7 @@ fun GanttView(
     modifier: Modifier = Modifier
 ) {
     var viewMode by remember { mutableStateOf(GanttViewMode.THREE_DAY) }
+    val extendedColors = LocalExtendedColors.current
     
     // Time Configuration
     val now = System.currentTimeMillis()
@@ -106,7 +92,7 @@ fun GanttView(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.White, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+            .background(extendedColors.cardBackground, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
     ) {
         // 1. Legend Header with View Mode Selector
         GanttHeader(
@@ -151,8 +137,8 @@ fun GanttView(
                         modifier = Modifier
                             .height(50.dp)
                             .fillMaxWidth()
-                            .background(Color.White.copy(alpha = 0.95f))
-                            .border(0.5.dp, Color(0xFFF0F0F0))
+                            .background(extendedColors.cardBackground.copy(alpha = 0.95f))
+                            .border(0.5.dp, extendedColors.ganttGridLine)
                     ) {
                         for (i in 0 until daysToShow) {
                             val dayCal = Calendar.getInstance()
@@ -173,8 +159,8 @@ fun GanttView(
                                 modifier = Modifier
                                     .width(dayWidth)
                                     .fillMaxHeight()
-                                    .background(if (isToday) androidx.compose.ui.res.colorResource(id = R.color.gantt_today_background).copy(alpha = 0.4f) else Color.Transparent)
-                                    .border(width = 0.5.dp, color = androidx.compose.ui.res.colorResource(id = R.color.gantt_grid_line)),
+                                    .background(if (isToday) extendedColors.ganttTodayBackground.copy(alpha = 0.4f) else Color.Transparent)
+                                    .border(width = 0.5.dp, color = extendedColors.ganttGridLine),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -182,13 +168,13 @@ fun GanttView(
                                         text = dateStr,
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isToday) ColorWork else androidx.compose.ui.res.colorResource(id = R.color.gray_600)
+                                        color = if (isToday) extendedColors.ganttWork else extendedColors.textSecondary
                                     )
                                     Text(
                                         text = dayLabel,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontSize = 10.sp,
-                                        color = if (isToday) ColorWork else androidx.compose.ui.res.colorResource(id = R.color.gray_400)
+                                        color = if (isToday) extendedColors.ganttWork else extendedColors.textTertiary
                                     )
                                 }
                             }
@@ -229,8 +215,8 @@ fun GanttView(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(16.dp),
-                containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.9f),
-                contentColor = ColorWork,
+                containerColor = extendedColors.cardBackground.copy(alpha = 0.9f),
+                contentColor = extendedColors.ganttWork,
                 elevation = FloatingActionButtonDefaults.elevation(
                     defaultElevation = 4.dp,
                     pressedElevation = 8.dp
@@ -253,6 +239,7 @@ fun GanttHeader(
     onViewModeChange: (GanttViewMode) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val extendedColors = LocalExtendedColors.current
     
     Row(
         modifier = Modifier
@@ -266,7 +253,7 @@ fun GanttHeader(
             Surface(
                 onClick = { expanded = true },
                 shape = RoundedCornerShape(12.dp),
-                color = androidx.compose.ui.res.colorResource(R.color.gantt_work_background),
+                color = extendedColors.ganttWorkBackground,
                 modifier = Modifier.height(36.dp)
             ) {
                 Row(
@@ -278,7 +265,7 @@ fun GanttHeader(
                         imageVector = Icons.Default.DateRange,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = ColorWork
+                        tint = extendedColors.ganttWork
                     )
                     Text(
                         text = when (viewMode) {
@@ -288,13 +275,13 @@ fun GanttHeader(
                         },
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = ColorWork
+                        color = extendedColors.ganttWork
                     )
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
                         contentDescription = null,
                         modifier = Modifier.size(20.dp),
-                        tint = ColorWork
+                        tint = extendedColors.ganttWork
                     )
                 }
             }
@@ -302,7 +289,7 @@ fun GanttHeader(
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                modifier = Modifier.background(Color.White, RoundedCornerShape(12.dp))
+                modifier = Modifier.background(extendedColors.cardBackground, RoundedCornerShape(12.dp))
             ) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.today_view), style = MaterialTheme.typography.bodyMedium) },
@@ -339,9 +326,9 @@ fun GanttHeader(
 
         // 右侧：图例
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            LegendItem(color = ColorWork, label = stringResource(R.string.task_type_work))
-            LegendItem(color = ColorLife, label = stringResource(R.string.task_type_life))
-            LegendItem(color = ColorStudy, label = stringResource(R.string.task_type_study))
+            LegendItem(color = extendedColors.ganttWork, label = stringResource(R.string.task_type_work))
+            LegendItem(color = extendedColors.ganttLife, label = stringResource(R.string.task_type_life))
+            LegendItem(color = extendedColors.ganttStudy, label = stringResource(R.string.task_type_study))
         }
     }
 }
@@ -360,7 +347,7 @@ fun LegendItem(color: Color, label: String) {
             style = MaterialTheme.typography.labelSmall,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
-            color = androidx.compose.ui.res.colorResource(R.color.gray_600)
+            color = LocalExtendedColors.current.textSecondary
         )
     }
 }
@@ -375,11 +362,12 @@ fun GanttGrid(
     viewMode: GanttViewMode
 ) {
     val density = LocalDensity.current
+    val extendedColors = LocalExtendedColors.current
     
     // 在 Canvas 外部获取颜色值
-    val gridLineColor = colorResource(id = R.color.gantt_grid_line)
-    val hourLineColor = colorResource(id = R.color.gantt_hour_line)
-    val currentTimeColor = colorResource(id = R.color.gantt_current_time)
+    val gridLineColor = extendedColors.ganttGridLine
+    val hourLineColor = extendedColors.ganttHourLine
+    val currentTimeColor = extendedColors.ganttCurrentTime
     
     Canvas(modifier = Modifier
         .fillMaxWidth()
@@ -472,7 +460,7 @@ fun GanttGrid(
                                 text = String.format("%02d", h),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 9.sp,
-                                color = androidx.compose.ui.res.colorResource(id = R.color.gray_400),
+                                color = extendedColors.textTertiary,
                                 fontWeight = FontWeight.Medium
                             )
                         }
@@ -564,6 +552,7 @@ fun GanttTaskCard(
 ) {
     val task = composite.task
     val subTasks = composite.subTasks
+    val extendedColors = LocalExtendedColors.current
     
     // Calculate Progress
     val hasSubtasks = subTasks.isNotEmpty()
@@ -574,16 +563,15 @@ fun GanttTaskCard(
         0f
     }
 
-    // Determine Colors
+    // Determine Colors using theme
     val (bg, border, text, fill) = if (task.isDone) {
-        Quad(ColorDone, androidx.compose.ui.res.colorResource(id = R.color.gray_400), ColorTextDone, androidx.compose.ui.res.colorResource(id = R.color.gray_400))
+        Quad(extendedColors.ganttDoneBackground, extendedColors.ganttDoneText, extendedColors.ganttDoneText, extendedColors.ganttDoneText)
     } else {
         when (task.type) {
-            TaskType.WORK -> Quad(ColorWorkBg, ColorWorkBorder, ColorWork, ColorWork)
-            TaskType.LIFE -> Quad(ColorLifeBg, ColorLifeBorder, ColorLife, ColorLife)
-            TaskType.STUDY -> Quad(ColorStudyBg, ColorStudyBorder, ColorStudy, ColorStudy)
-            TaskType.URGENT -> Quad(androidx.compose.ui.res.colorResource(id = R.color.gantt_urgent_background), androidx.compose.ui.res.colorResource(id = R.color.gantt_urgent_border), ColorUrgent, ColorUrgent)
-            else -> Quad(ColorWorkBg, ColorWorkBorder, ColorWork, ColorWork)
+            TaskType.WORK -> Quad(extendedColors.ganttWorkBackground, extendedColors.ganttWorkBorder, extendedColors.ganttWork, extendedColors.ganttWork)
+            TaskType.LIFE -> Quad(extendedColors.ganttLifeBackground, extendedColors.ganttLifeBorder, extendedColors.ganttLife, extendedColors.ganttLife)
+            TaskType.STUDY -> Quad(extendedColors.ganttStudyBackground, extendedColors.ganttStudyBorder, extendedColors.ganttStudy, extendedColors.ganttStudy)
+            TaskType.URGENT -> Quad(extendedColors.ganttUrgentBackground, extendedColors.ganttUrgentBorder, extendedColors.ganttUrgent, extendedColors.ganttUrgent)
         }
     }
     

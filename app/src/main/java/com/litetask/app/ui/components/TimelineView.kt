@@ -39,70 +39,37 @@ import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.home.TimelineItem
-import com.litetask.app.ui.theme.LiteTaskColors
+import com.litetask.app.ui.theme.LocalExtendedColors
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
 
-// --- 1. 颜色系统定义 (完全不透明色值) ---
-private object TaskColors {
-    // 主色 (用于文字、图标、进度条)
-    @Composable
-    fun Work() = LiteTaskColors.workTask()
-    
-    @Composable
-    fun Life() = LiteTaskColors.lifeTask()
-    
-    @Composable
-    fun Study() = LiteTaskColors.studyTask()
-    
-    @Composable
-    fun Urgent() = LiteTaskColors.urgentTask()
-    
-    @Composable
-    fun Health() = LiteTaskColors.healthTask()
-    
-    @Composable
-    fun Dev() = LiteTaskColors.devTask()
-
-    // 浅色背景 (用于置顶卡片背景 - 对应 Tailwind 的 xx-50 色阶，不透明)
-    @Composable
-    fun WorkSurface() = LiteTaskColors.workTaskSurface()
-    
-    @Composable
-    fun LifeSurface() = LiteTaskColors.lifeTaskSurface()
-    
-    @Composable
-    fun StudySurface() = LiteTaskColors.studyTaskSurface()
-    
-    @Composable
-    fun UrgentSurface() = LiteTaskColors.urgentTaskSurface()
-    
-    @Composable
-    fun HealthSurface() = LiteTaskColors.healthTaskSurface()
-    
-    @Composable
-    fun DevSurface() = LiteTaskColors.devTaskSurface()
-
-    @Composable
-    fun getPrimary(type: TaskType): Color = when (type) {
-        TaskType.WORK -> Work()
-        TaskType.LIFE -> Life()
-        TaskType.URGENT -> Urgent()
-        TaskType.STUDY -> Study()
-        TaskType.HEALTH -> Health()
-        TaskType.DEV -> Dev()
+/**
+ * 获取任务类型对应的主色
+ */
+@Composable
+private fun getTaskPrimaryColor(type: TaskType): Color {
+    val extendedColors = LocalExtendedColors.current
+    return when (type) {
+        TaskType.WORK -> extendedColors.workTask
+        TaskType.LIFE -> extendedColors.lifeTask
+        TaskType.STUDY -> extendedColors.studyTask
+        TaskType.URGENT -> extendedColors.urgentTask
     }
+}
 
-    @Composable
-    fun getSurface(type: TaskType): Color = when (type) {
-        TaskType.WORK -> WorkSurface()
-        TaskType.LIFE -> LifeSurface()
-        TaskType.URGENT -> UrgentSurface()
-        TaskType.STUDY -> StudySurface()
-        TaskType.HEALTH -> HealthSurface()
-        TaskType.DEV -> DevSurface()
+/**
+ * 获取任务类型对应的表面色
+ */
+@Composable
+private fun getTaskSurfaceColor(type: TaskType): Color {
+    val extendedColors = LocalExtendedColors.current
+    return when (type) {
+        TaskType.WORK -> extendedColors.workTaskSurface
+        TaskType.LIFE -> extendedColors.lifeTaskSurface
+        TaskType.STUDY -> extendedColors.studyTaskSurface
+        TaskType.URGENT -> extendedColors.urgentTaskSurface
     }
 }
 
@@ -118,6 +85,7 @@ fun TimelineView(
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
+    val extendedColors = LocalExtendedColors.current
 
     // 滚动监听加载更多
     val isAtBottom by remember {
@@ -139,7 +107,6 @@ fun TimelineView(
         derivedStateOf {
             val firstVisibleIndex = listState.firstVisibleItemIndex
             val firstVisibleOffset = listState.firstVisibleItemScrollOffset
-            // 向下滚动超过第一个item或者在顶部时显示
             firstVisibleIndex == 0 && firstVisibleOffset < 100
         }
     }
@@ -147,7 +114,7 @@ fun TimelineView(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF2F6FC))
+            .background(MaterialTheme.colorScheme.background)
     ) {
         // 搜索框 (可点击，带滚动隐藏动画)
         androidx.compose.animation.AnimatedVisibility(
@@ -163,18 +130,36 @@ fun TimelineView(
                     .padding(horizontal = 16.dp, vertical = 12.dp)
                     .shadow(elevation = 2.dp, shape = RoundedCornerShape(24.dp))
                     .clickable { onSearchClick() },
-                placeholder = { Text(stringResource(R.string.search_hint)) },
+                placeholder = { 
+                    Text(
+                        stringResource(R.string.search_hint),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    ) 
+                },
                 leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray)
+                    Icon(
+                        Icons.Default.Search, 
+                        contentDescription = null, 
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 },
                 enabled = false,
                 shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    disabledBorderColor = Color.Transparent,
-                    disabledContainerColor = Color.White,
-                    disabledPlaceholderColor = Color.Gray,
-                    disabledLeadingIconColor = Color.Gray
+                    disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    disabledContainerColor = MaterialTheme.colorScheme.surface,
+                    disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    disabledLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            )
+        }
+
+        // 空状态提示
+        if (items.isEmpty()) {
+            EmptyStateView(
+                icon = Icons.Default.Inbox,
+                title = stringResource(R.string.no_tasks_yet),
+                subtitle = stringResource(R.string.no_tasks_hint)
             )
         }
 
@@ -202,7 +187,6 @@ fun TimelineView(
                         }
                     }
                     is TimelineItem.HistoryHeader -> {
-                        // 历史分割线（与搜索页面的"已完成"样式一致）
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -211,17 +195,17 @@ fun TimelineView(
                         ) {
                             HorizontalDivider(
                                 modifier = Modifier.weight(1f),
-                                color = Color.LightGray.copy(alpha = 0.5f)
+                                color = extendedColors.divider.copy(alpha = 0.5f)
                             )
                             Text(
                                 stringResource(R.string.archived),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.Gray,
+                                color = extendedColors.textTertiary,
                                 modifier = Modifier.padding(horizontal = 12.dp)
                             )
                             HorizontalDivider(
                                 modifier = Modifier.weight(1f),
-                                color = Color.LightGray.copy(alpha = 0.5f)
+                                color = extendedColors.divider.copy(alpha = 0.5f)
                             )
                         }
                     }
@@ -230,12 +214,15 @@ fun TimelineView(
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp), 
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
                     is TimelineItem.PinnedHeader -> {
-                        // 置顶任务头部，可以显示置顶任务数量等信息
-                        // 当前版本暂不显示额外内容，但保留空处理以避免编译错误
+                        // 置顶任务头部，当前版本暂不显示额外内容
                     }
                 }
             }
@@ -244,7 +231,7 @@ fun TimelineView(
 }
 
 /**
- * 核心卡片组件：完全复刻 HTML 原型
+ * 核心卡片组件：Material Design 3 风格，支持暗色模式
  */
 @Composable
 fun HtmlStyleTaskCard(
@@ -253,24 +240,24 @@ fun HtmlStyleTaskCard(
 ) {
     val task = composite.task
     val subTasks = composite.subTasks
+    val extendedColors = LocalExtendedColors.current
 
     val isDone = task.isDone
     val isPinned = task.isPinned
 
     // 获取颜色配置
-    val primaryColor = if (isDone) Color.Gray else TaskColors.getPrimary(task.type)
-    val surfaceColor = if (isDone) Color.White else TaskColors.getSurface(task.type)
+    val primaryColor = if (isDone) extendedColors.textTertiary else getTaskPrimaryColor(task.type)
+    val surfaceColor = if (isDone) extendedColors.cardBackground else getTaskSurfaceColor(task.type)
 
-    // --- 样式逻辑 (核心修改) ---
-    // 1. 背景色：置顶任务使用浅色实心背景(不透明)，普通任务纯白
-    val containerColor = if (isPinned && !isDone) surfaceColor else Color.White
+    // 背景色：置顶任务使用浅色实心背景，普通任务使用卡片背景色
+    val containerColor = if (isPinned && !isDone) surfaceColor else extendedColors.cardBackground
 
-    // 2. 边框：置顶任务有浅色边框，普通任务无
+    // 边框：置顶任务有浅色边框
     val borderStroke = if (isPinned && !isDone) {
         androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.2f))
     } else null
 
-    // 3. 阴影：置顶任务阴影稍重
+    // 阴影：置顶任务阴影稍重
     val elevation = if (isPinned && !isDone) 2.dp else 0.5.dp
 
     // 进度计算
@@ -280,22 +267,21 @@ fun HtmlStyleTaskCard(
 
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(24.dp), // MD3 大圆角
+        shape = RoundedCornerShape(24.dp),
         color = containerColor,
         shadowElevation = elevation,
         border = borderStroke,
         modifier = Modifier.fillMaxWidth()
     ) {
-        // 使用 IntrinsicSize.Min 确保左侧色条高度填满
         Row(modifier = Modifier.height(IntrinsicSize.Min)) {
 
-            // --- 左侧色条 (改进样式) ---
+            // 左侧色条
             Box(
                 modifier = Modifier
                     .width(8.dp)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)) // 右侧圆角
-                    .background(primaryColor.copy(alpha = if (isDone) 0.3f else 0.8f)) // 调整透明度
+                    .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
+                    .background(primaryColor.copy(alpha = if (isDone) 0.3f else 0.8f))
             )
 
             // 右侧内容
@@ -314,7 +300,7 @@ fun HtmlStyleTaskCard(
                         text = task.title,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = if (isPinned) FontWeight.Bold else FontWeight.SemiBold,
-                        color = if (isDone) Color.Gray else Color(0xFF1F1F1F),
+                        color = if (isDone) extendedColors.textTertiary else extendedColors.textPrimary,
                         textDecoration = if (isDone) TextDecoration.LineThrough else null,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -326,14 +312,16 @@ fun HtmlStyleTaskCard(
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = "Done",
-                            tint = TaskColors.Life(),
+                            tint = extendedColors.lifeTask,
                             modifier = Modifier.size(20.dp)
                         )
                     } else if (isPinned) {
-                        // 置顶图标：带背景的旋转图钉 (复刻 HTML)
                         Box(
                             modifier = Modifier
-                                .background(Color.White.copy(alpha = 0.6f), CircleShape) // 微弱背景增加对比
+                                .background(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.6f), 
+                                    CircleShape
+                                )
                                 .padding(4.dp)
                         ) {
                             Icon(
@@ -368,7 +356,7 @@ fun HtmlStyleTaskCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    val infoColor = Color(0xFF444746).copy(alpha = if (isDone) 0.5f else 0.8f)
+                    val infoColor = extendedColors.textSecondary.copy(alpha = if (isDone) 0.5f else 0.8f)
 
                     Icon(
                         imageVector = Icons.Default.AccessTime,
@@ -390,7 +378,10 @@ fun HtmlStyleTaskCard(
                             Spacer(modifier = Modifier.width(8.dp))
                             val isVeryUrgent = timeLeft < (3 * 3600 * 1000)
                             Surface(
-                                color = if (isVeryUrgent) Color(0xFFFFE4E6) else Color(0xFFE0F2FE),
+                                color = if (isVeryUrgent) 
+                                    extendedColors.urgentTaskSurface 
+                                else 
+                                    extendedColors.workTaskSurface,
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
@@ -398,7 +389,10 @@ fun HtmlStyleTaskCard(
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
-                                    color = if (isVeryUrgent) Color(0xFFBE123C) else Color(0xFF0369A1)
+                                    color = if (isVeryUrgent) 
+                                        extendedColors.urgentTask 
+                                    else 
+                                        extendedColors.workTask
                                 )
                             }
                         }
@@ -439,17 +433,23 @@ fun HtmlStyleTaskCard(
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
-                                .background(Color(0xFFF5F7FA), RoundedCornerShape(6.dp)) // 灰色底块
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), 
+                                    RoundedCornerShape(6.dp)
+                                )
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                                 .fillMaxWidth()
                         ) {
-                            // 小圆点装饰
-                            Box(modifier = Modifier.size(6.dp).background(Color.Gray.copy(alpha=0.5f), CircleShape))
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .background(extendedColors.textTertiary, CircleShape)
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${stringResource(R.string.next_action_prefix)} ${nextAction.content}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray,
+                                color = extendedColors.textSecondary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -471,6 +471,7 @@ fun SwipeRevealItem(
     content: @Composable () -> Unit
 ) {
     val density = LocalDensity.current
+    val extendedColors = LocalExtendedColors.current
     val isTaskExpired = task.deadline < System.currentTimeMillis()
     val isTaskCompleted = task.isDone
     val canPinTask = !isTaskExpired && !isTaskCompleted
@@ -487,13 +488,12 @@ fun SwipeRevealItem(
         contentAlignment = Alignment.CenterEnd
     ) {
         // 背景操作层
-        // 优化灵敏度：将触发阈值从10f增加到30f，避免误触
         if (offsetX.value < -30f) {
             Row(
                 modifier = Modifier
                     .width(actionWidth)
                     .fillMaxHeight()
-                    .padding(vertical = 8.dp), // 上下留白
+                    .padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -501,19 +501,19 @@ fun SwipeRevealItem(
                 if (canPinTask) {
                     ActionIcon(
                         icon = if (task.isPinned) Icons.Outlined.PushPin else Icons.Default.PushPin,
-                        color = Color(0xFFEAB308),
+                        color = extendedColors.deadlineSoon,
                         onClick = { scope.launch { offsetX.animateTo(0f); onPin() } }
                     )
                 }
                 
                 ActionIcon(
                     icon = Icons.Default.Edit,
-                    color = Color(0xFF0B57D0),
+                    color = MaterialTheme.colorScheme.primary,
                     onClick = { scope.launch { offsetX.animateTo(0f); onEdit() } }
                 )
                 ActionIcon(
                     icon = Icons.Default.Delete,
-                    color = Color(0xFFF43F5E),
+                    color = extendedColors.deadlineUrgent,
                     onClick = { scope.launch { offsetX.animateTo(0f); onDelete() } }
                 )
             }
@@ -532,7 +532,6 @@ fun SwipeRevealItem(
                     },
                     orientation = Orientation.Horizontal,
                     onDragStopped = { velocity ->
-                        // 优化滑动释放逻辑：增加速度阈值，让用户更容易控制
                         val target = if (offsetX.value < -actionWidthPx / 2 || velocity < -1500) {
                             -actionWidthPx
                         } else {
@@ -568,8 +567,6 @@ private fun getTaskTypeName(type: TaskType): String {
         TaskType.LIFE -> stringResource(R.string.task_type_life)
         TaskType.URGENT -> stringResource(R.string.task_type_urgent)
         TaskType.STUDY -> stringResource(R.string.task_type_study)
-        TaskType.HEALTH -> stringResource(R.string.task_type_health)
-        TaskType.DEV -> stringResource(R.string.task_type_dev)
     }
 }
 

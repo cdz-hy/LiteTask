@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
+import com.litetask.app.ui.theme.LocalExtendedColors
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -158,10 +159,12 @@ fun GanttFullscreenView(
     }.sortedBy { it.task.startTime }
     
     // 全屏界面（无 TopBar，完全沉浸式）
+    val extendedColors = LocalExtendedColors.current
+    
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(extendedColors.cardBackground)
     ) {
         Column(
             modifier = Modifier.fillMaxSize()
@@ -173,8 +176,8 @@ fun GanttFullscreenView(
                 modifier = Modifier
                     .height(50.dp)
                     .fillMaxWidth()
-                    .background(Color.White.copy(alpha = 0.95f))
-                    .border(0.5.dp, Color(0xFFF0F0F0))
+                    .background(extendedColors.cardBackground.copy(alpha = 0.95f))
+                    .border(0.5.dp, extendedColors.ganttGridLine)
             ) {
                 for (i in 0 until daysToShow) {
                     val dayCal = Calendar.getInstance()
@@ -195,8 +198,8 @@ fun GanttFullscreenView(
                         modifier = Modifier
                             .width(dayWidth)
                             .fillMaxHeight()
-                            .background(if (isToday) androidx.compose.ui.res.colorResource(id = R.color.gantt_today_background).copy(alpha = 0.4f) else Color.Transparent)
-                            .border(width = 0.5.dp, color = androidx.compose.ui.res.colorResource(id = R.color.gantt_grid_line)),
+                            .background(if (isToday) extendedColors.ganttTodayBackground.copy(alpha = 0.4f) else Color.Transparent)
+                            .border(width = 0.5.dp, color = extendedColors.ganttGridLine),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -204,13 +207,13 @@ fun GanttFullscreenView(
                                 text = dateStr,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isToday) androidx.compose.ui.res.colorResource(id = R.color.gantt_work) else androidx.compose.ui.res.colorResource(id = R.color.gray_600)
+                                color = if (isToday) extendedColors.ganttWork else extendedColors.textSecondary
                             )
                             Text(
                                 text = dayLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
-                                color = if (isToday) androidx.compose.ui.res.colorResource(id = R.color.gantt_work) else androidx.compose.ui.res.colorResource(id = R.color.gray_400)
+                                color = if (isToday) extendedColors.ganttWork else extendedColors.textTertiary
                             )
                         }
                     }
@@ -248,8 +251,8 @@ fun GanttFullscreenView(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(12.dp),
-            containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.95f),
-            contentColor = androidx.compose.ui.res.colorResource(id = R.color.gantt_work),
+            containerColor = extendedColors.cardBackground.copy(alpha = 0.95f),
+            contentColor = extendedColors.ganttWork,
             elevation = FloatingActionButtonDefaults.elevation(
                 defaultElevation = 3.dp,
                 pressedElevation = 6.dp
@@ -272,7 +275,7 @@ fun GanttFullscreenView(
             Surface(
                 onClick = { expanded = true },
                 shape = RoundedCornerShape(12.dp),
-                color = androidx.compose.ui.res.colorResource(id = R.color.gantt_work).copy(alpha = 0.95f),
+                color = extendedColors.ganttWork.copy(alpha = 0.95f),
                 shadowElevation = 3.dp
             ) {
                 Row(
@@ -288,13 +291,13 @@ fun GanttFullscreenView(
                         },
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = androidx.compose.ui.graphics.Color.White
+                        color = MaterialTheme.colorScheme.onPrimary
                     )
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
-                        tint = androidx.compose.ui.graphics.Color.White
+                        tint = MaterialTheme.colorScheme.onPrimary
                     )
                 }
             }
@@ -302,7 +305,7 @@ fun GanttFullscreenView(
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                modifier = Modifier.background(Color.White, RoundedCornerShape(12.dp))
+                modifier = Modifier.background(extendedColors.cardBackground, RoundedCornerShape(12.dp))
             ) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.today_view), style = MaterialTheme.typography.bodyMedium) },

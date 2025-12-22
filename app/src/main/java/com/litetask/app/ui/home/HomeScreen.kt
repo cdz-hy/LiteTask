@@ -1,6 +1,10 @@
 package com.litetask.app.ui.home
 
+import android.Manifest
+import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,10 +16,13 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.*
 import androidx.compose.animation.core.*
@@ -39,6 +46,7 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
+import com.litetask.app.reminder.PermissionHelper
 import com.litetask.app.ui.components.AddTaskDialog
 import com.litetask.app.ui.components.DeadlineView
 import com.litetask.app.ui.components.GanttView
@@ -46,6 +54,8 @@ import com.litetask.app.ui.components.TaskDetailSheet
 import com.litetask.app.ui.components.TimelineView
 import com.litetask.app.ui.components.VoiceRecorderDialog
 import com.litetask.app.ui.components.TaskConfirmationSheet
+import com.litetask.app.ui.components.TextInputDialog
+import com.litetask.app.ui.components.GooeyExpandableFab
 import com.litetask.app.ui.theme.Primary
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -129,9 +139,14 @@ fun HomeScreen(
 
     var showAddTaskDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
+    var showTextInputDialog by remember { mutableStateOf(false) }
     var selectedTask by remember { mutableStateOf<Task?>(null) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var selectedTaskId by remember { mutableStateOf<Long?>(null) }
+    
+    // 统一权限弹窗状态
+    var showPermissionDialog by remember { mutableStateOf(false) }
+    var missingPermissions by remember { mutableStateOf<List<MissingPermission>>(emptyList()) }
 
     val selectedTaskComposite by produceState<com.litetask.app.data.model.TaskDetailComposite?>(
         initialValue = null,
@@ -147,8 +162,49 @@ fun HomeScreen(
     }
 
     val context = LocalContext.current
-    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    
+    // 通知权限请求（Android 13+ 需要运行时请求）
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        // 权限请求完成后，检查所有缺失的权限并显示统一弹窗
+        val includeAutoStart = shouldPromptAutoStart(context)
+        val missing = checkMissingPermissions(context, includeAutoStart)
+        if (missing.isNotEmpty()) {
+            missingPermissions = missing
+            showPermissionDialog = true
+            // 如果包含自启动权限，标记已提醒
+            if (includeAutoStart) {
+                markAutoStartPrompted(context)
+            }
+        }
+    }
+    
+    // 应用冷启动时检查权限（只执行一次）
+    LaunchedEffect(Unit) {
+        // 先请求通知权限（Android 13+）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (!PermissionHelper.hasNotificationPermission(context)) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                return@LaunchedEffect // 等待权限请求结果后再检查其他权限
+            }
+        }
+        
+        // 检查所有缺失的权限
+        val includeAutoStart = shouldPromptAutoStart(context)
+        val missing = checkMissingPermissions(context, includeAutoStart)
+        if (missing.isNotEmpty()) {
+            missingPermissions = missing
+            showPermissionDialog = true
+            // 如果包含自启动权限，标记已提醒
+            if (includeAutoStart) {
+                markAutoStartPrompted(context)
+            }
+        }
+    }
+    
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
             viewModel.startRecording()
@@ -272,30 +328,46 @@ fun HomeScreen(
                 }
             },
             floatingActionButton = {
-                EnhancedFabGroup(
-                    onAddClick = { showAddTaskDialog = true },
-                    onVoiceClick = {
-                        // 先检查 API Key 是否已配置
-                        when (viewModel.checkApiKey()) {
-                            is ApiKeyCheckResult.NotConfigured -> {
-                                Toast.makeText(context, context.getString(R.string.api_key_not_configured), Toast.LENGTH_LONG).show()
-                            }
-                            is ApiKeyCheckResult.Valid -> {
-                                // API Key 已配置，继续检查录音权限
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                                    val hasPermission = context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
-                                            android.content.pm.PackageManager.PERMISSION_GRANTED
-                                    if (hasPermission) {
-                                        viewModel.startRecording()
-                                    } else {
-                                        permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                                    }
-                                } else {
+                // 将点击逻辑提取出来，方便复用
+                val onVoiceClickAction = {
+                    when (viewModel.checkApiKey()) {
+                        is ApiKeyCheckResult.NotConfigured -> {
+                            Toast.makeText(context, context.getString(R.string.api_key_not_configured), Toast.LENGTH_LONG).show()
+                        }
+                        is ApiKeyCheckResult.Valid -> {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                val hasPermission = context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+                                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                                if (hasPermission) {
                                     viewModel.startRecording()
+                                } else {
+                                    permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                                 }
+                            } else {
+                                viewModel.startRecording()
                             }
                         }
                     }
+                }
+
+                val onTextInputClickAction = {
+                    when (viewModel.checkApiKey()) {
+                        is ApiKeyCheckResult.NotConfigured -> {
+                            Toast.makeText(context, context.getString(R.string.api_key_not_configured), Toast.LENGTH_LONG).show()
+                        }
+                        is ApiKeyCheckResult.Valid -> {
+                            showTextInputDialog = true
+                        }
+                    }
+                }
+
+                // 使用新的 Gooey 悬浮按钮
+                GooeyExpandableFab(
+                    onVoiceClick = { onVoiceClickAction() },
+                    onTextInputClick = { onTextInputClickAction() },
+                    onManualInputClick = { showAddTaskDialog = true },
+                    // 调整位置，确保展开时不被遮挡
+                    modifier = Modifier.padding(bottom = 16.dp, end = 16.dp)
                 )
             }
         ) { paddingValues ->
@@ -322,8 +394,8 @@ fun HomeScreen(
                             }
                         },
                         onEditClick = {
+                            // 只设置 taskToEdit，LaunchedEffect 会负责加载提醒并显示对话框
                             taskToEdit = it
-                            showEditDialog = true
                         },
                         onLoadMore = { viewModel.loadMoreHistory() },
                         onSearchClick = { onNavigateToSearch() }
@@ -338,8 +410,8 @@ fun HomeScreen(
                         onTaskClick = { task -> selectedTaskId = task.id },
                         onDeleteClick = { task -> viewModel.deleteTask(task) },
                         onEditClick = { task ->
+                            // 只设置 taskToEdit，LaunchedEffect 会负责加载提醒并显示对话框
                             taskToEdit = task
-                            showEditDialog = true
                         },
                         onPinClick = { task ->
                             if (task.isDone) {
@@ -370,29 +442,94 @@ fun HomeScreen(
                     onConfirm = { task ->
                         viewModel.addTask(task)
                         showAddTaskDialog = false
+                    },
+                    onConfirmWithReminders = { task, reminderConfigs ->
+                        viewModel.addTaskWithReminders(task, reminderConfigs)
+                        showAddTaskDialog = false
                     }
                 )
             }
+            
+            // 文字输入对话框
+            if (showTextInputDialog) {
+                TextInputDialog(
+                    onDismiss = { 
+                        if (!uiState.isAnalyzing) {
+                            showTextInputDialog = false 
+                        }
+                    },
+                    onAnalyze = { text ->
+                        viewModel.analyzeTextInput(text)
+                        // 不立即关闭，等分析完成后通过 LaunchedEffect 关闭
+                    },
+                    isAnalyzing = uiState.isAnalyzing
+                )
+            }
+            
+            // 分析完成后关闭文字输入对话框
+            LaunchedEffect(uiState.showAiResult, uiState.showAiError) {
+                if ((uiState.showAiResult || uiState.showAiError) && showTextInputDialog) {
+                    showTextInputDialog = false
+                }
+            }
+            
+            // 编辑任务时需要加载已有提醒
+            var editTaskReminders by remember { mutableStateOf<List<com.litetask.app.data.model.Reminder>>(emptyList()) }
+            var isLoadingReminders by remember { mutableStateOf(false) }
+            
+            // 当 taskToEdit 变化时，先加载提醒，加载完成后再显示对话框
+            LaunchedEffect(taskToEdit) {
+                if (taskToEdit != null && !showEditDialog) {
+                    isLoadingReminders = true
+                    editTaskReminders = viewModel.getRemindersForTaskSync(taskToEdit!!.id)
+                    isLoadingReminders = false
+                    showEditDialog = true
+                }
+            }
 
-            if (showEditDialog) {
+            if (showEditDialog && !isLoadingReminders) {
                 AddTaskDialog(
                     initialTask = taskToEdit,
+                    initialReminders = editTaskReminders,
                     onDismiss = {
                         showEditDialog = false
                         taskToEdit = null
+                        editTaskReminders = emptyList()
                     },
                     onConfirm = { task ->
                         viewModel.updateTask(task)
                         showEditDialog = false
                         taskToEdit = null
+                        editTaskReminders = emptyList()
+                    },
+                    onConfirmWithReminders = { task, reminderConfigs ->
+                        viewModel.updateTaskWithReminders(task, reminderConfigs)
+                        showEditDialog = false
+                        taskToEdit = null
+                        editTaskReminders = emptyList()
                     }
                 )
             }
 
+            // 获取选中任务的提醒
+            val selectedTaskReminders by produceState<List<com.litetask.app.data.model.Reminder>>(
+                initialValue = emptyList(),
+                key1 = selectedTaskId
+            ) {
+                selectedTaskId?.let { taskId ->
+                    viewModel.getRemindersForTask(taskId).collect { reminders ->
+                        value = reminders
+                    }
+                } ?: run {
+                    value = emptyList()
+                }
+            }
+            
             selectedTaskComposite?.let { composite ->
                 TaskDetailSheet(
                     task = composite.task,
                     subTasks = composite.subTasks,
+                    reminders = selectedTaskReminders,
                     onDismiss = { selectedTaskId = null },
                     onDelete = {
                         viewModel.deleteTask(it)
@@ -419,6 +556,7 @@ fun HomeScreen(
                     uiState.showVoiceResult // 新增状态：录音结束后显示结果（无论有无文字）
 
             if (showVoiceDialog) {
+                val speechSourceInfo = remember { viewModel.getSpeechSourceInfo() }
                 VoiceRecorderDialog(
                     onDismiss = { viewModel.cancelRecording() },
                     onStopRecording = { viewModel.finishRecording() }, // 停止录音，进入确认状态
@@ -426,7 +564,8 @@ fun HomeScreen(
                     recognizedText = uiState.recognizedText,
                     recordingDuration = recordingDuration,
                     isPlaying = uiState.recordingState == com.litetask.app.util.RecordingState.PLAYING,
-                    isRecording = uiState.recordingState == com.litetask.app.util.RecordingState.RECORDING
+                    isRecording = uiState.recordingState == com.litetask.app.util.RecordingState.RECORDING,
+                    speechSourceName = speechSourceInfo.displayName
                 )
             }
 
@@ -434,7 +573,7 @@ fun HomeScreen(
                 TaskConfirmationSheet(
                     tasks = uiState.aiParsedTasks,
                     onDismiss = { viewModel.dismissAiResult() },
-                    onConfirm = { viewModel.confirmAddTasks() },
+                    onConfirm = { tasks, reminders -> viewModel.confirmAddTasksWithReminders(tasks, reminders) },
                     onEditTask = { index, task -> viewModel.updateAiParsedTask(index, task) },
                     onDeleteTask = { index -> viewModel.deleteAiParsedTask(index) }
                 )
@@ -448,6 +587,29 @@ fun HomeScreen(
                     onGoToSettings = {
                         viewModel.dismissAiError()
                         onNavigateToSettings()
+                    }
+                )
+            }
+            
+            // 语音识别错误提示对话框
+            if (uiState.showSpeechError) {
+                SpeechErrorDialog(
+                    errorMessage = uiState.speechErrorMessage,
+                    onDismiss = { viewModel.dismissSpeechError() },
+                    onGoToSettings = {
+                        viewModel.dismissSpeechError()
+                        onNavigateToSettings()
+                    }
+                )
+            }
+            
+            // 精确闹钟权限引导对话框
+            if (showPermissionDialog && missingPermissions.isNotEmpty()) {
+                PermissionCheckDialog(
+                    missingPermissions = missingPermissions,
+                    onDismiss = { showPermissionDialog = false },
+                    onGoToSettings = { permission ->
+                        context.startActivity(permission.settingsIntent)
                     }
                 )
             }
@@ -487,6 +649,59 @@ private fun AiErrorDialog(
         },
         confirmButton = {
             if (errorMessage.contains("API Key") || errorMessage.contains("设置")) {
+                TextButton(onClick = onGoToSettings) {
+                    Text(stringResource(R.string.go_to_settings))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.close))
+            }
+        }
+    )
+}
+
+@Composable
+private fun SpeechErrorDialog(
+    errorMessage: String,
+    onDismiss: () -> Unit,
+    onGoToSettings: () -> Unit
+) {
+    // 判断是否需要显示"去设置"按钮
+    val needSettings = errorMessage.contains("设置") || 
+                       errorMessage.contains("API Key") || 
+                       errorMessage.contains("App ID") ||
+                       errorMessage.contains("未配置") ||
+                       errorMessage.contains("权限") ||
+                       errorMessage.contains("充值")
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.MicOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(48.dp)
+            )
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.speech_error_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                text = errorMessage,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        confirmButton = {
+            if (needSettings) {
                 TextButton(onClick = onGoToSettings) {
                     Text(stringResource(R.string.go_to_settings))
                 }
@@ -549,6 +764,7 @@ fun ViewOption(
 @Composable
 private fun EnhancedFabGroup(
     onAddClick: () -> Unit,
+    onTextInputClick: () -> Unit,
     onVoiceClick: () -> Unit
 ) {
     // 语音按钮呼吸动画
@@ -576,13 +792,33 @@ private fun EnhancedFabGroup(
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 手动添加按钮 - 中等大小
+        // 手动添加按钮 - 小尺寸
         FloatingActionButton(
             onClick = onAddClick,
             containerColor = MaterialTheme.colorScheme.secondaryContainer,
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            shape = RoundedCornerShape(14.dp),
+            elevation = FloatingActionButtonDefaults.elevation(
+                defaultElevation = 3.dp,
+                pressedElevation = 6.dp,
+                hoveredElevation = 4.dp
+            ),
+            modifier = Modifier.size(48.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Add,
+                contentDescription = stringResource(R.string.add_task),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        
+        // 文字输入按钮 - 中等尺寸
+        FloatingActionButton(
+            onClick = onTextInputClick,
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
             shape = RoundedCornerShape(16.dp),
             elevation = FloatingActionButtonDefaults.elevation(
                 defaultElevation = 3.dp,
@@ -592,8 +828,8 @@ private fun EnhancedFabGroup(
             modifier = Modifier.size(52.dp)
         ) {
             Icon(
-                imageVector = Icons.Rounded.Add,
-                contentDescription = stringResource(R.string.add_task),
+                imageVector = Icons.Rounded.Edit,
+                contentDescription = stringResource(R.string.text_add_task),
                 modifier = Modifier.size(26.dp)
             )
         }
@@ -637,4 +873,168 @@ private fun EnhancedFabGroup(
             }
         }
     }
+}
+
+/**
+ * 缺失权限数据类
+ */
+data class MissingPermission(
+    val name: String,
+    val description: String,
+    val settingsIntent: android.content.Intent
+)
+
+private const val PREFS_NAME = "litetask_permission_prefs"
+private const val KEY_AUTO_START_PROMPTED = "auto_start_prompted"
+
+/**
+ * 检查缺失的权限
+ * 
+ * @param includeAutoStart 是否包含自启动权限检查（只在首次提醒时包含）
+ */
+private fun checkMissingPermissions(
+    context: android.content.Context,
+    includeAutoStart: Boolean = false
+): List<MissingPermission> {
+    val missing = mutableListOf<MissingPermission>()
+
+    // 通知权限
+    if (!PermissionHelper.hasNotificationPermission(context)) {
+        missing.add(
+            MissingPermission(
+                name = "通知权限",
+                description = "显示提醒通知",
+                settingsIntent = PermissionHelper.getNotificationSettingsIntent(context)
+            )
+        )
+    }
+
+    // 精确闹钟权限 (Android 12+)
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+        if (!PermissionHelper.canScheduleExactAlarms(context)) {
+            missing.add(
+                MissingPermission(
+                    name = "精确闹钟权限",
+                    description = "设置精确的提醒时间",
+                    settingsIntent = PermissionHelper.getExactAlarmSettingsIntent(context)
+                )
+            )
+        }
+    }
+
+    // 悬浮窗权限
+    if (!PermissionHelper.hasOverlayPermission(context)) {
+        missing.add(
+            MissingPermission(
+                name = "悬浮窗权限",
+                description = "显示悬浮提醒弹窗",
+                settingsIntent = PermissionHelper.getOverlaySettingsIntent(context)
+            )
+        )
+    }
+
+    // 自启动权限（只在首次且有可用设置页面时提醒）
+    if (includeAutoStart && PermissionHelper.hasAutoStartSettings(context)) {
+        missing.add(
+            MissingPermission(
+                name = "自启动权限",
+                description = "后台被清理后仍能收到提醒",
+                settingsIntent = PermissionHelper.getAutoStartSettingsIntent(context)
+            )
+        )
+    }
+
+    return missing
+}
+
+/**
+ * 检查是否需要提醒自启动权限（只提醒一次）
+ */
+private fun shouldPromptAutoStart(context: android.content.Context): Boolean {
+    val prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+    return !prefs.getBoolean(KEY_AUTO_START_PROMPTED, false)
+}
+
+/**
+ * 标记自启动权限已提醒过
+ */
+private fun markAutoStartPrompted(context: android.content.Context) {
+    val prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+    prefs.edit().putBoolean(KEY_AUTO_START_PROMPTED, true).apply()
+}
+
+/**
+ * 统一权限检查弹窗
+ */
+@Composable
+private fun PermissionCheckDialog(
+    missingPermissions: List<MissingPermission>,
+    onDismiss: () -> Unit,
+    onGoToSettings: (MissingPermission) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Notifications,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(48.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "需要开启权限",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "为确保提醒功能正常工作，请开启以下权限：",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                missingPermissions.forEach { permission ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable { onGoToSettings(permission) }
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = permission.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = permission.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = "去开启",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.close))
+            }
+        }
+    )
 }

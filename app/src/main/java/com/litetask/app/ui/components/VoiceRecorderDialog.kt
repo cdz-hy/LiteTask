@@ -42,10 +42,13 @@ fun VoiceRecorderDialog(
     recognizedText: String = "",
     recordingDuration: Long = 0L,
     isPlaying: Boolean = false, // 复用作为 "AI 分析中" 的状态
-    isRecording: Boolean = true // 是否正在录音
+    isRecording: Boolean = true, // 是否正在录音
+    speechSourceName: String = "Android STT" // 语音识别源名称
 ) {
     // 可编辑的文本状态
-    var editableText by remember(recognizedText) { mutableStateOf(recognizedText) }
+    // 注意：recognizedText 来自 Provider，已经是完整的累积文本，不需要在这里拼接
+    // 只在用户开始编辑后才停止同步，避免覆盖用户的修改
+    var editableText by remember { mutableStateOf(recognizedText) }
     var isEditing by remember { mutableStateOf(false) }
     
     // 颜色资源
@@ -58,7 +61,8 @@ fun VoiceRecorderDialog(
     val errorColor = colorResource(R.color.voice_recorder_error)
     val buttonBg = colorResource(R.color.voice_recorder_button_bg)
     
-    // 当 recognizedText 更新时同步
+    // 当 recognizedText 更新时同步到 editableText
+    // Provider 返回的是完整文本，直接替换即可，不要拼接
     LaunchedEffect(recognizedText) {
         if (!isEditing) {
             editableText = recognizedText
@@ -148,13 +152,24 @@ fun VoiceRecorderDialog(
                     enter = fadeIn() + expandVertically(),
                     exit = fadeOut() + shrinkVertically()
                 ) {
-                    Text(
-                        text = formatDuration(recordingDuration),
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontFeatureSettings = "tnum"
-                        ),
-                        color = textSecondary.copy(alpha = 0.8f)
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = formatDuration(recordingDuration),
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontFeatureSettings = "tnum"
+                            ),
+                            color = textSecondary.copy(alpha = 0.8f)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // 语音识别源显示
+                        Text(
+                            text = stringResource(R.string.voice_source_hint, speechSourceName),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = textSecondary.copy(alpha = 0.5f)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(dimensionResource(R.dimen.voice_recorder_section_spacing)))
@@ -520,7 +535,8 @@ fun PreviewRecorderListening() {
     VoiceRecorderDialog(
         onDismiss = {},
         recordingDuration = 12000L,
-        isRecording = true
+        isRecording = true,
+        speechSourceName = "Android STT"
     )
 }
 
@@ -530,6 +546,7 @@ fun PreviewRecorderResult() {
     VoiceRecorderDialog(
         onDismiss = {},
         recognizedText = "明天下午三点开会讨论项目进度",
-        isRecording = false
+        isRecording = false,
+        speechSourceName = "讯飞语音转写"
     )
 }
