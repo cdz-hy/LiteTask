@@ -66,29 +66,16 @@ class MainActivity : ComponentActivity() {
     
     /**
      * 请求提醒功能所需的权限
+     * 
+     * 注意：主要的权限检查和弹窗引导已移至 HomeScreen
+     * 这里只做基础的通知权限请求（Android 13+）
      */
     private fun requestRequiredPermissions() {
-        // 1. 请求通知权限 (Android 13+)
+        // 请求通知权限 (Android 13+)
+        // 其他权限的检查和引导在 HomeScreen 中统一处理
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (!PermissionHelper.hasNotificationPermission(this)) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-        
-        // 2. 检查精确闹钟权限 (Android 12+)
-        // 注意：SCHEDULE_EXACT_ALARM 不能通过 requestPermissions 请求，需要引导用户去设置
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!PermissionHelper.canScheduleExactAlarms(this)) {
-                // 可以在这里显示一个对话框引导用户去设置
-                android.util.Log.w("MainActivity", "Exact alarm permission not granted, reminders may not work")
-            }
-        }
-        
-        // 3. 检查悬浮窗权限 (Android 6+)
-        // 3. 悬浮窗权限 - 不自动跳转，改为在设置页面引导用户开启
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!FloatingReminderService.canDrawOverlays(this)) {
-                android.util.Log.w("MainActivity", "Overlay permission not granted, user can enable in Settings")
             }
         }
     }

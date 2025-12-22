@@ -380,6 +380,7 @@ private fun ReminderSettingsCard(
     var hasNotificationPermission by remember { mutableStateOf(true) }
     var hasExactAlarmPermission by remember { mutableStateOf(true) }
     var hasOverlayPermission by remember { mutableStateOf(true) }
+    var hasAutoStartSettings by remember { mutableStateOf(false) }
     
     // 铃声和震动开关状态
     var soundEnabled by remember { mutableStateOf(viewModel.isReminderSoundEnabled()) }
@@ -407,6 +408,7 @@ private fun ReminderSettingsCard(
         hasNotificationPermission = PermissionHelper.hasNotificationPermission(context)
         hasExactAlarmPermission = PermissionHelper.canScheduleExactAlarms(context)
         hasOverlayPermission = FloatingReminderService.canDrawOverlays(context)
+        hasAutoStartSettings = PermissionHelper.hasAutoStartSettings(context)
     }
     
     SettingsCard(
@@ -477,6 +479,18 @@ private fun ReminderSettingsCard(
                     }
                 }
             )
+            
+            // 自启动权限（仅在有可用设置页面时显示）
+            if (hasAutoStartSettings) {
+                PermissionItem(
+                    title = "自启动权限",
+                    description = "允许应用在后台被清理后自动重启",
+                    isGranted = false, // 无法检测，始终显示"去开启"
+                    onClick = {
+                        context.startActivity(PermissionHelper.getAutoStartSettingsIntent(context))
+                    }
+                )
+            }
         }
         
         Spacer(modifier = Modifier.height(16.dp))

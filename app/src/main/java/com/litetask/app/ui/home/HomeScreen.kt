@@ -144,9 +144,9 @@ fun HomeScreen(
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var selectedTaskId by remember { mutableStateOf<Long?>(null) }
     
-    // 权限相关状态
-    var showAlarmPermissionDialog by remember { mutableStateOf(false) }
-    var showNotificationPermissionDialog by remember { mutableStateOf(false) }
+    // 统一权限弹窗状态
+    var showPermissionDialog by remember { mutableStateOf(false) }
+    var missingPermissions by remember { mutableStateOf<List<MissingPermission>>(emptyList()) }
 
     val selectedTaskComposite by produceState<com.litetask.app.data.model.TaskDetailComposite?>(
         initialValue = null,
@@ -163,27 +163,42 @@ fun HomeScreen(
 
     val context = LocalContext.current
     
-    // 通知权限请求
+    // 通知权限请求（Android 13+ 需要运行时请求）
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (!isGranted) {
-            // 用户拒绝了权限，显示引导对话框
-            showNotificationPermissionDialog = true
+        // 权限请求完成后，检查所有缺失的权限并显示统一弹窗
+        val includeAutoStart = shouldPromptAutoStart(context)
+        val missing = checkMissingPermissions(context, includeAutoStart)
+        if (missing.isNotEmpty()) {
+            missingPermissions = missing
+            showPermissionDialog = true
+            // 如果包含自启动权限，标记已提醒
+            if (includeAutoStart) {
+                markAutoStartPrompted(context)
+            }
         }
     }
     
-    // 检查并请求通知权限
+    // 应用冷启动时检查权限（只执行一次）
     LaunchedEffect(Unit) {
+        // 先请求通知权限（Android 13+）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (!PermissionHelper.hasNotificationPermission(context)) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                return@LaunchedEffect // 等待权限请求结果后再检查其他权限
             }
         }
-        // 检查精确闹钟权限
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!PermissionHelper.canScheduleExactAlarms(context)) {
-                showAlarmPermissionDialog = true
+        
+        // 检查所有缺失的权限
+        val includeAutoStart = shouldPromptAutoStart(context)
+        val missing = checkMissingPermissions(context, includeAutoStart)
+        if (missing.isNotEmpty()) {
+            missingPermissions = missing
+            showPermissionDialog = true
+            // 如果包含自启动权限，标记已提醒
+            if (includeAutoStart) {
+                markAutoStartPrompted(context)
             }
         }
     }
@@ -589,23 +604,12 @@ fun HomeScreen(
             }
             
             // 精确闹钟权限引导对话框
-            if (showAlarmPermissionDialog) {
-                AlarmPermissionDialog(
-                    onDismiss = { showAlarmPermissionDialog = false },
-                    onGoToSettings = {
-                        showAlarmPermissionDialog = false
-                        context.startActivity(PermissionHelper.getExactAlarmSettingsIntent(context))
-                    }
-                )
-            }
-            
-            // 通知权限引导对话框
-            if (showNotificationPermissionDialog) {
-                NotificationPermissionDialog(
-                    onDismiss = { showNotificationPermissionDialog = false },
-                    onGoToSettings = {
-                        showNotificationPermissionDialog = false
-                        context.startActivity(PermissionHelper.getNotificationSettingsIntent(context))
+            if (showPermissionDialog && missingPermissions.isNotEmpty()) {
+                PermissionCheckDialog(
+                    missingPermissions = missingPermissions,
+                    onDismiss = { showPermissionDialog = false },
+                    onGoToSettings = { permission ->
+                        context.startActivity(permission.settingsIntent)
                     }
                 )
             }
@@ -872,57 +876,101 @@ private fun EnhancedFabGroup(
 }
 
 /**
- * 精确闹钟权限引导对话框
+ * 缺失权限数据类
  */
-@Composable
-private fun AlarmPermissionDialog(
-    onDismiss: () -> Unit,
-    onGoToSettings: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Icon(
-                imageVector = Icons.Default.Notifications,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(48.dp)
+data class MissingPermission(
+    val name: String,
+    val description: String,
+    val settingsIntent: android.content.Intent
+)
+
+private const val PREFS_NAME = "litetask_permission_prefs"
+private const val KEY_AUTO_START_PROMPTED = "auto_start_prompted"
+
+/**
+ * 检查缺失的权限
+ * 
+ * @param includeAutoStart 是否包含自启动权限检查（只在首次提醒时包含）
+ */
+private fun checkMissingPermissions(
+    context: android.content.Context,
+    includeAutoStart: Boolean = false
+): List<MissingPermission> {
+    val missing = mutableListOf<MissingPermission>()
+
+    // 通知权限
+    if (!PermissionHelper.hasNotificationPermission(context)) {
+        missing.add(
+            MissingPermission(
+                name = "通知权限",
+                description = "显示提醒通知",
+                settingsIntent = PermissionHelper.getNotificationSettingsIntent(context)
             )
-        },
-        title = {
-            Text(
-                text = stringResource(R.string.permission_alarm_title),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
+        )
+    }
+
+    // 精确闹钟权限 (Android 12+)
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+        if (!PermissionHelper.canScheduleExactAlarms(context)) {
+            missing.add(
+                MissingPermission(
+                    name = "精确闹钟权限",
+                    description = "设置精确的提醒时间",
+                    settingsIntent = PermissionHelper.getExactAlarmSettingsIntent(context)
+                )
             )
-        },
-        text = {
-            Text(
-                text = stringResource(R.string.permission_alarm_message),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onGoToSettings) {
-                Text(stringResource(R.string.go_to_permission_settings))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.close))
-            }
         }
-    )
+    }
+
+    // 悬浮窗权限
+    if (!PermissionHelper.hasOverlayPermission(context)) {
+        missing.add(
+            MissingPermission(
+                name = "悬浮窗权限",
+                description = "显示悬浮提醒弹窗",
+                settingsIntent = PermissionHelper.getOverlaySettingsIntent(context)
+            )
+        )
+    }
+
+    // 自启动权限（只在首次且有可用设置页面时提醒）
+    if (includeAutoStart && PermissionHelper.hasAutoStartSettings(context)) {
+        missing.add(
+            MissingPermission(
+                name = "自启动权限",
+                description = "后台被清理后仍能收到提醒",
+                settingsIntent = PermissionHelper.getAutoStartSettingsIntent(context)
+            )
+        )
+    }
+
+    return missing
 }
 
 /**
- * 通知权限引导对话框
+ * 检查是否需要提醒自启动权限（只提醒一次）
+ */
+private fun shouldPromptAutoStart(context: android.content.Context): Boolean {
+    val prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+    return !prefs.getBoolean(KEY_AUTO_START_PROMPTED, false)
+}
+
+/**
+ * 标记自启动权限已提醒过
+ */
+private fun markAutoStartPrompted(context: android.content.Context) {
+    val prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+    prefs.edit().putBoolean(KEY_AUTO_START_PROMPTED, true).apply()
+}
+
+/**
+ * 统一权限检查弹窗
  */
 @Composable
-private fun NotificationPermissionDialog(
+private fun PermissionCheckDialog(
+    missingPermissions: List<MissingPermission>,
     onDismiss: () -> Unit,
-    onGoToSettings: () -> Unit
+    onGoToSettings: (MissingPermission) -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -936,24 +984,54 @@ private fun NotificationPermissionDialog(
         },
         title = {
             Text(
-                text = stringResource(R.string.permission_notification_title),
+                text = "需要开启权限",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
         },
         text = {
-            Text(
-                text = stringResource(R.string.permission_notification_message),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onGoToSettings) {
-                Text(stringResource(R.string.go_to_permission_settings))
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "为确保提醒功能正常工作，请开启以下权限：",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                missingPermissions.forEach { permission ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable { onGoToSettings(permission) }
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = permission.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = permission.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = "去开启",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
         },
-        dismissButton = {
+        confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.close))
             }

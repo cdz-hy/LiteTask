@@ -2,6 +2,7 @@ package com.litetask.app.reminder
 
 import android.Manifest
 import android.app.AlarmManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -16,6 +17,29 @@ import androidx.core.content.ContextCompat
  * 用于检查和引导用户开启提醒相关权限
  */
 object PermissionHelper {
+    
+    // 各厂商自启动设置页面的 ComponentName
+    private val AUTO_START_INTENTS = listOf(
+        // 小米
+        Intent().setComponent(ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")),
+        // 华为
+        Intent().setComponent(ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity")),
+        Intent().setComponent(ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity")),
+        // OPPO
+        Intent().setComponent(ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity")),
+        Intent().setComponent(ComponentName("com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity")),
+        // VIVO
+        Intent().setComponent(ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")),
+        Intent().setComponent(ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity")),
+        // 三星
+        Intent().setComponent(ComponentName("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity")),
+        // 一加
+        Intent().setComponent(ComponentName("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity")),
+        // 魅族
+        Intent().setComponent(ComponentName("com.meizu.safe", "com.meizu.safe.permission.SmartBGActivity")),
+        // 联想
+        Intent().setComponent(ComponentName("com.lenovo.security", "com.lenovo.security.purebackground.PureBackgroundActivity")),
+    )
 
     /**
      * 检查是否有精确闹钟权限
@@ -110,6 +134,43 @@ object PermissionHelper {
                 data = Uri.parse("package:${context.packageName}")
             }
         }
+    }
+    
+    /**
+     * 获取自启动设置页面的 Intent
+     * 
+     * 由于各厂商实现不同，会尝试多个可能的 Intent
+     * 如果都不可用，则返回应用详情页面
+     */
+    fun getAutoStartSettingsIntent(context: Context): Intent {
+        // 尝试各厂商的自启动设置页面
+        for (intent in AUTO_START_INTENTS) {
+            if (isIntentAvailable(context, intent)) {
+                return intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+        // 都不可用时，返回应用详情页面
+        return Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:${context.packageName}")
+        }
+    }
+    
+    /**
+     * 检查 Intent 是否可用
+     */
+    private fun isIntentAvailable(context: Context, intent: Intent): Boolean {
+        return try {
+            context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) != null
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    /**
+     * 检查是否有可用的自启动设置页面
+     */
+    fun hasAutoStartSettings(context: Context): Boolean {
+        return AUTO_START_INTENTS.any { isIntentAvailable(context, it) }
     }
 
     /**

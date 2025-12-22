@@ -20,8 +20,9 @@ import kotlinx.coroutines.launch
  * 负责接收 AlarmManager 发出的提醒信号并显示通知
  * 
  * 通知策略：
- * 1. 悬浮窗（有权限 + 屏幕亮起 + 未锁屏）
- * 2. 系统通知（兜底）
+ * 1. 屏幕亮着且未锁屏 + 有悬浮窗权限 → 使用悬浮窗（铃声+震动）
+ * 2. 屏幕息屏或锁屏 → 直接使用系统通知（系统铃声+震动）
+ * 3. 无悬浮窗权限 → 使用系统通知
  */
 class ReminderReceiver : BroadcastReceiver() {
 
@@ -79,7 +80,12 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 
     /**
-     * 显示提醒（自动选择悬浮窗或系统通知）
+     * 显示提醒
+     * 
+     * 策略：
+     * 1. 屏幕亮着且未锁屏 + 有悬浮窗权限 → 使用悬浮窗
+     * 2. 屏幕息屏或锁屏 → 直接使用系统通知（更可靠）
+     * 3. 无悬浮窗权限 → 使用系统通知
      */
     private fun showReminder(
         context: Context,
@@ -89,38 +95,53 @@ class ReminderReceiver : BroadcastReceiver() {
         taskType: TaskType,
         isDeadline: Boolean
     ) {
-        // 尝试悬浮窗
-        if (canShowFloatingWindow(context)) {
+        val screenState = getScreenState(context)
+        Log.i(TAG, "★ Screen state: isOn=${screenState.isScreenOn}, isLocked=${screenState.isLocked}")
+        
+        // 只有屏幕亮着且未锁屏时才尝试悬浮窗
+        val shouldUseFloating = screenState.isScreenOn && !screenState.isLocked && hasOverlayPermission(context)
+        
+        if (shouldUseFloating) {
             try {
                 FloatingReminderService.show(context, taskId, taskTitle, reminderText, taskType, isDeadline)
-                Log.i(TAG, "★ Floating window shown")
+                Log.i(TAG, "★ Floating window shown (screen on, unlocked)")
                 return
             } catch (e: Exception) {
                 Log.e(TAG, "Floating window failed: ${e.message}")
             }
         }
-
-        // 降级到系统通知
-        Log.i(TAG, "★ Using system notification")
+        
+        // 息屏/锁屏/无权限/失败 → 使用系统通知
+        val reason = when {
+            !screenState.isScreenOn -> "screen off"
+            screenState.isLocked -> "screen locked"
+            !hasOverlayPermission(context) -> "no overlay permission"
+            else -> "floating failed"
+        }
+        Log.i(TAG, "★ Using system notification ($reason)")
         NotificationHelper.showReminderNotification(context, taskId, taskTitle, reminderText, taskType)
     }
 
+    private data class ScreenState(val isScreenOn: Boolean, val isLocked: Boolean)
+
     /**
-     * 检查是否可以显示悬浮窗
+     * 获取屏幕状态
      */
-    private fun canShowFloatingWindow(context: Context): Boolean {
-        // 权限
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
-            return false
-        }
-        // 屏幕亮起
-        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        if (!pm.isInteractive) return false
-        // 未锁屏
-        val km = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-        if (km.isKeyguardLocked) return false
+    private fun getScreenState(context: Context): ScreenState {
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         
-        return true
+        val isScreenOn = powerManager.isInteractive
+        val isLocked = keyguardManager.isKeyguardLocked
+        
+        return ScreenState(isScreenOn, isLocked)
+    }
+
+    /**
+     * 检查悬浮窗权限
+     */
+    private fun hasOverlayPermission(context: Context): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
     }
 
     private fun updateReminderStatusAsync(context: Context, reminderId: Long) {
