@@ -112,6 +112,10 @@ interface TaskDao {
     @Query("UPDATE tasks SET is_done = 1 WHERE deadline < :currentTime AND is_done = 0")
     suspend fun autoMarkOverdueTasksAsDone(currentTime: Long): Int
     
+    /** 标记所有过期提醒为已触发 */
+    @Query("UPDATE reminders SET is_fired = 1 WHERE trigger_at < :currentTime AND is_fired = 0")
+    suspend fun autoMarkOverdueRemindersAsFired(currentTime: Long): Int
+    
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTasks(tasks: List<Task>)
     

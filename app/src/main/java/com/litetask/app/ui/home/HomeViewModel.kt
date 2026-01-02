@@ -9,8 +9,10 @@ import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.repository.TaskRepositoryImpl
 import com.litetask.app.data.repository.AIRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import javax.inject.Inject
 import com.litetask.app.R
@@ -49,17 +51,19 @@ class HomeViewModel @Inject constructor(
      * 初始化数据加载
      * 
      * 执行顺序：
-     * 1. 懒更新：标记过期任务为已完成
+     * 1. 懒更新：标记过期任务为已完成 + 标记过期提醒为已触发（IO线程）
      * 2. 加载首批历史任务（20条）
      * 
      * 注：未完成任务通过 Flow 自动订阅，无需手动加载
      */
     private fun initializeData() {
-        viewModelScope.launch {
-            // Step 1: 懒更新 - 标记过期任务
+        viewModelScope.launch(Dispatchers.IO) {
+            // Step 1: 懒更新 - 标记过期任务和提醒
             markOverdueTasksAsDone()
-            // Step 2: 加载首批历史任务
-            loadMoreHistory()
+            // Step 2: 加载首批历史任务（切回主线程更新 StateFlow）
+            withContext(Dispatchers.Main) {
+                loadMoreHistory()
+            }
         }
     }
 
@@ -137,11 +141,13 @@ class HomeViewModel @Inject constructor(
     // ==================== 数据加载方法 ====================
     
     /**
-     * 懒更新：标记过期任务为已完成
+     * 懒更新：标记过期任务为已完成 + 标记过期提醒为已触发
      */
     private suspend fun markOverdueTasksAsDone() {
         try {
-            taskRepository.autoMarkOverdueTasksAsDone(System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            taskRepository.autoMarkOverdueTasksAsDone(now)
+            taskRepository.autoMarkOverdueRemindersAsFired(now)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -160,7 +166,9 @@ class HomeViewModel @Inject constructor(
             _isLoadingHistory.value = true
             try {
                 val offset = _historyPage * PAGE_SIZE
-                val newItems = taskRepository.getHistoryTasks(PAGE_SIZE, offset)
+                val newItems = withContext(Dispatchers.IO) {
+                    taskRepository.getHistoryTasks(PAGE_SIZE, offset)
+                }
                 
                 if (newItems.isEmpty()) {
                     _isHistoryExhausted = true
@@ -180,7 +188,7 @@ class HomeViewModel @Inject constructor(
      * 下拉刷新
      * 
      * 执行流程：
-     * 1. 懒更新过期任务
+     * 1. 懒更新过期任务和提醒
      * 2. 重置分页状态
      * 3. 重新加载首批历史任务
      */
@@ -190,10 +198,14 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                // 懒更新
-                markOverdueTasksAsDone()
+                // 懒更新（IO线程）
+                withContext(Dispatchers.IO) {
+                    markOverdueTasksAsDone()
+                }
                 // 重新加载历史任务
-                val newHistory = taskRepository.getHistoryTasks(PAGE_SIZE, 0)
+                val newHistory = withContext(Dispatchers.IO) {
+                    taskRepository.getHistoryTasks(PAGE_SIZE, 0)
+                }
                 resetHistoryPagination(newHistory)
                 // 动画延迟
                 kotlinx.coroutines.delay(300)

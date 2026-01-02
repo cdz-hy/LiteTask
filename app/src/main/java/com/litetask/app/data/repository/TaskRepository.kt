@@ -48,6 +48,7 @@ class TaskRepositoryImpl @Inject constructor(
     
     suspend fun insertTasks(tasks: List<Task>) = taskDao.insertTasks(tasks)
     suspend fun autoMarkOverdueTasksAsDone(time: Long) = taskDao.autoMarkOverdueTasksAsDone(time)
+    suspend fun autoMarkOverdueRemindersAsFired(time: Long) = taskDao.autoMarkOverdueRemindersAsFired(time)
     
     // 搜索
     fun searchTasks(
