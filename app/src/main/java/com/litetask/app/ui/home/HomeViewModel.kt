@@ -15,6 +15,14 @@ import java.util.Calendar
 import javax.inject.Inject
 import com.litetask.app.R
 
+/**
+ * 首页 ViewModel
+ * 
+ * 数据加载策略：
+ * 1. 未完成任务：通过 Room Flow 实时订阅，自动更新
+ * 2. 已完成任务：分页加载，每页20条，滑动到底部时加载更多
+ * 3. 懒更新：冷启动时自动将过期任务标记为已完成
+ */
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val application: Application,
@@ -24,115 +32,197 @@ class HomeViewModel @Inject constructor(
     private val preferenceManager: com.litetask.app.data.local.PreferenceManager
 ) : ViewModel() {
 
-    // 懒更新策略：在 ViewModel 初始化时自动标记过期任务
-    init {
-        refreshTasks()
+    // ==================== 数据加载配置 ====================
+    
+    companion object {
+        /** 历史任务每页加载数量 */
+        private const val PAGE_SIZE = 20
     }
 
-    // 日期选择状态
-    private val _selectedDate = MutableStateFlow(Calendar.getInstance().apply {
+    // ==================== 初始化 ====================
+    
+    init {
+        initializeData()
+    }
+    
+    /**
+     * 初始化数据加载
+     * 
+     * 执行顺序：
+     * 1. 懒更新：标记过期任务为已完成
+     * 2. 加载首批历史任务（20条）
+     * 
+     * 注：未完成任务通过 Flow 自动订阅，无需手动加载
+     */
+    private fun initializeData() {
+        viewModelScope.launch {
+            // Step 1: 懒更新 - 标记过期任务
+            markOverdueTasksAsDone()
+            // Step 2: 加载首批历史任务
+            loadMoreHistory()
+        }
+    }
+
+    // ==================== 数据流定义 ====================
+    
+    /** 未完成任务流（实时订阅，自动更新） */
+    private val _activeTasks = taskRepository.getActiveTasks()
+    
+    /** 已完成任务列表（分页加载） */
+    private val _historyTasks = MutableStateFlow<List<TaskDetailComposite>>(emptyList())
+    
+    /** 历史任务分页状态 */
+    private var _historyPage = 0
+    private var _isHistoryExhausted = false
+    private val _isLoadingHistory = MutableStateFlow(false)
+    val isLoadingHistory: StateFlow<Boolean> = _isLoadingHistory.asStateFlow()
+    
+    /** 下拉刷新状态 */
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+    
+    /** UI 状态（录音、AI分析等） */
+    private val _uiState = MutableStateFlow(HomeUiState())
+    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    /**
+     * 合并后的 Timeline 列表
+     * 
+     * 结构：[未完成任务] + [历史分隔线] + [已完成任务] + [加载指示器]
+     */
+    val timelineItems: StateFlow<List<TimelineItem>> = combine(
+        _activeTasks,
+        _historyTasks,
+        _isLoadingHistory
+    ) { active, history, isLoading ->
+        buildList {
+            // 未完成任务（置顶优先）
+            addAll(active.map { TimelineItem.TaskItem(it) })
+            // 历史分隔线 + 已完成任务
+            if (history.isNotEmpty()) {
+                add(TimelineItem.HistoryHeader)
+                addAll(history.map { TimelineItem.TaskItem(it) })
+            }
+            // 加载指示器
+            if (isLoading) add(TimelineItem.Loading)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // ==================== 日期筛选（用于日历视图） ====================
+    
+    private val _selectedDate = MutableStateFlow(todayStartMillis())
+    val selectedDate: StateFlow<Long> = _selectedDate.asStateFlow()
+    
+    /** 按日期筛选的任务（与选定日期有时间重叠） */
+    val tasks: StateFlow<List<TaskDetailComposite>> = combine(
+        _activeTasks,
+        _selectedDate
+    ) { tasks, date ->
+        val dayStart = date
+        val dayEnd = date + 24 * 60 * 60 * 1000L
+        tasks.filter { it.task.startTime < dayEnd && it.task.deadline > dayStart }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    fun onDateSelected(date: Long) {
+        _selectedDate.value = date
+    }
+    
+    private fun todayStartMillis(): Long = Calendar.getInstance().apply {
         set(Calendar.HOUR_OF_DAY, 0)
         set(Calendar.MINUTE, 0)
         set(Calendar.SECOND, 0)
         set(Calendar.MILLISECOND, 0)
-    }.timeInMillis)
-    val selectedDate: StateFlow<Long> = _selectedDate
+    }.timeInMillis
 
-    // 任务列表 (显示所有与选定日期有时间重叠的任务)
-    // 注意：这里我们使用 TaskDetailComposite 来获取子任务信息
-    val tasks: StateFlow<List<TaskDetailComposite>> = combine(
-        taskRepository.getActiveTasks(),
-        _selectedDate
-    ) { allTasks, date ->
-        val calendar = Calendar.getInstance()
-        calendar.timeInMillis = date
-        val startOfDay = calendar.timeInMillis
-        calendar.add(Calendar.DAY_OF_YEAR, 1)
-        val endOfDay = calendar.timeInMillis
-
-        // 修复：显示所有与当天有重叠的任务
-        // 任务重叠条件：任务开始时间 < 当天结束时间 AND 任务结束时间 > 当天开始时间
-        allTasks.filter { composite ->
-            composite.task.startTime < endOfDay && composite.task.deadline > startOfDay
-        }
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
-    )
-
-    // 1. 所有未完成任务（包括置顶和非置顶）
-    private val activeFlow = taskRepository.getActiveTasks()
-
-    // 2. 历史数据 (手动分页管理)
-    private val _historyList = MutableStateFlow<List<TaskDetailComposite>>(emptyList())
-    private var historyPage = 0
-    private val pageSize = 20
-    private var isHistoryExhausted = false
-    private val _isLoadingHistory = MutableStateFlow(false)
-
-    // 3. 合并后的 UI 列表流
-    val timelineItems: StateFlow<List<TimelineItem>> = combine(
-        activeFlow,
-        _historyList,
-        _isLoadingHistory
-    ) { active, history, isLoading ->
-        val items = mutableListOf<TimelineItem>()
-
-        // A. 所有未完成任务（置顶的在前）
-        items.addAll(active.map { TimelineItem.TaskItem(it) })
-
-        // B. 历史区域分隔线
-        if (history.isNotEmpty()) {
-            items.add(TimelineItem.HistoryHeader)
-            items.addAll(history.map { TimelineItem.TaskItem(it) })
-        }
-
-        if (isLoading) {
-            items.add(TimelineItem.Loading)
-        }
-
-        items.toList()
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    // UI 状态
-    private val _uiState = MutableStateFlow(HomeUiState())
-    val uiState: StateFlow<HomeUiState> = _uiState
+    // ==================== 数据加载方法 ====================
     
-    // 刷新状态
-    private val _isRefreshing = MutableStateFlow(false)
-    val isRefreshing: StateFlow<Boolean> = _isRefreshing
-
-    fun onDateSelected(date: Long) {
-        _selectedDate.value = date
+    /**
+     * 懒更新：标记过期任务为已完成
+     */
+    private suspend fun markOverdueTasksAsDone() {
+        try {
+            taskRepository.autoMarkOverdueTasksAsDone(System.currentTimeMillis())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
-
+    
+    /**
+     * 加载更多历史任务（分页）
+     * 
+     * 触发时机：列表滑动到底部
+     * 加载策略：每次加载20条，直到没有更多数据
+     */
     fun loadMoreHistory() {
-        if (_isLoadingHistory.value || isHistoryExhausted) return
-
+        if (_isLoadingHistory.value || _isHistoryExhausted) return
+        
         viewModelScope.launch {
             _isLoadingHistory.value = true
-            val newItems = taskRepository.getHistoryTasks(pageSize, historyPage * pageSize)
-            if (newItems.isEmpty()) {
-                isHistoryExhausted = true
-            } else {
-                _historyList.value += newItems
-                historyPage++
-            }
-            _isLoadingHistory.value = false
-        }
-    }
-
-    fun getTaskDetail(taskId: Long, onResult: (TaskDetailComposite) -> Unit) {
-        viewModelScope.launch {
-            taskRepository.getTaskDetail(taskId).take(1).collect { 
-                onResult(it)
+            try {
+                val offset = _historyPage * PAGE_SIZE
+                val newItems = taskRepository.getHistoryTasks(PAGE_SIZE, offset)
+                
+                if (newItems.isEmpty()) {
+                    _isHistoryExhausted = true
+                } else {
+                    _historyTasks.value = _historyTasks.value + newItems
+                    _historyPage++
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isLoadingHistory.value = false
             }
         }
     }
     
-    fun getTaskDetailFlow(taskId: Long): Flow<TaskDetailComposite> {
-        return taskRepository.getTaskDetail(taskId)
+    /**
+     * 下拉刷新
+     * 
+     * 执行流程：
+     * 1. 懒更新过期任务
+     * 2. 重置分页状态
+     * 3. 重新加载首批历史任务
+     */
+    fun onRefresh() {
+        if (_isRefreshing.value) return
+        
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                // 懒更新
+                markOverdueTasksAsDone()
+                // 重新加载历史任务
+                val newHistory = taskRepository.getHistoryTasks(PAGE_SIZE, 0)
+                resetHistoryPagination(newHistory)
+                // 动画延迟
+                kotlinx.coroutines.delay(300)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isRefreshing.value = false
+            }
+        }
+    }
+    
+    /**
+     * 重置历史任务分页状态
+     */
+    private fun resetHistoryPagination(newData: List<TaskDetailComposite>) {
+        _historyTasks.value = newData
+        _historyPage = if (newData.isNotEmpty()) 1 else 0
+        _isHistoryExhausted = newData.size < PAGE_SIZE
+    }
+
+    // ==================== 任务详情 ====================
+    
+    fun getTaskDetailFlow(taskId: Long): Flow<TaskDetailComposite> = 
+        taskRepository.getTaskDetail(taskId)
+    
+    fun getTaskDetail(taskId: Long, onResult: (TaskDetailComposite) -> Unit) {
+        viewModelScope.launch {
+            taskRepository.getTaskDetail(taskId).take(1).collect { onResult(it) }
+        }
     }
 
     private var recordingJob: kotlinx.coroutines.Job? = null
@@ -446,237 +536,100 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    // ==================== 任务 CRUD 操作 ====================
+    
     fun addTask(task: Task) {
-        viewModelScope.launch {
-            taskRepository.insertTask(task)
-        }
+        viewModelScope.launch { taskRepository.insertTask(task) }
     }
     
-    /**
-     * 添加任务并设置提醒
-     */
+    /** 添加任务并设置提醒 */
     fun addTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
-        android.util.Log.i("HomeViewModel", "addTaskWithReminders called: task=${task.title}, configs=${reminderConfigs.size}")
         viewModelScope.launch {
             val reminders = reminderConfigs.mapNotNull { config ->
                 val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
-                android.util.Log.d("HomeViewModel", "Config: type=${config.type}, triggerAt=$triggerAt, now=${System.currentTimeMillis()}")
                 if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
-                    com.litetask.app.data.model.Reminder(
-                        taskId = 0, // 会在插入时更新
-                        triggerAt = triggerAt,
-                        label = config.generateLabel()
-                    )
-                } else {
-                    android.util.Log.w("HomeViewModel", "Skipping config: triggerAt=$triggerAt, type=${config.type}")
-                    null
-                }
+                    com.litetask.app.data.model.Reminder(taskId = 0, triggerAt = triggerAt, label = config.generateLabel())
+                } else null
             }
-            android.util.Log.i("HomeViewModel", "Created ${reminders.size} reminders from ${reminderConfigs.size} configs")
             taskRepository.insertTaskWithReminders(task, reminders)
         }
     }
 
     fun updateTask(task: Task) {
         viewModelScope.launch {
-            // 如果任务被标记为完成，使用 markTaskDone 来同时取消闹钟
             if (task.isDone) {
+                // 完成任务：取消闹钟，刷新历史列表
                 taskRepository.markTaskDone(task)
-                // 重新加载历史列表以包含新完成的任务
-                val newHistory = taskRepository.getHistoryTasks(pageSize * (historyPage + 1), 0)
-                _historyList.value = newHistory
+                refreshHistoryAfterCompletion()
             } else {
+                // 重新激活任务：从历史列表移除
                 taskRepository.updateTask(task)
-                // 如果任务状态从已完成变为未完成，需要从历史列表中移除
-                _historyList.value = _historyList.value.filter { it.task.id != task.id }
+                _historyTasks.value = _historyTasks.value.filter { it.task.id != task.id }
             }
         }
     }
     
-    /**
-     * 更新任务并更新提醒
-     */
+    /** 更新任务并更新提醒 */
     fun updateTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
         viewModelScope.launch {
-            // 如果任务已完成，使用 markTaskDone 取消闹钟，不注册新提醒
             if (task.isDone) {
                 taskRepository.markTaskDone(task)
-                val newHistory = taskRepository.getHistoryTasks(pageSize * (historyPage + 1), 0)
-                _historyList.value = newHistory
+                refreshHistoryAfterCompletion()
                 return@launch
             }
             
             val reminders = reminderConfigs.mapNotNull { config ->
                 val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
                 if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
-                    com.litetask.app.data.model.Reminder(
-                        taskId = task.id,
-                        triggerAt = triggerAt,
-                        label = config.generateLabel()
-                    )
+                    com.litetask.app.data.model.Reminder(taskId = task.id, triggerAt = triggerAt, label = config.generateLabel())
                 } else null
             }
             taskRepository.updateTaskWithReminders(task, reminders)
-            
-            // 从历史列表中移除（因为任务未完成）
-            _historyList.value = _historyList.value.filter { it.task.id != task.id }
-        }
-    }
-    
-    /**
-     * 获取任务的提醒列表
-     */
-    fun getRemindersForTask(taskId: Long): kotlinx.coroutines.flow.Flow<List<com.litetask.app.data.model.Reminder>> {
-        return taskRepository.getRemindersByTaskId(taskId)
-    }
-    
-    /**
-     * 同步获取任务的提醒列表
-     */
-    suspend fun getRemindersForTaskSync(taskId: Long): List<com.litetask.app.data.model.Reminder> {
-        return taskRepository.getRemindersByTaskIdSync(taskId)
-    }
-
-    fun updateTaskWithSubTasks(task: Task, subTasks: List<SubTask>) {
-        viewModelScope.launch {
-            taskRepository.updateTaskWithSubTasks(task, subTasks)
+            _historyTasks.value = _historyTasks.value.filter { it.task.id != task.id }
         }
     }
 
     fun deleteTask(task: Task) {
-        viewModelScope.launch {
-            // 使用 deleteTaskWithReminders 来同时取消闹钟
-            taskRepository.deleteTaskWithReminders(task)
-        }
+        viewModelScope.launch { taskRepository.deleteTaskWithReminders(task) }
+    }
+    
+    /** 任务完成后刷新历史列表 */
+    private suspend fun refreshHistoryAfterCompletion() {
+        val totalLoaded = (_historyPage + 1) * PAGE_SIZE
+        val newHistory = taskRepository.getHistoryTasks(totalLoaded, 0)
+        _historyTasks.value = newHistory
     }
 
-    fun updateSubTaskStatus(subTaskId: Long, completed: Boolean) {
-        viewModelScope.launch {
-            taskRepository.updateSubTaskStatus(subTaskId, completed)
-        }
-    }
+    // ==================== 子任务操作 ====================
     
     fun addSubTask(taskId: Long, content: String) {
         viewModelScope.launch {
-            val newSub = SubTask(taskId = taskId, content = content, isCompleted = false)
-            taskRepository.insertSubTask(newSub)
+            taskRepository.insertSubTask(SubTask(taskId = taskId, content = content, isCompleted = false))
         }
+    }
+    
+    fun updateSubTaskStatus(subTaskId: Long, completed: Boolean) {
+        viewModelScope.launch { taskRepository.updateSubTaskStatus(subTaskId, completed) }
+    }
+    
+    fun deleteSubTask(subTask: SubTask) {
+        viewModelScope.launch { taskRepository.deleteSubTask(subTask) }
+    }
+    
+    fun updateTaskWithSubTasks(task: Task, subTasks: List<SubTask>) {
+        viewModelScope.launch { taskRepository.updateTaskWithSubTasks(task, subTasks) }
     }
 
-    fun deleteSubTask(subTask: SubTask) {
-        viewModelScope.launch {
-            taskRepository.deleteSubTask(subTask)
-        }
-    }
+    // ==================== 提醒相关 ====================
+    
+    fun getRemindersForTask(taskId: Long): Flow<List<com.litetask.app.data.model.Reminder>> =
+        taskRepository.getRemindersByTaskId(taskId)
+    
+    suspend fun getRemindersForTaskSync(taskId: Long): List<com.litetask.app.data.model.Reminder> =
+        taskRepository.getRemindersByTaskIdSync(taskId)
 
     fun dismissAiResult() {
         _uiState.value = _uiState.value.copy(showAiResult = false, aiParsedTasks = emptyList())
-    }
-    
-    /**
-     * 懒更新策略：刷新任务列表
-     * 
-     * 执行流程：
-     * 1. 先自动标记所有已过期的任务为完成状态
-     * 2. 然后刷新任务列表（由于使用 Flow，数据会自动更新）
-     * 
-     * 调用时机：
-     * - ViewModel 初始化时（用户打开 App）
-     * - 用户手动刷新时
-     * - 从后台返回前台时
-     */
-    fun refreshTasks() {
-        viewModelScope.launch {
-            try {
-                // 1. 执行自动更新逻辑：标记所有过期任务
-                val now = System.currentTimeMillis()
-                val updatedCount = taskRepository.autoMarkOverdueTasksAsDone(now)
-                
-                // 2. 由于使用了 Flow，任务列表会自动更新
-                // 可以在这里添加日志或通知用户
-                if (updatedCount > 0) {
-                    // TODO: 可选 - 显示提示信息，如 "已自动完成 $updatedCount 个过期任务"
-                }
-            } catch (e: Exception) {
-                // 处理异常，但不影响正常使用
-                e.printStackTrace()
-            }
-        }
-    }
-    
-    /**
-     * 下拉刷新：重新加载所有数据
-     * 
-     * 执行流程：
-     * 1. 标记过期任务为已完成
-     * 2. 重置历史任务分页
-     * 3. 重新加载最近20条已完成任务
-     */
-    fun onRefresh() {
-        if (_isRefreshing.value) return
-        
-        viewModelScope.launch {
-            _isRefreshing.value = true
-            try {
-                // 1. 标记过期任务
-                val now = System.currentTimeMillis()
-                taskRepository.autoMarkOverdueTasksAsDone(now)
-                
-                // 2. 重新加载最近20条已完成任务（不先清空，避免闪烁）
-                val newHistory = taskRepository.getHistoryTasks(pageSize, 0)
-                
-                // 3. 重置历史任务分页并更新列表（一次性操作）
-                historyPage = if (newHistory.isNotEmpty()) 1 else 0
-                isHistoryExhausted = false
-                _historyList.value = newHistory
-                
-                // 延迟一下让动画更自然
-                kotlinx.coroutines.delay(300)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                _isRefreshing.value = false
-            }
-        }
-    }
-    
-    /**
-     * 静默刷新：用于视图切换时自动加载数据，不显示刷新动画
-     * 
-     * 执行流程：
-     * 1. 重置历史任务分页
-     * 2. 重新加载最近20条已完成任务
-     * 
-     * 注意：不执行过期任务的懒更新，避免不必要的数据库操作
-     */
-    fun silentRefresh() {
-        viewModelScope.launch {
-            try {
-                // 重新加载最近20条已完成任务
-                val newHistory = taskRepository.getHistoryTasks(pageSize, 0)
-                
-                // 重置历史任务分页并更新列表
-                historyPage = if (newHistory.isNotEmpty()) 1 else 0
-                isHistoryExhausted = false
-                _historyList.value = newHistory
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-    
-    /**
-     * 初始化 Timeline 数据：首次进入 Timeline 视图时调用
-     * 
-     * 执行流程：
-     * 1. 如果历史列表为空，自动加载第一页历史任务
-     * 2. 避免重复加载
-     */
-    fun initTimelineData() {
-        // 只在历史列表为空且未加载时才加载
-        if (_historyList.value.isEmpty() && !_isLoadingHistory.value && historyPage == 0) {
-            loadMoreHistory()
-        }
     }
 }
 

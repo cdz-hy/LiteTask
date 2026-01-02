@@ -70,6 +70,8 @@ fun HomeScreen(
     onNavigateToGanttFullscreen: (com.litetask.app.ui.components.GanttViewMode) -> Unit,
     initialView: String = "timeline",
     onViewChanged: (String) -> Unit = {},
+    shouldCheckPermissions: Boolean = true,
+    onPermissionChecked: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     // ViewModel 数据流
@@ -83,13 +85,14 @@ fun HomeScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
+    // 视图切换时的处理（数据已在 ViewModel 初始化时加载，无需额外操作）
     LaunchedEffect(currentView) {
         onViewChanged(currentView)
     }
-
+    
+    // 从 timelineItems 提取任务数据
     val allLoadedTasks = remember(timelineItems) {
-        timelineItems.filterIsInstance<com.litetask.app.ui.home.TimelineItem.TaskItem>()
-            .map { it.composite }
+        timelineItems.filterIsInstance<TimelineItem.TaskItem>().map { it.composite }
     }
     
     // 未完成任务数量（用于顶部显示）
@@ -97,6 +100,7 @@ fun HomeScreen(
         allLoadedTasks.count { !it.task.isDone }
     }
 
+    // 甘特图任务（3天内的任务）
     val ganttTasks = remember(allLoadedTasks) {
         val now = System.currentTimeMillis()
         val calendar = java.util.Calendar.getInstance()
@@ -107,18 +111,7 @@ fun HomeScreen(
         calendar.set(java.util.Calendar.MILLISECOND, 0)
         val startOfToday = calendar.timeInMillis
         val endOfThreeDays = startOfToday + (3 * 24 * 60 * 60 * 1000L)
-
-        allLoadedTasks.filter { composite ->
-            val taskStart = composite.task.startTime
-            val taskEnd = composite.task.deadline
-            taskStart < endOfThreeDays && taskEnd > startOfToday
-        }
-    }
-
-    LaunchedEffect(currentView) {
-        if (currentView == "gantt") {
-            viewModel.silentRefresh()
-        }
+        allLoadedTasks.filter { it.task.startTime < endOfThreeDays && it.task.deadline > startOfToday }
     }
 
     val pullToRefreshState = rememberPullToRefreshState()
@@ -178,10 +171,14 @@ fun HomeScreen(
                 markAutoStartPrompted(context)
             }
         }
+        // 标记权限检查已完成
+        onPermissionChecked()
     }
     
-    // 应用冷启动时检查权限（只执行一次）
-    LaunchedEffect(Unit) {
+    // 冷启动时检查权限（只在 shouldCheckPermissions 为 true 时执行）
+    LaunchedEffect(shouldCheckPermissions) {
+        if (!shouldCheckPermissions) return@LaunchedEffect
+        
         // 先请求通知权限（Android 13+）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (!PermissionHelper.hasNotificationPermission(context)) {
@@ -196,11 +193,12 @@ fun HomeScreen(
         if (missing.isNotEmpty()) {
             missingPermissions = missing
             showPermissionDialog = true
-            // 如果包含自启动权限，标记已提醒
             if (includeAutoStart) {
                 markAutoStartPrompted(context)
             }
         }
+        // 标记权限检查已完成
+        onPermissionChecked()
     }
     
     val permissionLauncher = rememberLauncherForActivityResult(

@@ -46,11 +46,15 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
    - 明确起止: 仅在明确“从X到Y”时设定具体区间。
    - 无时间: endTime = Now + 24h。
 3. **分类**: WORK | LIFE | STUDY | URGENT
-4. **增强**: `description` 基于任务智能补充 2-3 个有意义的具体执行步骤或注意事项。
+4. **描述生成**: `description` 必须基于用户原始输入生成真实有意义的简要描述:
+   - 提取并扩展用户提到的具体细节（地点、人物、数量、方式等）
+   - 若用户输入简短，合理推断任务的目的或上下文
+   - 禁止生成空洞模板化内容，每个描述必须与该任务直接相关
+   - 长度控制在 10-50 字
 
 # Output
 仅返回纯 JSON 数组，无 Markdown。
-[{"title":"精炼标题<20字","startTime":"yyyy-MM-dd HH:mm","endTime":"yyyy-MM-dd HH:mm","type":"分类","description":"智能补充的建议"}]
+[{"title":"精炼标题<20字","startTime":"yyyy-MM-dd HH:mm","endTime":"yyyy-MM-dd HH:mm","type":"分类","description":"基于输入的真实任务描述"}]
                 """.trimIndent()
                 
                 val requestBody = JSONObject().apply {

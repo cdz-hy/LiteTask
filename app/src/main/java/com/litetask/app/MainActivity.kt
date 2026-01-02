@@ -101,6 +101,8 @@ fun AppContent(initialTaskId: Long? = null) {
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
     var ganttViewMode by remember { mutableStateOf<com.litetask.app.ui.components.GanttViewMode>(com.litetask.app.ui.components.GanttViewMode.THREE_DAY) }
+    // 权限检查标志：只在冷启动时检查一次
+    var hasCheckedPermissions by remember { mutableStateOf(false) }
     val context = LocalContext.current
     
     // 如果有从通知传入的任务 ID，自动打开任务详情
@@ -124,6 +126,8 @@ fun AppContent(initialTaskId: Long? = null) {
                 },
                 initialView = currentHomeView,
                 onViewChanged = { view -> currentHomeView = view },
+                shouldCheckPermissions = !hasCheckedPermissions,
+                onPermissionChecked = { hasCheckedPermissions = true },
                 viewModel = viewModel
             )
         }
