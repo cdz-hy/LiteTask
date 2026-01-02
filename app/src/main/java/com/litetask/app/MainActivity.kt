@@ -167,20 +167,11 @@ fun AppContent(initialTaskId: Long? = null) {
                 }
                 
                 // 获取任务提醒
-                val taskReminders by produceState<List<com.litetask.app.data.model.Reminder>>(
-                    initialValue = emptyList(),
-                    key1 = taskId
-                ) {
-                    viewModel.getRemindersForTask(taskId).collect { reminders ->
-                        value = reminders
-                    }
-                }
-                
                 taskComposite?.let { composite ->
                     TaskDetailSheet(
                         task = composite.task,
                         subTasks = composite.subTasks,
-                        reminders = taskReminders,
+                        reminders = composite.reminders, // 直接使用复合数据中的提醒
                         onDismiss = { selectedTaskId = null },
                         onDelete = { 
                             viewModel.deleteTask(it)
@@ -259,21 +250,11 @@ fun AppContent(initialTaskId: Long? = null) {
                     }
                 }
                 
-                // 获取任务提醒
-                val taskReminders by produceState<List<com.litetask.app.data.model.Reminder>>(
-                    initialValue = emptyList(),
-                    key1 = taskId
-                ) {
-                    homeViewModel.getRemindersForTask(taskId).collect { reminders ->
-                        value = reminders
-                    }
-                }
-                
                 taskComposite?.let { composite ->
                     TaskDetailSheet(
                         task = composite.task,
                         subTasks = composite.subTasks,
-                        reminders = taskReminders,
+                        reminders = composite.reminders, // 直接使用复合数据中的提醒
                         onDismiss = { selectedTaskId = null },
                         onDelete = { 
                             homeViewModel.deleteTask(it)

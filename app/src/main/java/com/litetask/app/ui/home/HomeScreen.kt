@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +47,7 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
+import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.reminder.PermissionHelper
 import com.litetask.app.ui.components.AddTaskDialog
 import com.litetask.app.ui.components.DeadlineView
@@ -140,19 +142,6 @@ fun HomeScreen(
     // 统一权限弹窗状态
     var showPermissionDialog by remember { mutableStateOf(false) }
     var missingPermissions by remember { mutableStateOf<List<MissingPermission>>(emptyList()) }
-
-    val selectedTaskComposite by produceState<com.litetask.app.data.model.TaskDetailComposite?>(
-        initialValue = null,
-        key1 = selectedTaskId
-    ) {
-        selectedTaskId?.let { taskId ->
-            viewModel.getTaskDetailFlow(taskId).collect { composite ->
-                value = composite
-            }
-        } ?: run {
-            value = null
-        }
-    }
 
     val context = LocalContext.current
     
@@ -509,17 +498,17 @@ fun HomeScreen(
                 )
             }
 
-            // 获取选中任务的提醒
-            val selectedTaskReminders by produceState<List<com.litetask.app.data.model.Reminder>>(
-                initialValue = emptyList(),
+            // 获取选中任务的复合数据（已包含提醒）
+            val selectedTaskComposite by produceState<TaskDetailComposite?>(
+                initialValue = null,
                 key1 = selectedTaskId
             ) {
                 selectedTaskId?.let { taskId ->
-                    viewModel.getRemindersForTask(taskId).collect { reminders ->
-                        value = reminders
+                    viewModel.getTaskDetailFlow(taskId).collect { composite ->
+                        value = composite
                     }
                 } ?: run {
-                    value = emptyList()
+                    value = null
                 }
             }
             
@@ -527,7 +516,7 @@ fun HomeScreen(
                 TaskDetailSheet(
                     task = composite.task,
                     subTasks = composite.subTasks,
-                    reminders = selectedTaskReminders,
+                    reminders = composite.reminders, // 直接使用复合数据中的提醒
                     onDismiss = { selectedTaskId = null },
                     onDelete = {
                         viewModel.deleteTask(it)
