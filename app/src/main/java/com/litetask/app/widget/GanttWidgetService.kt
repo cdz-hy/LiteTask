@@ -2,6 +2,8 @@ package com.litetask.app.widget
 
 import android.content.Context
 import android.content.Intent
+import android.os.Binder
+import android.util.Log
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import com.litetask.app.R
@@ -41,26 +43,35 @@ class GanttRemoteViewsFactory(
     }
     
     private fun loadData() {
-        runBlocking {
-            try {
-                val dao = AppDatabase.getInstance(context).taskDao()
-                
-                // 计算今天的开始和结束时间
-                val calendar = Calendar.getInstance()
-                calendar.set(Calendar.HOUR_OF_DAY, 0)
-                calendar.set(Calendar.MINUTE, 0)
-                calendar.set(Calendar.SECOND, 0)
-                calendar.set(Calendar.MILLISECOND, 0)
-                val startOfDay = calendar.timeInMillis
-                
-                calendar.add(Calendar.DAY_OF_YEAR, 1)
-                val endOfDay = calendar.timeInMillis
-                
-                // 获取今日相关的所有任务（包括已完成的）
-                tasks = dao.getTodayAllTasksSync(startOfDay, endOfDay)
-            } catch (e: Exception) {
-                tasks = emptyList()
+        // 清除调用者身份，以便使用应用的权限访问数据库
+        val identityToken = Binder.clearCallingIdentity()
+        try {
+            runBlocking {
+                try {
+                    val dao = AppDatabase.getInstance(context).taskDao()
+                    
+                    // 计算今天的开始和结束时间
+                    val calendar = Calendar.getInstance()
+                    calendar.set(Calendar.HOUR_OF_DAY, 0)
+                    calendar.set(Calendar.MINUTE, 0)
+                    calendar.set(Calendar.SECOND, 0)
+                    calendar.set(Calendar.MILLISECOND, 0)
+                    val startOfDay = calendar.timeInMillis
+                    
+                    calendar.add(Calendar.DAY_OF_YEAR, 1)
+                    val endOfDay = calendar.timeInMillis
+                    
+                    // 获取今日相关的所有任务（包括已完成的）
+                    tasks = dao.getTodayAllTasksSync(startOfDay, endOfDay)
+                    
+                    Log.d("GanttWidget", "Loaded ${tasks.size} today tasks")
+                } catch (e: Exception) {
+                    Log.e("GanttWidget", "Error loading tasks", e)
+                    tasks = emptyList()
+                }
             }
+        } finally {
+            Binder.restoreCallingIdentity(identityToken)
         }
     }
     

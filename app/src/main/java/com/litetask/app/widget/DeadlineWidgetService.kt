@@ -2,6 +2,8 @@ package com.litetask.app.widget
 
 import android.content.Context
 import android.content.Intent
+import android.os.Binder
+import android.util.Log
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import com.litetask.app.R
@@ -45,13 +47,22 @@ class DeadlineRemoteViewsFactory(
     }
     
     private fun loadData() {
-        runBlocking {
-            try {
-                val dao = AppDatabase.getInstance(context).taskDao()
-                tasks = dao.getUpcomingDeadlinesSyncWithTime(System.currentTimeMillis(), 10)
-            } catch (e: Exception) {
-                tasks = emptyList()
+        // 清除调用者身份，以便使用应用的权限访问数据库
+        val identityToken = Binder.clearCallingIdentity()
+        try {
+            runBlocking {
+                try {
+                    val dao = AppDatabase.getInstance(context).taskDao()
+                    tasks = dao.getUpcomingDeadlinesSyncWithTime(System.currentTimeMillis(), 10)
+                    
+                    Log.d("DeadlineWidget", "Loaded ${tasks.size} deadline tasks")
+                } catch (e: Exception) {
+                    Log.e("DeadlineWidget", "Error loading tasks", e)
+                    tasks = emptyList()
+                }
             }
+        } finally {
+            Binder.restoreCallingIdentity(identityToken)
         }
     }
     

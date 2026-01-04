@@ -1,5 +1,6 @@
 package com.litetask.app.widget
 
+import android.util.Log
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
 import java.util.concurrent.ConcurrentHashMap
@@ -11,6 +12,8 @@ import java.util.concurrent.TimeUnit
  * 为所有小组件提供统一的工具方法
  */
 object WidgetDataProvider {
+    
+    private const val TAG = "WidgetDataProvider"
     
     // 最近完成的任务缓存（taskId -> 完成时间戳）
     // 用于在小组件中显示已完成状态，然后延迟移除
@@ -30,31 +33,39 @@ object WidgetDataProvider {
                 dao.updateTask(task.copy(isDone = true))
                 // 记录完成时间到缓存
                 recentlyCompletedTasks[taskId] = System.currentTimeMillis()
+                Log.d(TAG, "Task marked done: $taskId")
                 true
             } else {
+                Log.w(TAG, "Task not found or already done: $taskId")
                 false
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Error marking task done: $taskId", e)
             false
         }
     }
     
     /**
      * 撤销任务完成（标记为未完成）
+     * 注意：此方法用于撤销刚刚完成的任务，不检查当前状态直接设为未完成
      */
     suspend fun markTaskUndone(context: android.content.Context, taskId: Long): Boolean {
         return try {
             val dao = com.litetask.app.data.local.AppDatabase.getInstance(context).taskDao()
             val task = dao.getTaskById(taskId)
-            if (task != null && task.isDone) {
+            if (task != null) {
+                // 直接设为未完成，不检查当前状态（因为调用方已通过 isJustCompleted 确认）
                 dao.updateTask(task.copy(isDone = false))
                 // 从缓存中移除
                 recentlyCompletedTasks.remove(taskId)
+                Log.d(TAG, "Task marked undone: $taskId")
                 true
             } else {
+                Log.w(TAG, "Task not found: $taskId")
                 false
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Error marking task undone: $taskId", e)
             false
         }
     }
