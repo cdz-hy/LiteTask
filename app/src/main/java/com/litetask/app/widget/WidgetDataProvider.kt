@@ -53,6 +53,7 @@ object WidgetDataProvider {
     /**
      * 撤销任务完成（标记为未完成）
      * 使用 Binder.clearCallingIdentity() 确保在 App 进程被杀后也能正常访问数据库
+     * 注意：此方法不操作缓存，缓存由调用方管理
      */
     suspend fun markTaskUndone(context: android.content.Context, taskId: Long): Boolean {
         val identityToken = Binder.clearCallingIdentity()
@@ -62,8 +63,6 @@ object WidgetDataProvider {
             if (task != null) {
                 // 直接设为未完成，不检查当前状态（因为调用方已通过 isJustCompleted 确认）
                 dao.updateTask(task.copy(isDone = false))
-                // 从缓存中移除
-                recentlyCompletedTasks.remove(taskId)
                 Log.d(TAG, "Task marked undone: $taskId")
                 true
             } else {

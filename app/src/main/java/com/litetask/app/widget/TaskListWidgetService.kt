@@ -78,10 +78,11 @@ class TaskListWidgetService : RemoteViewsService() {
         
         /**
          * 撤销任务完成状态（从缓存中移除）
+         * 立即移除，提供即时反馈
          */
         fun undoTaskCompletion(taskId: Long) {
-            recentlyCompletedTasks.remove(taskId)
-            Log.d("TaskListWidget", "undoTaskCompletion: $taskId")
+            val removed = recentlyCompletedTasks.remove(taskId)
+            Log.d("TaskListWidget", "undoTaskCompletion: $taskId, removed: ${removed != null}")
         }
         
         /**
@@ -109,13 +110,30 @@ class TaskListRemoteViewsFactory(
     private var justCompletedTaskIds: Set<Long> = emptySet()
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("MM/dd", Locale.getDefault())
+    private var lastLoadTime = 0L
+    private val CACHE_DURATION = 1000L // 1秒缓存，减少频繁数据库查询
     
     override fun onCreate() {
         loadData()
     }
     
     override fun onDataSetChanged() {
-        loadData()
+        // 检查是否需要重新加载数据（避免频繁查询）
+        val now = System.currentTimeMillis()
+        if (now - lastLoadTime > CACHE_DURATION) {
+            loadData()
+            lastLoadTime = now
+        } else {
+            // 只更新缓存状态，不重新查询数据库
+            updateCacheState()
+        }
+    }
+    
+    private fun updateCacheState() {
+        // 只更新刚完成的任务状态，不重新查询数据库
+        val justCompletedTasks = TaskListWidgetService.getAllJustCompletedTasks()
+        justCompletedTaskIds = justCompletedTasks.map { it.id }.toSet()
+        Log.d("TaskListWidget", "updateCacheState: ${justCompletedTaskIds.size} just completed tasks")
     }
     
     private fun loadData() {
@@ -150,13 +168,15 @@ class TaskListRemoteViewsFactory(
                         }
                     }
                     
-                    // 记录哪些任务刚完成
+                    // 记录哪些任务刚完成（用于UI显示）
                     justCompletedTaskIds = justCompletedTasks.map { it.id }.toSet()
                     
                     tasks = activeTasks
                     
-                    // 清理过期缓存
-                    TaskListWidgetService.cleanupExpiredCache()
+                    // 清理过期缓存（减少频率，只在数据加载时清理）
+                    if (System.currentTimeMillis() % 5000 < 1000) { // 大约每5秒清理一次
+                        TaskListWidgetService.cleanupExpiredCache()
+                    }
                 } catch (e: Exception) {
                     Log.e("TaskListWidget", "Error loading tasks", e)
                     tasks = emptyList()

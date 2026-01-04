@@ -50,6 +50,23 @@ class TaskListWidgetProvider : AppWidgetProvider() {
             
             Log.d("TaskListWidget", "refreshAllWidgets called, ${appWidgetIds.size} widgets")
         }
+        
+        /**
+         * 快速刷新（仅更新UI状态，不重新加载数据）
+         * 用于撤销操作等需要即时反馈的场景
+         */
+        fun quickRefreshAllWidgets(context: Context) {
+            val appWidgetManager = AppWidgetManager.getInstance(context)
+            val componentName = ComponentName(context, TaskListWidgetProvider::class.java)
+            val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
+            
+            // 强制触发 onDataSetChanged，但由于缓存机制，只会更新状态不会重新查询数据库
+            appWidgetIds.forEach { widgetId ->
+                appWidgetManager.notifyAppWidgetViewDataChanged(widgetId, R.id.task_list)
+            }
+            
+            Log.d("TaskListWidget", "quickRefreshAllWidgets called, ${appWidgetIds.size} widgets")
+        }
     }
     
     override fun onUpdate(
@@ -138,41 +155,40 @@ class TaskListWidgetProvider : AppWidgetProvider() {
                 
                 // 检查是否是刚完成的任务（需要撤销）
                 if (TaskListWidgetService.isJustCompleted(taskId)) {
-                    // 先从缓存中移除，确保下次刷新时显示未完成状态
-                    TaskListWidgetService.undoTaskCompletion(taskId)
+                    // 撤销完成操作 - 优化流程：立即更新UI，然后执行数据库操作
                     
-                    // 立即刷新任务列表小组件
+                    // 1. 立即移除缓存并刷新UI（提供即时反馈）
+                    TaskListWidgetService.undoTaskCompletion(taskId)
                     Handler(Looper.getMainLooper()).post {
-                        refreshAllWidgets(context)
+                        quickRefreshAllWidgets(context)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.widget_task_undone),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                     
-                    // 撤销完成操作（同步执行）
+                    // 2. 然后执行数据库操作
                     val success = runBlocking {
                         WidgetDataProvider.markTaskUndone(context, taskId)
                     }
                     
                     if (success) {
                         Log.d("TaskListWidget", "Task undone: $taskId")
-                        
+                        // 数据库操作成功，刷新其他小组件
                         Handler(Looper.getMainLooper()).post {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.widget_task_undone),
-                                Toast.LENGTH_SHORT
-                            ).show()
                             GanttWidgetProvider.refreshAllWidgets(context)
                             DeadlineWidgetProvider.refreshAllWidgets(context)
                         }
                     } else {
-                        // 恢复缓存（撤销失败）
+                        // 数据库操作失败，恢复缓存状态
+                        Log.e("TaskListWidget", "Failed to undo task: $taskId")
                         val task = runBlocking { WidgetDataProvider.getTaskById(context, taskId) }
                         if (task != null) {
                             TaskListWidgetService.markTaskAsJustCompleted(task)
                         }
-                        
-                        Log.e("TaskListWidget", "Failed to undo task: $taskId")
                         Handler(Looper.getMainLooper()).post {
-                            refreshAllWidgets(context)
+                            quickRefreshAllWidgets(context)
                             Toast.makeText(
                                 context,
                                 context.getString(R.string.widget_task_complete_failed),
@@ -187,15 +203,18 @@ class TaskListWidgetProvider : AppWidgetProvider() {
                     Log.d("TaskListWidget", "Task found: ${task?.title}, isDone=${task?.isDone}")
                     
                     if (task != null && !task.isDone) {
-                        // 先缓存任务数据，确保刷新时立即显示完成状态
+                        // 1. 先缓存任务数据，立即刷新显示完成状态
                         TaskListWidgetService.markTaskAsJustCompleted(task)
-                        
-                        // 立即刷新任务列表小组件
                         Handler(Looper.getMainLooper()).post {
-                            refreshAllWidgets(context)
+                            quickRefreshAllWidgets(context)
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.widget_task_completed),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                         
-                        // 数据库操作（同步执行）
+                        // 2. 数据库操作（异步执行，不阻塞UI）
                         val success = runBlocking {
                             WidgetDataProvider.markTaskDone(context, taskId)
                         }
@@ -203,30 +222,25 @@ class TaskListWidgetProvider : AppWidgetProvider() {
                         if (success) {
                             Log.d("TaskListWidget", "Task marked done: $taskId")
                             
+                            // 刷新其他小组件
                             Handler(Looper.getMainLooper()).post {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.widget_task_completed),
-                                    Toast.LENGTH_SHORT
-                                ).show()
                                 GanttWidgetProvider.refreshAllWidgets(context)
                                 DeadlineWidgetProvider.refreshAllWidgets(context)
                             }
                             
-                            // 2秒后再次刷新，将已完成任务从列表移除
-                            Thread.sleep(2000)
-                            Handler(Looper.getMainLooper()).post {
+                            // 2秒后再次刷新，将已完成任务从列表移除（使用Handler延迟，不阻塞线程）
+                            Handler(Looper.getMainLooper()).postDelayed({
                                 refreshAllWidgets(context)
                                 GanttWidgetProvider.refreshAllWidgets(context)
                                 DeadlineWidgetProvider.refreshAllWidgets(context)
-                            }
+                            }, 2000)
                         } else {
-                            // 移除缓存（标记失败）
+                            // 数据库操作失败，移除缓存恢复未完成状态
                             TaskListWidgetService.undoTaskCompletion(taskId)
                             
                             Log.e("TaskListWidget", "Failed to mark task done: $taskId")
                             Handler(Looper.getMainLooper()).post {
-                                refreshAllWidgets(context)
+                                quickRefreshAllWidgets(context)
                                 Toast.makeText(
                                     context,
                                     context.getString(R.string.widget_task_complete_failed),
