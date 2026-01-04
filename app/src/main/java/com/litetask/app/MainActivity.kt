@@ -21,6 +21,8 @@ import com.litetask.app.reminder.FloatingReminderService
 import com.litetask.app.reminder.NotificationHelper
 import com.litetask.app.reminder.PermissionHelper
 import com.litetask.app.ui.components.AddTaskDialog
+import com.litetask.app.ui.components.SubTaskInputDialog
+import com.litetask.app.ui.components.SubTaskConfirmationDialog
 import com.litetask.app.ui.components.TaskDetailSheet
 import com.litetask.app.ui.home.HomeViewModel
 import com.litetask.app.ui.theme.LiteTaskTheme
@@ -167,6 +169,7 @@ fun AppContent(initialTaskId: Long? = null) {
                 }
                 
                 // 获取任务提醒
+                val uiState by viewModel.uiState.collectAsState()
                 taskComposite?.let { composite ->
                     TaskDetailSheet(
                         task = composite.task,
@@ -187,7 +190,14 @@ fun AppContent(initialTaskId: Long? = null) {
                         },
                         onDeleteSubTask = { subTask ->
                             viewModel.deleteSubTask(subTask)
-                        }
+                        },
+                        onGenerateSubTasks = {
+                            viewModel.generateSubTasks(composite.task)
+                        },
+                        onGenerateSubTasksWithContext = { task ->
+                            viewModel.showSubTaskInputDialog(task)
+                        },
+                        isGeneratingSubTasks = uiState.isAnalyzing
                     )
                 }
             }
@@ -250,6 +260,7 @@ fun AppContent(initialTaskId: Long? = null) {
                     }
                 }
                 
+                val uiState by homeViewModel.uiState.collectAsState()
                 taskComposite?.let { composite ->
                     TaskDetailSheet(
                         task = composite.task,
@@ -270,7 +281,14 @@ fun AppContent(initialTaskId: Long? = null) {
                         },
                         onDeleteSubTask = { subTask ->
                             homeViewModel.deleteSubTask(subTask)
-                        }
+                        },
+                        onGenerateSubTasks = {
+                            homeViewModel.generateSubTasks(composite.task)
+                        },
+                        onGenerateSubTasksWithContext = { task ->
+                            homeViewModel.showSubTaskInputDialog(task)
+                        },
+                        isGeneratingSubTasks = uiState.isAnalyzing
                     )
                 }
             }
@@ -313,6 +331,37 @@ fun AppContent(initialTaskId: Long? = null) {
                         Toast.makeText(context, "任务已更新", Toast.LENGTH_SHORT).show()
                     }
                 )
+            }
+            
+            // 子任务详细输入对话框
+            val uiState by homeViewModel.uiState.collectAsState()
+            if (uiState.showSubTaskInput) {
+                val currentTask = uiState.currentTask
+                if (currentTask != null) {
+                    SubTaskInputDialog(
+                        task = currentTask,
+                        onDismiss = { homeViewModel.dismissSubTaskInput() },
+                        onAnalyze = { context ->
+                            homeViewModel.generateSubTasksWithContext(currentTask, context)
+                        },
+                        isAnalyzing = uiState.isAnalyzing
+                    )
+                }
+            }
+            
+            // 子任务生成结果确认对话框
+            if (uiState.showSubTaskResult) {
+                val currentTask = uiState.currentTask
+                if (currentTask != null) {
+                    SubTaskConfirmationDialog(
+                        task = currentTask,
+                        subTasks = uiState.generatedSubTasks,
+                        onDismiss = { homeViewModel.dismissSubTaskResult() },
+                        onConfirm = { editedSubTasks -> 
+                            homeViewModel.confirmAddSubTasks(editedSubTasks)
+                        }
+                    )
+                }
             }
         }
     }

@@ -43,7 +43,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
 1. **拆分与纠错**: 识别多任务，修正语音/逻辑错误。无效输入返 `[]`。
 2. **时间推断 (核心)**:
    - 默认/单点时间: 视为 endTime (截止)，startTime 设为 Now。
-   - 明确起止: 仅在明确“从X到Y”时设定具体区间。
+   - 明确起止: 仅在明确"从X到Y"时设定具体区间。
    - 无时间: endTime = Now + 24h。
 3. **分类**: WORK | LIFE | STUDY | URGENT
 4. **描述生成**: `description` 必须基于用户原始输入生成真实有意义的简要描述:
@@ -51,6 +51,10 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
    - 若用户输入简短，合理推断任务的目的或上下文
    - 禁止生成空洞模板化内容，每个描述必须与该任务直接相关
    - 长度控制在 10-50 字
+5. **子任务逻辑**: 
+   - 仅对需要拆解的复杂任务生成子任务
+   - 简单任务（如"买菜"、"开会"等）不需要子任务
+   - 子任务必须与主任务紧密相关，具体可执行
 
 # Output
 仅返回纯 JSON 数组，无 Markdown。
@@ -83,7 +87,13 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                 val response = client.newCall(request).execute()
                 
                 if (!response.isSuccessful) {
-                    return@withContext Result.failure(Exception("API 请求失败: ${response.code} ${response.message}"))
+                    val errorBody = response.body?.string()
+                    val errorMessage = if (errorBody != null && errorBody.isNotEmpty()) {
+                        "API 请求失败: ${response.code} - $errorBody"
+                    } else {
+                        "API 请求失败: ${response.code} ${response.message}"
+                    }
+                    return@withContext Result.failure(Exception(errorMessage))
                 }
                 
                 val responseBody = response.body?.string() ?: return@withContext Result.failure(Exception("响应为空"))
@@ -98,6 +108,16 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                 val tasks = parseJsonToTasks(content, text)
                 Result.success(tasks)
                 
+            } catch (e: org.json.JSONException) {
+                Result.failure(Exception("JSON 解析失败: ${e.message}", e))
+            } catch (e: java.net.UnknownHostException) {
+                Result.failure(Exception("网络连接失败，请检查网络设置", e))
+            } catch (e: java.net.SocketTimeoutException) {
+                Result.failure(Exception("请求超时，请稍后重试", e))
+            } catch (e: java.net.ConnectException) {
+                Result.failure(Exception("无法连接到服务器，请稍后重试", e))
+            } catch (e: java.net.SocketException) {
+                Result.failure(Exception("网络连接异常，请检查网络设置", e))
             } catch (e: Exception) {
                 Result.failure(Exception("DeepSeek 解析失败: ${e.message}", e))
             }
@@ -127,6 +147,8 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                 Result.failure(Exception("无法连接服务器，请检查网络"))
             } catch (e: java.net.SocketTimeoutException) {
                 Result.failure(Exception("连接超时"))
+            } catch (e: java.net.ConnectException) {
+                Result.failure(Exception("服务器连接失败"))
             } catch (e: Exception) {
                 Result.failure(Exception("网络错误: ${e.message}"))
             }
@@ -173,6 +195,9 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                     )
                 )
             }
+        } catch (e: org.json.JSONException) {
+            e.printStackTrace()
+            // 在这里可以添加错误处理逻辑，比如记录错误或返回默认值
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -180,4 +205,119 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
     }
     
     override fun getProviderName(): String = "DeepSeek V3.2"
+    
+    /**
+     * 根据任务信息生成子任务
+     */
+    suspend fun generateSubTasks(
+        apiKey: String, 
+        task: Task, 
+        additionalContext: String = ""
+    ): Result<List<String>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+                
+                val systemPrompt = """
+# Role: 任务拆解专家
+# Context: Now = $currentDate
+# Goal: 将复杂任务拆解为具体可执行的子任务步骤
+
+# Task Info
+- 任务标题: ${task.title}
+- 任务描述: ${task.description ?: "无"}
+- 任务类型: ${task.type.name}
+- 开始时间: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(task.startTime))}
+- 截止时间: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(task.deadline))}
+
+# Rules
+1. **拆解原则**: 每个子任务应该是具体、可执行、可验证的行动步骤
+2. **时间考虑**: 考虑任务的时间跨度，合理安排子任务的先后顺序
+3. **实用性**: 子任务必须与主任务紧密相关，对完成主任务有实际帮助
+4. **意义性**: 子任务需要结合任务具体内容，合适合理，避免空洞抽象
+5. **数量控制**: 
+   - 复杂任务: 生成 3-8 个子任务
+   - 简单任务: 如果任务本身简单（如"买菜"、"开会"等），返回空列表
+6. **格式要求**: 每行一个子任务，使用简洁明确的动词开头
+7. **关联性**: 每个子任务必须与主任务内容紧密相关，不能脱离主任务
+
+# Additional Context
+${if (additionalContext.isNotBlank()) additionalContext else "用户未提供额外说明"}
+
+# Output
+直接输出子任务列表，每行一个，无需编号或格式化：
+                """.trimIndent()
+                
+                val requestBody = JSONObject().apply {
+                    put("model", "deepseek-chat")
+                    put("messages", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("role", "system")
+                            put("content", systemPrompt)
+                        })
+                        put(JSONObject().apply {
+                            put("role", "user")
+                            put("content", "请为这个任务生成合适的子任务步骤，如果任务本身简单无需拆解则返回空列表")
+                        })
+                    })
+                    put("temperature", 0.7)
+                    put("max_tokens", 800)
+                }
+                
+                val request = Request.Builder()
+                    .url(baseUrl)
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .addHeader("Content-Type", "application/json")
+                    .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                
+                val response = client.newCall(request).execute()
+                
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string()
+                    val errorMessage = if (errorBody != null && errorBody.isNotEmpty()) {
+                        "API 请求失败: ${response.code} - $errorBody"
+                    } else {
+                        "API 请求失败: ${response.code} ${response.message}"
+                    }
+                    return@withContext Result.failure(Exception(errorMessage))
+                }
+                
+                val responseBody = response.body?.string() ?: return@withContext Result.failure(Exception("响应为空"))
+                val jsonResponse = JSONObject(responseBody)
+                
+                val content = jsonResponse
+                    .getJSONArray("choices")
+                    .getJSONObject(0)
+                    .getJSONObject("message")
+                    .getString("content")
+                
+                // 解析子任务列表
+                val subTasks = content.split("\n")
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() && !it.startsWith("#") && !it.startsWith("-") }
+                    .map { 
+                        // 移除可能的编号前缀
+                        it.replace(Regex("^\\d+\\.\\s*"), "")
+                          .replace(Regex("^[•·]\\s*"), "")
+                          .trim()
+                    }
+                    .filter { it.isNotBlank() }
+                    .takeIf { it.isNotEmpty() } ?: emptyList() // 如果列表为空，返回空列表而不是创建任务
+                
+                Result.success(subTasks)
+                
+            } catch (e: org.json.JSONException) {
+                Result.failure(Exception("子任务 JSON 解析失败: ${e.message}", e))
+            } catch (e: java.net.UnknownHostException) {
+                Result.failure(Exception("子任务生成失败：网络连接失败，请检查网络设置", e))
+            } catch (e: java.net.SocketTimeoutException) {
+                Result.failure(Exception("子任务生成失败：请求超时，请稍后重试", e))
+            } catch (e: java.net.ConnectException) {
+                Result.failure(Exception("子任务生成失败：无法连接到服务器，请稍后重试", e))
+            } catch (e: Exception) {
+                Result.failure(Exception("子任务生成失败: ${e.message}", e))
+            }
+        }
+    }
 }

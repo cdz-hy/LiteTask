@@ -131,6 +131,9 @@ dependencies {
     
     // Security
     implementation(libs.androidx.security.crypto)
+    
+    // Reorderable list for drag and drop
+    implementation("org.burnoutcrew.composereorderable:reorderable:0.9.6")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
