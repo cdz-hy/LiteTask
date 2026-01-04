@@ -47,6 +47,19 @@ object WidgetUpdateHelper {
     }
     
     /**
+     * 强制刷新所有小组件（包括清除缓存）
+     * 
+     * 用于主题切换等需要完全重新渲染的场景
+     */
+    fun forceRefreshAllWidgets(context: Context) {
+        // 先发送广播刷新
+        sendRefreshBroadcast(context)
+        
+        // 再直接调用刷新方法
+        refreshAllWidgets(context)
+    }
+    
+    /**
      * 发送广播刷新所有小组件
      * 
      * 用于从非 UI 线程或 Service 中触发刷新

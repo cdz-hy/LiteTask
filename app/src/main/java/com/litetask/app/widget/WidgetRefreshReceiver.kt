@@ -11,8 +11,9 @@ import android.content.Intent
  * - 设备开机完成
  * - 时区变化
  * - 日期变化（午夜）
+ * - 配置变化（包括夜间模式切换）
  * 
- * 这确保小组件在系统状态变化后显示正确的数据
+ * 这确保小组件在系统状态变化后显示正确的数据和主题
  */
 class WidgetRefreshReceiver : BroadcastReceiver() {
     
@@ -21,7 +22,8 @@ class WidgetRefreshReceiver : BroadcastReceiver() {
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_TIMEZONE_CHANGED,
             Intent.ACTION_DATE_CHANGED,
-            Intent.ACTION_TIME_CHANGED -> {
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_CONFIGURATION_CHANGED -> {
                 // 刷新所有小组件
                 WidgetUpdateHelper.refreshAllWidgets(context)
             }

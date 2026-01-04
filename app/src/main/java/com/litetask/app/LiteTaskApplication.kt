@@ -1,6 +1,7 @@
 package com.litetask.app
 
 import android.app.Application
+import android.content.res.Configuration
 import android.util.Log
 import com.litetask.app.data.local.AppDatabase
 import com.litetask.app.reminder.NotificationHelper
@@ -107,5 +108,18 @@ class LiteTaskApplication : Application() {
     
     companion object {
         private const val TAG = "LiteTaskApplication"
+    }
+    
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // 当系统配置变化时（包括夜间模式切换），强制刷新所有widget
+        applicationScope.launch(Dispatchers.Main) {
+            try {
+                WidgetUpdateHelper.forceRefreshAllWidgets(this@LiteTaskApplication)
+                Log.d(TAG, "Widgets force refreshed due to configuration change")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error force refreshing widgets on config change: ${e.message}", e)
+            }
+        }
     }
 }
