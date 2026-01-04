@@ -14,11 +14,8 @@ import android.widget.RemoteViews
 import android.widget.Toast
 import com.litetask.app.MainActivity
 import com.litetask.app.R
-import com.litetask.app.data.local.AppDatabase
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlin.concurrent.thread
 
 /**
  * 任务列表小组件 Provider
@@ -37,8 +34,6 @@ class TaskListWidgetProvider : AppWidgetProvider() {
         const val ACTION_TOGGLE_TASK = "com.litetask.app.widget.ACTION_TOGGLE_TASK"
         const val ACTION_REFRESH = "com.litetask.app.widget.ACTION_REFRESH_TASK_LIST"
         const val EXTRA_TASK_ID = "extra_task_id"
-        
-        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         
         /**
          * 刷新所有任务列表小组件（强制立即刷新）
@@ -136,10 +131,9 @@ class TaskListWidgetProvider : AppWidgetProvider() {
     }
     
     private fun handleToggleTask(context: Context, taskId: Long, pendingResult: PendingResult) {
-        scope.launch(Dispatchers.IO) {
+        // 使用新线程 + runBlocking，确保在 App 进程被杀后也能正常执行
+        thread {
             try {
-                val dao = AppDatabase.getInstance(context).taskDao()
-                
                 Log.d("TaskListWidget", "handleToggleTask: taskId=$taskId, isJustCompleted=${TaskListWidgetService.isJustCompleted(taskId)}")
                 
                 // 检查是否是刚完成的任务（需要撤销）
@@ -147,37 +141,38 @@ class TaskListWidgetProvider : AppWidgetProvider() {
                     // 先从缓存中移除，确保下次刷新时显示未完成状态
                     TaskListWidgetService.undoTaskCompletion(taskId)
                     
-                    // 立即刷新任务列表小组件（只刷新这一个，响应更快）
+                    // 立即刷新任务列表小组件
                     Handler(Looper.getMainLooper()).post {
                         refreshAllWidgets(context)
                     }
                     
-                    // 撤销完成操作（数据库操作在后台进行）
-                    val success = WidgetDataProvider.markTaskUndone(context, taskId)
+                    // 撤销完成操作（同步执行）
+                    val success = runBlocking {
+                        WidgetDataProvider.markTaskUndone(context, taskId)
+                    }
+                    
                     if (success) {
                         Log.d("TaskListWidget", "Task undone: $taskId")
                         
-                        // 显示撤销提示
                         Handler(Looper.getMainLooper()).post {
                             Toast.makeText(
                                 context,
                                 context.getString(R.string.widget_task_undone),
                                 Toast.LENGTH_SHORT
                             ).show()
-                            // 刷新其他小组件
                             GanttWidgetProvider.refreshAllWidgets(context)
                             DeadlineWidgetProvider.refreshAllWidgets(context)
                         }
                     } else {
                         // 恢复缓存（撤销失败）
-                        val task = dao.getTaskById(taskId)
+                        val task = runBlocking { WidgetDataProvider.getTaskById(context, taskId) }
                         if (task != null) {
                             TaskListWidgetService.markTaskAsJustCompleted(task)
                         }
                         
                         Log.e("TaskListWidget", "Failed to undo task: $taskId")
                         Handler(Looper.getMainLooper()).post {
-                            refreshAllWidgets(context) // 恢复显示
+                            refreshAllWidgets(context)
                             Toast.makeText(
                                 context,
                                 context.getString(R.string.widget_task_complete_failed),
@@ -187,7 +182,7 @@ class TaskListWidgetProvider : AppWidgetProvider() {
                     }
                 } else {
                     // 标记完成操作
-                    val task = dao.getTaskById(taskId)
+                    val task = runBlocking { WidgetDataProvider.getTaskById(context, taskId) }
                     
                     Log.d("TaskListWidget", "Task found: ${task?.title}, isDone=${task?.isDone}")
                     
@@ -195,30 +190,31 @@ class TaskListWidgetProvider : AppWidgetProvider() {
                         // 先缓存任务数据，确保刷新时立即显示完成状态
                         TaskListWidgetService.markTaskAsJustCompleted(task)
                         
-                        // 立即刷新任务列表小组件（只刷新这一个，响应更快）
+                        // 立即刷新任务列表小组件
                         Handler(Looper.getMainLooper()).post {
                             refreshAllWidgets(context)
                         }
                         
-                        // 数据库操作在后台进行
-                        val success = WidgetDataProvider.markTaskDone(context, taskId)
+                        // 数据库操作（同步执行）
+                        val success = runBlocking {
+                            WidgetDataProvider.markTaskDone(context, taskId)
+                        }
+                        
                         if (success) {
                             Log.d("TaskListWidget", "Task marked done: $taskId")
                             
-                            // 显示完成提示
                             Handler(Looper.getMainLooper()).post {
                                 Toast.makeText(
                                     context,
                                     context.getString(R.string.widget_task_completed),
                                     Toast.LENGTH_SHORT
                                 ).show()
-                                // 刷新其他小组件
                                 GanttWidgetProvider.refreshAllWidgets(context)
                                 DeadlineWidgetProvider.refreshAllWidgets(context)
                             }
                             
                             // 2秒后再次刷新，将已完成任务从列表移除
-                            kotlinx.coroutines.delay(2000)
+                            Thread.sleep(2000)
                             Handler(Looper.getMainLooper()).post {
                                 refreshAllWidgets(context)
                                 GanttWidgetProvider.refreshAllWidgets(context)
@@ -230,7 +226,7 @@ class TaskListWidgetProvider : AppWidgetProvider() {
                             
                             Log.e("TaskListWidget", "Failed to mark task done: $taskId")
                             Handler(Looper.getMainLooper()).post {
-                                refreshAllWidgets(context) // 恢复显示
+                                refreshAllWidgets(context)
                                 Toast.makeText(
                                     context,
                                     context.getString(R.string.widget_task_complete_failed),

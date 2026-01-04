@@ -16,6 +16,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     
     companion object {
+        // 数据库名称必须与 DatabaseModule 中的一致
+        private const val DATABASE_NAME = "litetask.db"
+        
         @Volatile
         private var INSTANCE: AppDatabase? = null
         
@@ -25,13 +28,17 @@ abstract class AppDatabase : RoomDatabase() {
          */
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "litetask_database"
-                ).build()
-                INSTANCE = instance
-                instance
+                INSTANCE ?: run {
+                    val instance = Room.databaseBuilder(
+                        context.applicationContext,
+                        AppDatabase::class.java,
+                        DATABASE_NAME
+                    )
+                        .fallbackToDestructiveMigration()
+                        .build()
+                    INSTANCE = instance
+                    instance
+                }
             }
         }
         

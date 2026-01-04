@@ -1,5 +1,6 @@
 package com.litetask.app.widget
 
+import android.os.Binder
 import android.util.Log
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
@@ -24,8 +25,10 @@ object WidgetDataProvider {
     
     /**
      * 标记任务完成
+     * 使用 Binder.clearCallingIdentity() 确保在 App 进程被杀后也能正常访问数据库
      */
     suspend fun markTaskDone(context: android.content.Context, taskId: Long): Boolean {
+        val identityToken = Binder.clearCallingIdentity()
         return try {
             val dao = com.litetask.app.data.local.AppDatabase.getInstance(context).taskDao()
             val task = dao.getTaskById(taskId)
@@ -42,14 +45,17 @@ object WidgetDataProvider {
         } catch (e: Exception) {
             Log.e(TAG, "Error marking task done: $taskId", e)
             false
+        } finally {
+            Binder.restoreCallingIdentity(identityToken)
         }
     }
     
     /**
      * 撤销任务完成（标记为未完成）
-     * 注意：此方法用于撤销刚刚完成的任务，不检查当前状态直接设为未完成
+     * 使用 Binder.clearCallingIdentity() 确保在 App 进程被杀后也能正常访问数据库
      */
     suspend fun markTaskUndone(context: android.content.Context, taskId: Long): Boolean {
+        val identityToken = Binder.clearCallingIdentity()
         return try {
             val dao = com.litetask.app.data.local.AppDatabase.getInstance(context).taskDao()
             val task = dao.getTaskById(taskId)
@@ -67,6 +73,24 @@ object WidgetDataProvider {
         } catch (e: Exception) {
             Log.e(TAG, "Error marking task undone: $taskId", e)
             false
+        } finally {
+            Binder.restoreCallingIdentity(identityToken)
+        }
+    }
+    
+    /**
+     * 获取任务（带 Binder 身份清理）
+     */
+    suspend fun getTaskById(context: android.content.Context, taskId: Long): Task? {
+        val identityToken = Binder.clearCallingIdentity()
+        return try {
+            val dao = com.litetask.app.data.local.AppDatabase.getInstance(context).taskDao()
+            dao.getTaskById(taskId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting task: $taskId", e)
+            null
+        } finally {
+            Binder.restoreCallingIdentity(identityToken)
         }
     }
     
