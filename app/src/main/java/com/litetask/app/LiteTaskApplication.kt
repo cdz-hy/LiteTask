@@ -5,6 +5,7 @@ import android.util.Log
 import com.litetask.app.data.local.AppDatabase
 import com.litetask.app.reminder.NotificationHelper
 import com.litetask.app.reminder.ReminderScheduler
+import com.litetask.app.widget.WidgetUpdateHelper
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +30,25 @@ class LiteTaskApplication : Application() {
         // 恢复所有待触发的提醒
         // 这是为了应对小米等国产 ROM 在杀后台时清除 AlarmManager 的问题
         restoreReminders()
+        
+        // 刷新所有小组件
+        refreshWidgets()
+    }
+    
+    /**
+     * 刷新所有小组件
+     * 
+     * 应用启动时刷新小组件数据，确保显示最新状态
+     */
+    private fun refreshWidgets() {
+        applicationScope.launch(Dispatchers.Main) {
+            try {
+                WidgetUpdateHelper.refreshAllWidgets(this@LiteTaskApplication)
+                Log.d(TAG, "Widgets refreshed on app start")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error refreshing widgets: ${e.message}", e)
+            }
+        }
     }
     
     /**

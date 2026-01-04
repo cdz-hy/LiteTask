@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/deadline_item_container"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/widget_item_background"
+    android:paddingHorizontal="8dp"
+    android:paddingVertical="6dp"
+    android:layout_marginTop="1dp"
+    android:layout_marginBottom="3dp">
+
+    <!-- 倒计时区域（与preview样式一致） -->
+    <LinearLayout
+        android:id="@+id/countdown_container"
+        android:layout_width="48dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="bottom|center_horizontal">
+
+        <TextView
+            android:id="@+id/countdown_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/on_surface"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            tools:text="3" />
+
+        <TextView
+            android:id="@+id/countdown_unit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="1dp"
+            android:layout_marginBottom="2dp"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="9sp"
+            tools:text="小时" />
+    </LinearLayout>
+
+    <!-- 类型指示条 -->
+    <ImageView
+        android:id="@+id/type_indicator"
+        android:layout_width="3dp"
+        android:layout_height="32dp"
+        android:layout_marginStart="6dp"
+        android:src="@drawable/widget_type_indicator_work"
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
+
+    <!-- 内容 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="8dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/task_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/on_surface"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            tools:text="前端界面开发" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <!-- 任务类型标签 -->
+            <TextView
+                android:id="@+id/type_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="4dp"
+                android:paddingVertical="1dp"
+                android:background="@drawable/widget_badge_work"
+                android:textColor="@android:color/white"
+                android:textSize="8sp"
+                tools:text="工作" />
+
+            <TextView
+                android:id="@+id/deadline_time"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:textColor="@color/on_surface_variant"
+                android:textSize="9sp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                tools:text="今天 18:00" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

@@ -8,6 +8,7 @@ import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.repository.TaskRepositoryImpl
 import com.litetask.app.data.repository.AIRepository
+import com.litetask.app.widget.WidgetUpdateHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -551,7 +552,10 @@ class HomeViewModel @Inject constructor(
     // ==================== 任务 CRUD 操作 ====================
     
     fun addTask(task: Task) {
-        viewModelScope.launch { taskRepository.insertTask(task) }
+        viewModelScope.launch { 
+            taskRepository.insertTask(task)
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
     }
     
     /** 添加任务并设置提醒 */
@@ -564,6 +568,7 @@ class HomeViewModel @Inject constructor(
                 } else null
             }
             taskRepository.insertTaskWithReminders(task, reminders)
+            WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
 
@@ -578,6 +583,7 @@ class HomeViewModel @Inject constructor(
                 taskRepository.updateTask(task)
                 _historyTasks.value = _historyTasks.value.filter { it.task.id != task.id }
             }
+            WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
     
@@ -587,6 +593,7 @@ class HomeViewModel @Inject constructor(
             if (task.isDone) {
                 taskRepository.markTaskDone(task)
                 refreshHistoryAfterCompletion()
+                WidgetUpdateHelper.refreshAllWidgets(application)
                 return@launch
             }
             
@@ -598,11 +605,15 @@ class HomeViewModel @Inject constructor(
             }
             taskRepository.updateTaskWithReminders(task, reminders)
             _historyTasks.value = _historyTasks.value.filter { it.task.id != task.id }
+            WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
 
     fun deleteTask(task: Task) {
-        viewModelScope.launch { taskRepository.deleteTaskWithReminders(task) }
+        viewModelScope.launch { 
+            taskRepository.deleteTaskWithReminders(task)
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
     }
     
     /** 任务完成后刷新历史列表 */

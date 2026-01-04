@@ -34,6 +34,10 @@
     <color name="health_task">#FF410E0B</color>
     <color name="study_task">#FF65558F</color>
     <color name="urgent_task">#FFB3261E</color>
+    <color name="warning_color">#FFFF9800</color>
+    
+    <!-- 表面变体颜色 -->
+    <color name="surface_variant">#FFE7E0EC</color>
 
     <!-- 其他辅助颜色 -->
     <color name="indigo_600">#FF4F46E5</color>
