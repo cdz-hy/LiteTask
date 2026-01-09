@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/task_item_container"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/widget_item_background"
+    android:paddingHorizontal="10dp"
+    android:paddingVertical="8dp"
+    android:layout_marginTop="1dp"
+    android:layout_marginBottom="3dp">
+
+    <!-- 类型指示条 -->
+    <ImageView
+        android:id="@+id/type_indicator"
+        android:layout_width="3dp"
+        android:layout_height="24dp"
+        android:src="@drawable/widget_type_indicator_work"
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
+
+    <!-- 内容区 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="6dp">
+
+        <TextView
+            android:id="@+id/task_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/on_surface"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            tools:text="完成项目报告" />
+
+        <TextView
+            android:id="@+id/task_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="10sp"
+            android:maxLines="1"
+            tools:text="14:00 - 16:00" />
+    </LinearLayout>
+
+    <!-- 置顶图标 -->
+    <ImageView
+        android:id="@+id/pin_icon"
+        android:layout_width="12dp"
+        android:layout_height="12dp"
+        android:layout_marginEnd="4dp"
+        android:src="@drawable/ic_widget_pin"
+        android:visibility="gone"
+        android:contentDescription="@null" />
+
+    <!-- 紧急标签 -->
+    <TextView
+        android:id="@+id/urgent_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="6dp"
+        android:paddingHorizontal="4dp"
+        android:paddingVertical="1dp"
+        android:background="@drawable/widget_urgent_badge"
+        android:text="@string/widget_urgent_24h"
+        android:textColor="@android:color/white"
+        android:textSize="8sp"
+        android:visibility="gone" />
+
+    <!-- 完成按钮 -->
+    <ImageView
+        android:id="@+id/checkbox"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:src="@drawable/widget_checkbox_unchecked"
+        android:contentDescription="@string/mark_complete" />
+
+</LinearLayout>

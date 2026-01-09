@@ -8,6 +8,7 @@ import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.repository.TaskRepositoryImpl
 import com.litetask.app.data.repository.AIRepository
+import com.litetask.app.widget.WidgetUpdateHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -551,7 +552,10 @@ class HomeViewModel @Inject constructor(
     // ==================== 任务 CRUD 操作 ====================
     
     fun addTask(task: Task) {
-        viewModelScope.launch { taskRepository.insertTask(task) }
+        viewModelScope.launch { 
+            taskRepository.insertTask(task)
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
     }
     
     /** 添加任务并设置提醒 */
@@ -564,6 +568,7 @@ class HomeViewModel @Inject constructor(
                 } else null
             }
             taskRepository.insertTaskWithReminders(task, reminders)
+            WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
 
@@ -578,6 +583,7 @@ class HomeViewModel @Inject constructor(
                 taskRepository.updateTask(task)
                 _historyTasks.value = _historyTasks.value.filter { it.task.id != task.id }
             }
+            WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
     
@@ -587,6 +593,7 @@ class HomeViewModel @Inject constructor(
             if (task.isDone) {
                 taskRepository.markTaskDone(task)
                 refreshHistoryAfterCompletion()
+                WidgetUpdateHelper.refreshAllWidgets(application)
                 return@launch
             }
             
@@ -598,11 +605,15 @@ class HomeViewModel @Inject constructor(
             }
             taskRepository.updateTaskWithReminders(task, reminders)
             _historyTasks.value = _historyTasks.value.filter { it.task.id != task.id }
+            WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
 
     fun deleteTask(task: Task) {
-        viewModelScope.launch { taskRepository.deleteTaskWithReminders(task) }
+        viewModelScope.launch { 
+            taskRepository.deleteTaskWithReminders(task)
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
     }
     
     /** 任务完成后刷新历史列表 */
@@ -643,6 +654,217 @@ class HomeViewModel @Inject constructor(
     fun dismissAiResult() {
         _uiState.value = _uiState.value.copy(showAiResult = false, aiParsedTasks = emptyList())
     }
+    
+    // ==================== AI 子任务生成 ====================
+    
+    /**
+     * 生成子任务（快速模式）
+     */
+    fun generateSubTasks(task: Task) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isAnalyzing = true)
+            
+            val apiKey = preferenceManager.getApiKey()
+            if (apiKey.isNullOrBlank()) {
+                _uiState.value = _uiState.value.copy(
+                    isAnalyzing = false,
+                    showAiError = true,
+                    aiErrorMessage = application.getString(R.string.error_api_key_not_set)
+                )
+                return@launch
+            }
+            
+            try {
+                // 获取用户配置的 AI 提供商
+                val providerId = preferenceManager.getAiProvider()
+                val deepSeekProvider = com.litetask.app.data.ai.DeepSeekProvider()
+                val providerFactory = com.litetask.app.data.ai.AIProviderFactory(deepSeekProvider)
+                val provider = providerFactory.getProvider(providerId) as? com.litetask.app.data.ai.DeepSeekProvider
+                
+                if (provider == null) {
+                    _uiState.value = _uiState.value.copy(
+                        isAnalyzing = false,
+                        showAiError = true,
+                        aiErrorMessage = "当前 AI 提供商不支持子任务生成"
+                    )
+                    return@launch
+                }
+                
+                val result = provider.generateSubTasks(apiKey, task)
+                
+                result.onSuccess { subTasks ->
+                    _uiState.value = _uiState.value.copy(
+                        isAnalyzing = false,
+                        showSubTaskResult = true,
+                        generatedSubTasks = subTasks,
+                        currentTask = task
+                    )
+                }.onFailure { error ->
+                    val errorMessage = parseAiError(error.message ?: "")
+                    _uiState.value = _uiState.value.copy(
+                        isAnalyzing = false,
+                        showAiError = true,
+                        aiErrorMessage = errorMessage
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isAnalyzing = false,
+                    showAiError = true,
+                    aiErrorMessage = "子任务生成失败: ${e.message}"
+                )
+            }
+        }
+    }
+    
+    /**
+     * 生成子任务（详细模式）
+     */
+    fun generateSubTasksWithContext(task: Task, additionalContext: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isAnalyzing = true)
+            
+            val apiKey = preferenceManager.getApiKey()
+            if (apiKey.isNullOrBlank()) {
+                _uiState.value = _uiState.value.copy(
+                    isAnalyzing = false,
+                    showAiError = true,
+                    aiErrorMessage = application.getString(R.string.error_api_key_not_set)
+                )
+                return@launch
+            }
+            
+            try {
+                // 获取用户配置的 AI 提供商
+                val providerId = preferenceManager.getAiProvider()
+                val deepSeekProvider = com.litetask.app.data.ai.DeepSeekProvider()
+                val providerFactory = com.litetask.app.data.ai.AIProviderFactory(deepSeekProvider)
+                val provider = providerFactory.getProvider(providerId) as? com.litetask.app.data.ai.DeepSeekProvider
+                
+                if (provider == null) {
+                    _uiState.value = _uiState.value.copy(
+                        isAnalyzing = false,
+                        showAiError = true,
+                        aiErrorMessage = "当前 AI 提供商不支持子任务生成"
+                    )
+                    return@launch
+                }
+                
+                val result = provider.generateSubTasks(apiKey, task, additionalContext)
+                
+                result.onSuccess { subTasks ->
+                    _uiState.value = _uiState.value.copy(
+                        isAnalyzing = false,
+                        showSubTaskResult = true,
+                        generatedSubTasks = subTasks,
+                        currentTask = task,
+                        showSubTaskInput = false
+                    )
+                }.onFailure { error ->
+                    val errorMessage = parseAiError(error.message ?: "")
+                    _uiState.value = _uiState.value.copy(
+                        isAnalyzing = false,
+                        showAiError = true,
+                        aiErrorMessage = errorMessage,
+                        showSubTaskInput = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isAnalyzing = false,
+                    showAiError = true,
+                    aiErrorMessage = "子任务生成失败: ${e.message}",
+                    showSubTaskInput = false
+                )
+            }
+        }
+    }
+    
+    /**
+     * 解析 AI 错误信息
+     */
+    private fun parseAiError(errorMsg: String): String {
+        return when {
+            errorMsg.contains("API Key 无效") -> 
+                application.getString(R.string.error_api_key_invalid)
+            errorMsg.contains("未设置 API Key") -> 
+                application.getString(R.string.error_api_key_not_set)
+            errorMsg.contains("权限不足") -> 
+                application.getString(R.string.error_api_key_permission)
+            errorMsg.contains("请求过于频繁") -> 
+                application.getString(R.string.error_rate_limit)
+            errorMsg.contains("无法连接") || errorMsg.contains("网络") -> 
+                application.getString(R.string.error_network)
+            errorMsg.contains("超时") -> 
+                application.getString(R.string.error_timeout)
+            errorMsg.contains("未能生成有效的子任务") -> 
+                "AI 无法为该任务生成有效的子任务。请尝试：\n• 提供更详细的任务描述\n• 使用长按详细输入模式\n• 稍后重试"
+            errorMsg.contains("生成的子任务数量不足") -> 
+                "任务可能过于简单或描述不够详细。建议：\n• 确认任务是否需要拆解\n• 提供更多任务背景信息\n• 使用详细输入模式"
+            errorMsg.contains("响应格式错误") || errorMsg.contains("响应格式异常") -> 
+                "AI 响应格式异常，请稍后重试"
+            errorMsg.contains("API 错误") -> 
+                "AI 服务出现问题，请稍后重试"
+            errorMsg.contains("当前 AI 提供商不支持") -> 
+                "当前 AI 提供商不支持子任务生成功能"
+            else -> errorMsg.ifEmpty { "AI 分析失败，请稍后重试" }
+        }
+    }
+    
+    /**
+     * 显示子任务详细输入对话框
+     */
+    fun showSubTaskInputDialog(task: Task) {
+        _uiState.value = _uiState.value.copy(
+            showSubTaskInput = true,
+            currentTask = task
+        )
+    }
+    
+    /**
+     * 关闭子任务输入对话框
+     */
+    fun dismissSubTaskInput() {
+        _uiState.value = _uiState.value.copy(showSubTaskInput = false, currentTask = null)
+    }
+    
+    /**
+     * 确认添加生成的子任务
+     */
+    fun confirmAddSubTasks(subTasks: List<String>) {
+        val currentTask = _uiState.value.currentTask
+        
+        if (currentTask != null && subTasks.isNotEmpty()) {
+            viewModelScope.launch {
+                subTasks.forEach { content ->
+                    taskRepository.insertSubTask(
+                        SubTask(
+                            taskId = currentTask.id,
+                            content = content,
+                            isCompleted = false
+                        )
+                    )
+                }
+            }
+        }
+        
+        _uiState.value = _uiState.value.copy(
+            showSubTaskResult = false,
+            generatedSubTasks = emptyList(),
+            currentTask = null
+        )
+    }
+    
+    /**
+     * 取消子任务生成结果
+     */
+    fun dismissSubTaskResult() {
+        _uiState.value = _uiState.value.copy(
+            showSubTaskResult = false,
+            generatedSubTasks = emptyList(),
+            currentTask = null
+        )
+    }
 }
 
 data class HomeUiState(
@@ -657,7 +879,13 @@ data class HomeUiState(
     val aiParsedTasks: List<Task> = emptyList(),
     val recognizedText: String = "",        // 实时识别的文字
     val finalRecognizedText: String = "",   // 最终识别结果
-    val recordingState: com.litetask.app.util.RecordingState = com.litetask.app.util.RecordingState.IDLE
+    val recordingState: com.litetask.app.util.RecordingState = com.litetask.app.util.RecordingState.IDLE,
+    
+    // 子任务生成相关
+    val showSubTaskInput: Boolean = false,  // 显示子任务详细输入对话框
+    val showSubTaskResult: Boolean = false, // 显示子任务生成结果
+    val generatedSubTasks: List<String> = emptyList(), // 生成的子任务列表
+    val currentTask: Task? = null           // 当前处理的任务
 )
 
 // 检查 API Key 结果

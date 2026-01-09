@@ -37,7 +37,7 @@
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.LiteTask"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -67,6 +67,83 @@
             android:name=".reminder.FloatingReminderService"
             android:exported="false"
             android:enabled="true" />
+        
+        <!-- ========== 小组件 ========== -->
+        
+        <!-- 任务列表小组件 Provider -->
+        <receiver
+            android:name=".widget.TaskListWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_task_list_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.litetask.app.widget.ACTION_TOGGLE_TASK" />
+                <action android:name="com.litetask.app.widget.ACTION_REFRESH_TASK_LIST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_task_list_info" />
+        </receiver>
+        
+        <!-- 任务列表小组件 Service -->
+        <service
+            android:name=".widget.TaskListWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+        
+        <!-- 甘特图小组件 Provider -->
+        <receiver
+            android:name=".widget.GanttWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_gantt_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.litetask.app.widget.ACTION_REFRESH_GANTT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_gantt_info" />
+        </receiver>
+        
+        <!-- 甘特图小组件 Service -->
+        <service
+            android:name=".widget.GanttWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+        
+        <!-- 截止提醒小组件 Provider -->
+        <receiver
+            android:name=".widget.DeadlineWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_deadline_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.litetask.app.widget.ACTION_REFRESH_DEADLINE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_deadline_info" />
+        </receiver>
+        
+        <!-- 截止提醒小组件 Service -->
+        <service
+            android:name=".widget.DeadlineWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+        
+        <!-- 小组件刷新广播接收器 -->
+        <receiver
+            android:name=".widget.WidgetRefreshReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.CONFIGURATION_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

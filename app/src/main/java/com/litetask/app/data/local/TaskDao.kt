@@ -5,6 +5,7 @@ import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.TaskDetailComposite
+import com.litetask.app.data.model.TaskProgress
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -161,4 +162,101 @@ interface TaskDao {
     // 同步获取提醒
     @Query("SELECT * FROM reminders WHERE id = :id")
     suspend fun getReminderByIdSync(id: Long): Reminder?
+    
+    // ========== Widget 专用查询方法 ==========
+    
+    /**
+     * 同步获取所有未完成任务（用于任务列表小组件）
+     * 排序：置顶优先 -> 开始时间 -> 截止时间
+     */
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE is_done = 0 
+        ORDER BY is_pinned DESC, start_time ASC, deadline ASC
+    """)
+    suspend fun getActiveTasksSync(): List<Task>
+    
+    /**
+     * 同步获取今日任务（用于甘特图小组件）
+     * 包括：今天开始的任务 或 今天截止的任务 或 跨越今天的任务
+     */
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE is_done = 0 
+        AND (
+            (start_time >= :startOfDay AND start_time < :endOfDay)
+            OR (deadline >= :startOfDay AND deadline < :endOfDay)
+            OR (start_time < :startOfDay AND deadline >= :endOfDay)
+        )
+        ORDER BY start_time ASC, deadline ASC
+    """)
+    suspend fun getTodayTasksSyncWithRange(startOfDay: Long, endOfDay: Long): List<Task>
+    
+    /**
+     * 获取今日任务完成进度
+     * @return Pair<已完成数, 总数>
+     */
+    @Query("""
+        SELECT 
+            SUM(CASE WHEN is_done = 1 THEN 1 ELSE 0 END) as done,
+            COUNT(*) as total
+        FROM tasks 
+        WHERE (
+            (start_time >= :startOfDay AND start_time < :endOfDay)
+            OR (deadline >= :startOfDay AND deadline < :endOfDay)
+            OR (start_time < :startOfDay AND deadline >= :endOfDay)
+        )
+    """)
+    suspend fun getTodayTasksProgressWithRange(startOfDay: Long, endOfDay: Long): TaskProgress?
+    
+    /**
+     * 同步获取即将截止的任务（用于截止提醒小组件）
+     * 按截止时间排序，最紧急的在前
+     */
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE is_done = 0 AND deadline > :currentTime
+        ORDER BY deadline ASC
+        LIMIT :limit
+    """)
+    suspend fun getUpcomingDeadlinesSyncWithTime(currentTime: Long, limit: Int): List<Task>
+    
+    /**
+     * 获取最紧急的未完成任务
+     */
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE is_done = 0 AND deadline > :currentTime
+        ORDER BY deadline ASC
+        LIMIT 1
+    """)
+    suspend fun getMostUrgentTaskSyncWithTime(currentTime: Long): Task?
+    
+    /**
+     * 获取所有任务（包括已完成的）用于小组件显示完成状态
+     * 排序：未完成优先 -> 置顶优先 -> 开始时间 -> 截止时间
+     * 限制返回最近完成的任务（用于显示完成动画效果）
+     */
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE is_done = 0 
+        ORDER BY is_pinned DESC, start_time ASC, deadline ASC
+        LIMIT 20
+    """)
+    suspend fun getActiveTasksWithRecentlyCompletedSync(): List<Task>
+    
+    /**
+     * 同步获取今日相关的所有任务（包括已完成的，用于甘特图小组件）
+     * 包括：今天开始的任务 或 今天截止的任务 或 跨越今天的任务
+     */
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE (
+            (start_time >= :startOfDay AND start_time < :endOfDay)
+            OR (deadline >= :startOfDay AND deadline < :endOfDay)
+            OR (start_time < :startOfDay AND deadline >= :endOfDay)
+        )
+        ORDER BY is_done ASC, start_time ASC, deadline ASC
+    """)
+    suspend fun getTodayAllTasksSync(startOfDay: Long, endOfDay: Long): List<Task>
 }

@@ -300,4 +300,28 @@
     <string name="permission_battery_hint">建议设置为"无限制"以确保后台提醒正常</string>
     <string name="permission_autostart">自启动权限</string>
     <string name="permission_autostart_hint">部分手机需要开启自启动才能收到提醒</string>
+    
+    <!-- 小组件相关 -->
+    <string name="widget_task_list_title">待办</string>
+    <string name="widget_task_list_description">显示未完成的任务列表，支持快速标记完成</string>
+    <string name="widget_gantt_title">进度</string>
+    <string name="widget_gantt_description">以进度条形式显示今日任务进度</string>
+    <string name="widget_deadline_title">截止</string>
+    <string name="widget_deadline_description">显示即将截止的任务，提醒紧急事项</string>
+    <string name="widget_no_tasks">暂无待办</string>
+    <string name="widget_no_tasks_today">今日无任务</string>
+    <string name="widget_no_deadlines">暂无截止</string>
+    <string name="widget_urgent_24h">紧急</string>
+    <string name="widget_urgent_48h">临近</string>
+    <string name="widget_remaining_time">剩余</string>
+    <string name="widget_progress_format">%1$d/%2$d</string>
+    <string name="mark_complete">标记完成</string>
+    <string name="pinned">已置顶</string>
+    <string name="widget_task_completed">任务已完成</string>
+    <string name="widget_task_complete_failed">操作失败</string>
+    <string name="widget_task_undone">已撤销完成</string>
+    <string name="widget_task_not_started">任务未开始</string>
+    <string name="widget_task_in_progress">任务已开始 %1$d%%</string>
+    <string name="widget_task_ended">任务已结束</string>
+    <string name="widget_task_done">任务已完成</string>
 </resources>

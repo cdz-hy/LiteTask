@@ -53,6 +53,8 @@ import com.litetask.app.ui.components.AddTaskDialog
 import com.litetask.app.ui.components.DeadlineView
 import com.litetask.app.ui.components.GanttView
 import com.litetask.app.ui.components.TaskDetailSheet
+import com.litetask.app.ui.components.SubTaskInputDialog
+import com.litetask.app.ui.components.SubTaskConfirmationDialog
 import com.litetask.app.ui.components.TimelineView
 import com.litetask.app.ui.components.VoiceRecorderDialog
 import com.litetask.app.ui.components.TaskConfirmationSheet
@@ -531,7 +533,14 @@ fun HomeScreen(
                     },
                     onDeleteSubTask = { subTask ->
                         viewModel.deleteSubTask(subTask)
-                    }
+                    },
+                    onGenerateSubTasks = {
+                        viewModel.generateSubTasks(composite.task)
+                    },
+                    onGenerateSubTasksWithContext = { task ->
+                        viewModel.showSubTaskInputDialog(task)
+                    },
+                    isGeneratingSubTasks = uiState.isAnalyzing
                 )
             }
 
@@ -576,6 +585,36 @@ fun HomeScreen(
                         onNavigateToSettings()
                     }
                 )
+            }
+            
+            // 子任务详细输入对话框
+            if (uiState.showSubTaskInput) {
+                val currentTask = uiState.currentTask
+                if (currentTask != null) {
+                    SubTaskInputDialog(
+                        task = currentTask,
+                        onDismiss = { viewModel.dismissSubTaskInput() },
+                        onAnalyze = { context ->
+                            viewModel.generateSubTasksWithContext(currentTask, context)
+                        },
+                        isAnalyzing = uiState.isAnalyzing
+                    )
+                }
+            }
+            
+            // 子任务生成结果确认对话框
+            if (uiState.showSubTaskResult) {
+                val currentTask = uiState.currentTask
+                if (currentTask != null) {
+                    SubTaskConfirmationDialog(
+                        task = currentTask,
+                        subTasks = uiState.generatedSubTasks,
+                        onDismiss = { viewModel.dismissSubTaskResult() },
+                        onConfirm = { editedSubTasks -> 
+                            viewModel.confirmAddSubTasks(editedSubTasks)
+                        }
+                    )
+                }
             }
             
             // 语音识别错误提示对话框

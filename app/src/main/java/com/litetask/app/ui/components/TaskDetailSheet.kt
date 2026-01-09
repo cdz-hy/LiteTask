@@ -15,7 +15,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -56,6 +58,7 @@ import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.ui.components.AISparkle
 import com.litetask.app.ui.theme.LocalExtendedColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -99,7 +102,7 @@ private enum class SheetExpandState {
     FULL        // 全屏（不超过状态栏）
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TaskDetailSheet(
     task: Task,
@@ -110,7 +113,10 @@ fun TaskDetailSheet(
     onUpdateTask: (Task) -> Unit,
     onUpdateSubTask: (SubTask, Boolean) -> Unit,
     onAddSubTask: (String) -> Unit,
-    onDeleteSubTask: (SubTask) -> Unit
+    onDeleteSubTask: (SubTask) -> Unit,
+    onGenerateSubTasks: () -> Unit = {},
+    onGenerateSubTasksWithContext: (Task) -> Unit = {},
+    isGeneratingSubTasks: Boolean = false
 ) {
     val context = LocalContext.current
     val extendedColors = LocalExtendedColors.current
@@ -206,7 +212,7 @@ fun TaskDetailSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .pointerInput(Unit) {
-                                detectVerticalDragGestures(
+                                detectDragGestures(
                                     onDragStart = { dragAccumulator = 0f },
                                     onDragEnd = {
                                         // 根据拖拽方向和距离决定状态
@@ -227,8 +233,8 @@ fun TaskDetailSheet(
                                         }
                                         dragAccumulator = 0f
                                     },
-                                    onVerticalDrag = { _, dragAmount ->
-                                        dragAccumulator += dragAmount
+                                    onDrag = { _, dragAmount ->
+                                        dragAccumulator += dragAmount.y
                                     }
                                 )
                             }
@@ -352,7 +358,10 @@ fun TaskDetailSheet(
                             Spacer(modifier = Modifier.height(24.dp))
 
                             // 4. Subtasks Header
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 Text(
                                     text = stringResource(R.string.subtasks_steps),
                                     style = MaterialTheme.typography.titleMedium,
@@ -367,6 +376,40 @@ fun TaskDetailSheet(
                                         style = MaterialTheme.typography.labelMedium,
                                         color = Color.Gray
                                     )
+                                }
+                                
+                                Spacer(modifier = Modifier.weight(1f))
+                                
+                                // AI 子任务生成按钮
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(
+                                            themeColor.copy(alpha = 0.1f),
+                                            CircleShape
+                                        )
+                                        .combinedClickable(
+                                            onClick = { if (!isGeneratingSubTasks) onGenerateSubTasks() },
+                                            onLongClick = { if (!isGeneratingSubTasks) onGenerateSubTasksWithContext(task) },
+                                            indication = rememberRipple(bounded = false),
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isGeneratingSubTasks) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = themeColor,
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Filled.AISparkle,
+                                            contentDescription = "AI 生成子任务",
+                                            tint = themeColor,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
 
