@@ -233,17 +233,17 @@ interface TaskDao {
     suspend fun getMostUrgentTaskSyncWithTime(currentTime: Long): Task?
     
     /**
-     * 获取所有任务（包括已完成的）用于小组件显示完成状态
+     * 获取所有活跃任务（用于任务列表小组件）
      * 排序：未完成优先 -> 置顶优先 -> 开始时间 -> 截止时间
-     * 限制返回最近完成的任务（用于显示完成动画效果）
+     * 过滤：只显示未完成且未过期的任务
      */
     @Query("""
         SELECT * FROM tasks 
-        WHERE is_done = 0 
+        WHERE is_done = 0 AND deadline > :currentTime
         ORDER BY is_pinned DESC, start_time ASC, deadline ASC
         LIMIT 20
     """)
-    suspend fun getActiveTasksWithRecentlyCompletedSync(): List<Task>
+    suspend fun getActiveTasksWithRecentlyCompletedSync(currentTime: Long = System.currentTimeMillis()): List<Task>
     
     /**
      * 同步获取今日相关的所有任务（包括已完成的，用于甘特图小组件）

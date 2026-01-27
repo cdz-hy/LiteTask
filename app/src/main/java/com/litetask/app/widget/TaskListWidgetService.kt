@@ -127,8 +127,8 @@ class TaskListRemoteViewsFactory(
             runBlocking {
                 try {
                     val dao = AppDatabase.getInstance(context).taskDao()
-                    // 获取所有未完成任务
-                    val activeTasks = dao.getActiveTasksWithRecentlyCompletedSync().toMutableList()
+                    // 获取所有未完成且未过期的任务
+                    val activeTasks = dao.getActiveTasksWithRecentlyCompletedSync(System.currentTimeMillis()).toMutableList()
                     
                     Log.d("TaskListWidget", "Loaded ${activeTasks.size} active tasks")
                     
