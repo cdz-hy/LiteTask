@@ -110,30 +110,14 @@ class TaskListRemoteViewsFactory(
     private var justCompletedTaskIds: Set<Long> = emptySet()
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("MM/dd", Locale.getDefault())
-    private var lastLoadTime = 0L
-    private val CACHE_DURATION = 1000L // 1秒缓存，减少频繁数据库查询
     
     override fun onCreate() {
         loadData()
     }
     
     override fun onDataSetChanged() {
-        // 检查是否需要重新加载数据（避免频繁查询）
-        val now = System.currentTimeMillis()
-        if (now - lastLoadTime > CACHE_DURATION) {
-            loadData()
-            lastLoadTime = now
-        } else {
-            // 只更新缓存状态，不重新查询数据库
-            updateCacheState()
-        }
-    }
-    
-    private fun updateCacheState() {
-        // 只更新刚完成的任务状态，不重新查询数据库
-        val justCompletedTasks = TaskListWidgetService.getAllJustCompletedTasks()
-        justCompletedTaskIds = justCompletedTasks.map { it.id }.toSet()
-        Log.d("TaskListWidget", "updateCacheState: ${justCompletedTaskIds.size} just completed tasks")
+        // 系统自动更新或手动刷新时，总是重新加载数据
+        loadData()
     }
     
     private fun loadData() {

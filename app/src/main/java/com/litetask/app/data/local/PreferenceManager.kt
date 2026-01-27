@@ -26,6 +26,12 @@ class PreferenceManager @Inject constructor(
         // 提醒相关
         private const val KEY_REMINDER_SOUND_ENABLED = "reminder_sound_enabled"
         private const val KEY_REMINDER_VIBRATION_ENABLED = "reminder_vibration_enabled"
+        
+        // 用户偏好相关
+        private const val KEY_DEFAULT_FAB_ACTION = "default_fab_action"
+        private const val KEY_DEFAULT_HOME_VIEW = "default_home_view"
+        const val DEFAULT_FAB_ACTION = "voice"  // voice, text, manual
+        const val DEFAULT_HOME_VIEW = "timeline"  // timeline, gantt, deadline
     }
 
     // ========== AI 配置 ==========
@@ -147,5 +153,35 @@ class PreferenceManager @Inject constructor(
      */
     fun setReminderVibrationEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_REMINDER_VIBRATION_ENABLED, enabled).apply()
+    }
+    
+    // ========== 用户偏好配置 ==========
+    
+    /**
+     * 获取默认 FAB 操作（voice/text/manual）
+     */
+    fun getDefaultFabAction(): String {
+        return prefs.getString(KEY_DEFAULT_FAB_ACTION, DEFAULT_FAB_ACTION) ?: DEFAULT_FAB_ACTION
+    }
+    
+    /**
+     * 设置默认 FAB 操作
+     */
+    fun setDefaultFabAction(action: String) {
+        prefs.edit().putString(KEY_DEFAULT_FAB_ACTION, action).apply()
+    }
+    
+    /**
+     * 获取默认首页视图（timeline/gantt/deadline）
+     */
+    fun getDefaultHomeView(): String {
+        return prefs.getString(KEY_DEFAULT_HOME_VIEW, DEFAULT_HOME_VIEW) ?: DEFAULT_HOME_VIEW
+    }
+    
+    /**
+     * 设置默认首页视图
+     */
+    fun setDefaultHomeView(view: String) {
+        prefs.edit().putString(KEY_DEFAULT_HOME_VIEW, view).apply()
     }
 }

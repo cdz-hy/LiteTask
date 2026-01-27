@@ -1,8 +1,13 @@
 package com.litetask.app.ui.components
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
@@ -21,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -28,10 +35,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.theme.LocalExtendedColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -71,93 +81,198 @@ fun TaskConfirmationSheet(
     onEditTask: (Int, Task) -> Unit = { _, _ -> },
     onDeleteTask: (Int) -> Unit = {}
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val extendedColors = LocalExtendedColors.current
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val screenHeightDp = configuration.screenHeightDp.dp
+    val screenHeightPx = with(density) { screenHeightDp.toPx() }
     
     // 内部管理任务列表状态
     var taskList by remember(tasks) { mutableStateOf(tasks) }
     
-    // 存储每个任务的提醒配置 (key: 任务在列表中的索引)
+    // 存储每个任务的提醒配置
     var taskReminders by remember { mutableStateOf<Map<Int, List<com.litetask.app.data.model.ReminderConfig>>>(emptyMap()) }
     
     // 编辑对话框状态
     var showEditDialog by remember { mutableStateOf(false) }
     var editingTaskIndex by remember { mutableStateOf(-1) }
     var editingTask by remember { mutableStateOf<Task?>(null) }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.background,
-        tonalElevation = 0.dp,
-        modifier = Modifier.fillMaxHeight(0.92f),
-        dragHandle = {
-            // 自定义拖拽手柄
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 12.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(40.dp)
-                        .height(4.dp)
-                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
-                )
-            }
+    
+    // 关闭动画状态
+    var isClosing by remember { mutableStateOf(false) }
+    
+    // 拖拽偏移量（实时跟随手指）
+    var dragOffset by remember { mutableStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    
+    // 计算实际高度：全屏高度 - 拖拽偏移
+    val currentHeightPx = (screenHeightPx - dragOffset.coerceAtLeast(0f)).coerceAtLeast(0f)
+    val currentHeightDp = with(density) { currentHeightPx.toDp() }
+    
+    // 关闭动画高度
+    val animatedHeight by animateDpAsState(
+        targetValue = if (isClosing) 0.dp else currentHeightDp,
+        animationSpec = if (isDragging) {
+            // 拖拽时不使用动画，直接跟随
+            androidx.compose.animation.core.snap()
+        } else {
+            // 松手后使用弹性动画（弱化弹动）
+            androidx.compose.animation.core.spring(
+                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+            )
+        },
+        label = "sheetHeight"
+    )
+    
+    // 背景遮罩透明度（跟随拖拽变化）
+    val scrimAlpha = when {
+        isClosing -> 0f
+        isDragging -> (0.5f * (1f - dragOffset / screenHeightPx * 2)).coerceIn(0f, 0.5f)
+        else -> 0.5f
+    }
+    
+    // 关闭函数
+    fun closeSheet() {
+        isClosing = true
+    }
+    
+    // 监听关闭动画完成
+    LaunchedEffect(isClosing) {
+        if (isClosing) {
+            delay(300)
+            onDismiss()
         }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp)
-        ) {
-            // 标题区域
-            AIResultHeader(taskCount = taskList.size)
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // 原始语音文本（如果有）
-            taskList.firstOrNull()?.originalVoiceText?.let { voiceText ->
-                OriginalVoiceCard(voiceText)
-                Spacer(modifier = Modifier.height(12.dp))
-            }
+    }
 
-            // 任务卡片列表或空状态
-            if (taskList.isEmpty()) {
-                // 空状态显示
-                EmptyTasksState(modifier = Modifier.weight(1f))
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(bottom = 16.dp)
-                ) {
-                    itemsIndexed(taskList, key = { index, task -> "${task.title}_$index" }) { index, task ->
-                        SwipeableTaskCard(
-                            task = task,
-                            onEdit = {
-                                editingTaskIndex = index
-                                editingTask = task
-                                showEditDialog = true
-                            },
-                            onDelete = {
-                                taskList = taskList.toMutableList().apply { removeAt(index) }
-                                onDeleteTask(index)
+    Dialog(
+        onDismissRequest = { closeSheet() },
+        properties = DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = true
+        )
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 背景遮罩
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = scrimAlpha))
+            )
+            
+            // Bottom Sheet 内容
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(animatedHeight)
+                    .align(Alignment.BottomCenter)
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)),
+                color = extendedColors.cardBackground,
+                shadowElevation = 16.dp
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // 拖拽手柄 - 实时跟随手指
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(Unit) {
+                                detectDragGestures(
+                                    onDragStart = { 
+                                        isDragging = true
+                                        dragOffset = 0f 
+                                    },
+                                    onDragEnd = {
+                                        isDragging = false
+                                        // 下滑超过屏幕30%则关闭，否则回弹
+                                        if (dragOffset > screenHeightPx * 0.3f) {
+                                            closeSheet()
+                                        } else {
+                                            dragOffset = 0f
+                                        }
+                                    },
+                                    onDragCancel = {
+                                        isDragging = false
+                                        dragOffset = 0f
+                                    },
+                                    onDrag = { _, dragAmount ->
+                                        // 只允许下滑（正值），限制最大拖拽距离
+                                        dragOffset = (dragOffset + dragAmount.y)
+                                            .coerceIn(0f, screenHeightPx * 0.65f)
+                                    }
+                                )
+                            }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(40.dp)
+                                .height(4.dp)
+                                .background(
+                                    extendedColors.divider,
+                                    RoundedCornerShape(2.dp)
+                                )
+                        )
+                    }
+                    
+                    // 主内容区域
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        // 标题区域
+                        AIResultHeader(taskCount = taskList.size)
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // 原始语音文本
+                        taskList.firstOrNull()?.originalVoiceText?.let { voiceText ->
+                            OriginalVoiceCard(voiceText)
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+
+                        // 任务卡片列表或空状态
+                        if (taskList.isEmpty()) {
+                            EmptyTasksState(modifier = Modifier.weight(1f))
+                        } else {
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(bottom = 16.dp)
+                            ) {
+                                itemsIndexed(taskList, key = { index, task -> "${task.title}_$index" }) { index, task ->
+                                    SwipeableTaskCard(
+                                        task = task,
+                                        onEdit = {
+                                            editingTaskIndex = index
+                                            editingTask = task
+                                            showEditDialog = true
+                                        },
+                                        onDelete = {
+                                            taskList = taskList.toMutableList().apply { removeAt(index) }
+                                            onDeleteTask(index)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // 底部按钮
+                        BottomActionBar(
+                            taskCount = taskList.size,
+                            onDismiss = { closeSheet() },
+                            onConfirm = {
+                                if (taskList.isNotEmpty()) {
+                                    onConfirm(taskList, taskReminders)
+                                }
                             }
                         )
                     }
                 }
             }
-
-            // 底部按钮
-            BottomActionBar(
-                taskCount = taskList.size,
-                onDismiss = onDismiss,
-                onConfirm = {
-                    if (taskList.isNotEmpty()) {
-                        onConfirm(taskList, taskReminders)
-                    }
-                }
-            )
         }
     }
     
@@ -186,7 +301,6 @@ fun TaskConfirmationSheet(
                     taskList = taskList.toMutableList().apply { 
                         set(editingTaskIndex, updatedTask) 
                     }
-                    // 保存提醒配置
                     taskReminders = taskReminders.toMutableMap().apply {
                         put(editingTaskIndex, reminders)
                     }
@@ -208,7 +322,6 @@ private fun EmptyTasksState(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // 空状态图标
         Surface(
             color = Color(0xFFFFF3E0),
             shape = CircleShape,
@@ -245,7 +358,6 @@ private fun EmptyTasksState(modifier: Modifier = Modifier) {
         
         Spacer(modifier = Modifier.height(24.dp))
         
-        // 提示示例
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
             shape = RoundedCornerShape(12.dp),
@@ -276,7 +388,6 @@ private fun AIResultHeader(taskCount: Int) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(vertical = 8.dp)
     ) {
-        // AI 图标
         Surface(
             color = MaterialTheme.colorScheme.primaryContainer,
             shape = CircleShape,
@@ -421,7 +532,6 @@ private fun SwipeActionIcon(icon: ImageVector, color: Color, onClick: () -> Unit
 @Composable
 private fun AITaskCard(task: Task) {
     val primaryColor = ConfirmTaskColors.getPrimary(task.type)
-    val surfaceColor = ConfirmTaskColors.getSurface(task.type)
     val extendedColors = LocalExtendedColors.current
 
     Surface(
@@ -477,7 +587,7 @@ private fun AITaskCard(task: Task) {
                     }
                 }
 
-                // 描述（如果有）
+                // 描述
                 if (!task.description.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
@@ -573,6 +683,7 @@ private fun BottomActionBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(vertical = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {

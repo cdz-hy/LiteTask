@@ -253,6 +253,16 @@ class HomeViewModel @Inject constructor(
     }
     
     /**
+     * 获取默认 FAB 操作
+     */
+    fun getDefaultFabAction(): String = preferenceManager.getDefaultFabAction()
+    
+    /**
+     * 获取默认首页视图
+     */
+    fun getDefaultHomeView(): String = preferenceManager.getDefaultHomeView()
+    
+    /**
      * 获取当前语音识别源信息
      */
     fun getSpeechSourceInfo(): com.litetask.app.util.SpeechSourceInfo {

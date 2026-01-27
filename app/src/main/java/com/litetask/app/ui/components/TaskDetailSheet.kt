@@ -123,36 +123,52 @@ fun TaskDetailSheet(
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
 
-    // 屏幕高度（不含状态栏）
+    // 屏幕高度
     val screenHeightDp = configuration.screenHeightDp.dp
-    val partialHeight = screenHeightDp * 0.7f  // 改为 70%
-    val fullHeight = screenHeightDp  // 全屏但不超过状态栏
+    val screenHeightPx = with(density) { screenHeightDp.toPx() }
+    val partialHeightPx = screenHeightPx * 0.7f  // 70% 高度
+    val fullHeightPx = screenHeightPx  // 全屏高度
 
     // 展开状态
     var expandState by remember { mutableStateOf(SheetExpandState.HALF) }
     var isClosing by remember { mutableStateOf(false) }
-
-    // 动画高度 - 使用 spring 动画更流畅
-    val targetHeight = when {
-        isClosing -> 0.dp
-        expandState == SheetExpandState.HALF -> partialHeight
-        else -> fullHeight
+    
+    // 拖拽偏移量（实时跟随手指）
+    var dragOffset by remember { mutableStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    
+    // 基准高度（根据展开状态）
+    val baseHeightPx = when (expandState) {
+        SheetExpandState.HALF -> partialHeightPx
+        SheetExpandState.FULL -> fullHeightPx
     }
+    
+    // 计算实际高度：基准高度 - 拖拽偏移
+    val currentHeightPx = if (isClosing) 0f else (baseHeightPx - dragOffset).coerceAtLeast(0f)
+    val currentHeightDp = with(density) { currentHeightPx.toDp() }
+    
+    // 动画高度
     val animatedHeight by animateDpAsState(
-        targetValue = targetHeight,
-        animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
-            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
-        ),
+        targetValue = currentHeightDp,
+        animationSpec = if (isDragging) {
+            // 拖拽时不使用动画，直接跟随
+            androidx.compose.animation.core.snap()
+        } else {
+            // 松手后使用弹性动画（弱化弹动）
+            androidx.compose.animation.core.spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMedium
+            )
+        },
         label = "sheetHeight"
     )
 
-    // 背景遮罩透明度
-    val scrimAlpha by animateFloatAsState(
-        targetValue = if (isClosing) 0f else 0.5f,
-        animationSpec = tween(durationMillis = 300),
-        label = "scrimAlpha"
-    )
+    // 背景遮罩透明度（跟随拖拽变化）
+    val scrimAlpha = when {
+        isClosing -> 0f
+        isDragging -> (0.5f * (1f - dragOffset / screenHeightPx * 2)).coerceIn(0f, 0.5f)
+        else -> 0.5f
+    }
 
     var newSubTaskText by remember { mutableStateOf("") }
 
@@ -171,9 +187,6 @@ fun TaskDetailSheet(
             onDismiss()
         }
     }
-
-    // 拖拽累计值
-    var dragAccumulator by remember { mutableStateOf(0f) }
 
     // 使用 Dialog 确保最上层显示
     Dialog(
@@ -207,34 +220,50 @@ fun TaskDetailSheet(
                 shadowElevation = 16.dp
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    // 拖拽手柄
+                    // 拖拽手柄 - 实时跟随手指
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .pointerInput(Unit) {
                                 detectDragGestures(
-                                    onDragStart = { dragAccumulator = 0f },
+                                    onDragStart = { 
+                                        isDragging = true
+                                        dragOffset = 0f 
+                                    },
                                     onDragEnd = {
-                                        // 根据拖拽方向和距离决定状态
-                                        val threshold = 50f
+                                        isDragging = false
+                                        val closeThreshold = screenHeightPx * 0.15f
+                                        val expandThreshold = 50f
+                                        
                                         when {
-                                            dragAccumulator < -threshold -> {
-                                                // 上滑：展开到全屏
-                                                expandState = SheetExpandState.FULL
+                                            // 下滑超过30%则关闭
+                                            dragOffset > closeThreshold -> {
+                                                closeSheet()
                                             }
-                                            dragAccumulator > threshold -> {
-                                                // 下滑
-                                                if (expandState == SheetExpandState.FULL) {
-                                                    expandState = SheetExpandState.HALF
-                                                } else {
-                                                    closeSheet()
-                                                }
+                                            // 上滑超过阈值则展开到全屏
+                                            dragOffset < -expandThreshold && expandState == SheetExpandState.HALF -> {
+                                                expandState = SheetExpandState.FULL
+                                                dragOffset = 0f
+                                            }
+                                            // 下滑超过阈值则收缩到半屏
+                                            dragOffset > expandThreshold && expandState == SheetExpandState.FULL -> {
+                                                expandState = SheetExpandState.HALF
+                                                dragOffset = 0f
+                                            }
+                                            // 否则回弹
+                                            else -> {
+                                                dragOffset = 0f
                                             }
                                         }
-                                        dragAccumulator = 0f
+                                    },
+                                    onDragCancel = {
+                                        isDragging = false
+                                        dragOffset = 0f
                                     },
                                     onDrag = { _, dragAmount ->
-                                        dragAccumulator += dragAmount.y
+                                        // 限制最大拖拽距离为屏幕65%
+                                        dragOffset = (dragOffset + dragAmount.y)
+                                            .coerceIn(-screenHeightPx * 0.3f, screenHeightPx * 0.65f)
                                     }
                                 )
                             }

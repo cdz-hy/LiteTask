@@ -104,6 +104,7 @@ fun GooeyExpandableFab(
     onVoiceClick: () -> Unit,
     onTextInputClick: () -> Unit,
     onManualInputClick: () -> Unit,
+    defaultAction: String = "voice",  // voice, text, manual
     modifier: Modifier = Modifier
 ) {
     var isExpanded by remember { mutableStateOf(false) }
@@ -112,10 +113,31 @@ fun GooeyExpandableFab(
 
     // 定义颜色：使用 MD3 的 Container 颜色，更加柔和且区分度高
     val colorScheme = MaterialTheme.colorScheme
+    
+    // 根据默认操作获取对应的点击事件和图标
+    val defaultClickAction = when (defaultAction) {
+        "text" -> onTextInputClick
+        "manual" -> onManualInputClick
+        else -> onVoiceClick
+    }
+    
+    val defaultIcon = when (defaultAction) {
+        "text" -> Icons.Rounded.Edit
+        "manual" -> Icons.Rounded.Add
+        else -> Icons.Rounded.Mic
+    }
 
     val menuItems = remember(colorScheme) {
         listOf(
-            // 顶部按钮：文字分析 (使用 Tertiary 色调)
+            // 顶部按钮：语音添加 (使用 Primary 色调，突出显示)
+            FabMenuItem(
+                icon = Icons.Rounded.Mic,
+                label = "语音添加",
+                containerColor = colorScheme.primaryContainer,
+                contentColor = colorScheme.onPrimaryContainer,
+                onClick = onVoiceClick
+            ),
+            // 中间按钮：文字分析 (使用 Tertiary 色调)
             FabMenuItem(
                 icon = Icons.Rounded.Edit,
                 label = "文字分析",
@@ -123,7 +145,7 @@ fun GooeyExpandableFab(
                 contentColor = colorScheme.onTertiaryContainer,
                 onClick = onTextInputClick
             ),
-            // 中间按钮：手动添加 (使用 Secondary 色调)
+            // 底部按钮：手动添加 (使用 Secondary 色调)
             FabMenuItem(
                 icon = Icons.Rounded.Add,
                 label = "手动添加",
@@ -163,7 +185,7 @@ fun GooeyExpandableFab(
 
     // 计算容器高度：根据 item 数量动态预留空间
     // 每个 Item 占用空间约为 70-80dp，加上主按钮
-    val containerHeight = 260.dp
+    val containerHeight = 330.dp
 
     Box(
         modifier = modifier
@@ -199,13 +221,14 @@ fun GooeyExpandableFab(
             mainRotation = mainRotation,
             mainContainerColor = mainContainerColor,
             mainContentColor = mainContentColor,
+            defaultIcon = defaultIcon,
             onMainClick = {
                 if (isExpanded) {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     isExpanded = false
                 } else {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onVoiceClick()
+                    defaultClickAction()
                 }
             },
             onMainLongClick = {
@@ -251,7 +274,7 @@ private fun GooeyLayerApi33(
         // 渲染子菜单的气泡 (作为融合背景)
         menuItems.forEachIndexed { index, item ->
             // 这里背景层使用 Item 自己的颜色，以便在融合分离时颜色过渡更自然
-            GooeyBubble(isExpanded, index, item.containerColor, 56.dp)
+            GooeyBubble(isExpanded, index, menuItems.size, item.containerColor, 56.dp)
         }
         // 主按钮背景
         Box(
@@ -297,7 +320,7 @@ private fun GooeyLayerApi31(
         contentAlignment = Alignment.BottomCenter
     ) {
         menuItems.forEachIndexed { index, item ->
-            GooeyBubble(isExpanded, index, item.containerColor, 56.dp)
+            GooeyBubble(isExpanded, index, menuItems.size, item.containerColor, 56.dp)
         }
         Box(
             modifier = Modifier
@@ -332,6 +355,7 @@ private fun FallbackLayer(
 private fun GooeyBubble(
     isExpanded: Boolean,
     index: Int,
+    itemCount: Int,
     color: Color,
     size: Dp
 ) {
@@ -367,14 +391,14 @@ private fun GooeyBubble(
         } else {
             // 收起动画：快速回弹
             scope.launch {
-                delay((1 - index) * 30L) // 反向延迟
+                delay((itemCount - 1 - index) * 30L) // 反向延迟，基于实际数量
                 offsetAnim.animateTo(
                     0f,
                     spring(dampingRatio = 0.6f, stiffness = 400f)
                 )
             }
             scope.launch {
-                delay((1 - index) * 30L)
+                delay((itemCount - 1 - index) * 30L)
                 scaleAnim.animateTo(
                     0.2f, // 收缩到很小
                     spring(dampingRatio = 0.6f, stiffness = 400f)
@@ -404,6 +428,7 @@ private fun InteractiveLayer(
     mainRotation: Float,
     mainContainerColor: Color,
     mainContentColor: Color,
+    defaultIcon: ImageVector,
     onMainClick: () -> Unit,
     onMainLongClick: () -> Unit,
     onMenuItemClick: (FabMenuItem) -> Unit
@@ -441,7 +466,7 @@ private fun InteractiveLayer(
                         alphaAnim.animateTo(1f, tween(150))
                     }
                 } else {
-                    val delayMs = (1 - index) * 30L
+                    val delayMs = (menuItems.lastIndex - index) * 30L // 反向延迟，基于实际数量
                     scope.launch {
                         delay(delayMs)
                         offsetAnim.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 400f))
@@ -515,9 +540,9 @@ private fun InteractiveLayer(
                     label = "icon"
                 ) { expanded ->
                     Icon(
-                        // 明确指定 Close 图标
-                        imageVector = if (expanded) Icons.Rounded.Close else Icons.Rounded.Mic,
-                        contentDescription = if (expanded) "收起" else "语音输入",
+                        // 展开时显示关闭图标，收起时显示默认操作图标
+                        imageVector = if (expanded) Icons.Rounded.Close else defaultIcon,
+                        contentDescription = if (expanded) "收起" else "添加任务",
                         // 旋转应用在 Icon 上
                         modifier = Modifier
                             .size(32.dp)

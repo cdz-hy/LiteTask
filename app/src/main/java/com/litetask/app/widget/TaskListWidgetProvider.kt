@@ -145,6 +145,9 @@ class TaskListWidgetProvider : AppWidgetProvider() {
         views.setPendingIntentTemplate(R.id.task_list, togglePendingIntent)
         
         appWidgetManager.updateAppWidget(appWidgetId, views)
+        
+        // 触发数据刷新，确保系统自动更新时也会重新查询数据库
+        appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.task_list)
     }
     
     private fun handleToggleTask(context: Context, taskId: Long, pendingResult: PendingResult) {

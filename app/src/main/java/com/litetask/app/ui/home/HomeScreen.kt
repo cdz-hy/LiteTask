@@ -83,7 +83,9 @@ fun HomeScreen(
     val timelineItems by viewModel.timelineItems.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
-    var currentView by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initialView) }
+    var currentView by androidx.compose.runtime.saveable.rememberSaveable { 
+        mutableStateOf(if (initialView == "timeline") viewModel.getDefaultHomeView() else initialView) 
+    }
 
     // 侧边栏状态
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -351,10 +353,12 @@ fun HomeScreen(
                 }
 
                 // 使用新的 Gooey 悬浮按钮
+                val defaultFabAction = remember { viewModel.getDefaultFabAction() }
                 GooeyExpandableFab(
                     onVoiceClick = { onVoiceClickAction() },
                     onTextInputClick = { onTextInputClickAction() },
                     onManualInputClick = { showAddTaskDialog = true },
+                    defaultAction = defaultFabAction,
                     // 调整位置，确保展开时不被遮挡
                     modifier = Modifier.padding(bottom = 16.dp, end = 16.dp)
                 )

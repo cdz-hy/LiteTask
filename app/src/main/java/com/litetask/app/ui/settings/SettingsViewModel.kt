@@ -164,4 +164,26 @@ class SettingsViewModel @Inject constructor(
      * 设置提醒震动是否启用
      */
     fun setReminderVibrationEnabled(enabled: Boolean) = preferenceManager.setReminderVibrationEnabled(enabled)
+    
+    // ========== 用户偏好配置 ==========
+    
+    /**
+     * 获取默认 FAB 操作
+     */
+    fun getDefaultFabAction(): String = preferenceManager.getDefaultFabAction()
+    
+    /**
+     * 设置默认 FAB 操作
+     */
+    fun setDefaultFabAction(action: String) = preferenceManager.setDefaultFabAction(action)
+    
+    /**
+     * 获取默认首页视图
+     */
+    fun getDefaultHomeView(): String = preferenceManager.getDefaultHomeView()
+    
+    /**
+     * 设置默认首页视图
+     */
+    fun setDefaultHomeView(view: String) = preferenceManager.setDefaultHomeView(view)
 }

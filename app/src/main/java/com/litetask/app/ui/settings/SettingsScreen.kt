@@ -50,7 +50,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.ViewTimeline
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -362,7 +372,165 @@ fun SettingsScreen(
             // ========== 提醒设置卡片 ==========
             ReminderSettingsCard(context)
             
+            // ========== 用户偏好设置卡片 ==========
+            UserPreferencesCard(viewModel)
+            
             Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+/**
+ * 用户偏好设置卡片
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UserPreferencesCard(
+    viewModel: SettingsViewModel
+) {
+    // 默认 FAB 操作
+    var selectedFabAction by remember { mutableStateOf(viewModel.getDefaultFabAction()) }
+    // 默认首页视图
+    var selectedHomeView by remember { mutableStateOf(viewModel.getDefaultHomeView()) }
+    
+    val fabOptions = listOf(
+        Triple("voice", "语音添加", Icons.Default.Mic),
+        Triple("text", "文字输入", Icons.Default.Edit),
+        Triple("manual", "手动添加", Icons.Rounded.Add)
+    )
+    
+    val viewOptions = listOf(
+        Triple("timeline", "列表", Icons.Default.List),
+        Triple("gantt", "甘特图", Icons.Default.ViewTimeline),
+        Triple("deadline", "截止日", Icons.Default.Flag)
+    )
+    
+    SettingsCard(
+        title = "偏好设置",
+        icon = Icons.Default.Tune
+    ) {
+        // 默认 FAB 操作设置
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.TouchApp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "默认添加方式",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "点击右下角按钮时的默认操作",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                fabOptions.forEach { (value, label, icon) ->
+                    FilterChip(
+                        selected = selectedFabAction == value,
+                        onClick = {
+                            selectedFabAction = value
+                            viewModel.setDefaultFabAction(value)
+                        },
+                        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+                        leadingIcon = {
+                            Icon(
+                                icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(20.dp))
+        
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // 默认首页视图设置
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Home,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "默认首页视图",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "启动应用时显示的默认视图",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                viewOptions.forEach { (value, label, icon) ->
+                    FilterChip(
+                        selected = selectedHomeView == value,
+                        onClick = {
+                            selectedHomeView = value
+                            viewModel.setDefaultHomeView(value)
+                        },
+                        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+                        leadingIcon = {
+                            Icon(
+                                icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
         }
     }
 }
