@@ -154,10 +154,10 @@ fun TaskDetailSheet(
             // 拖拽时不使用动画，直接跟随
             androidx.compose.animation.core.snap()
         } else {
-            // 松手后使用弹性动画（弱化弹动）
+            // 松手后使用弹性动画（弱化弹动，减慢弹回速度）
             androidx.compose.animation.core.spring(
                 dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMedium
+                stiffness = Spring.StiffnessLow
             )
         },
         label = "sheetHeight"
@@ -232,11 +232,11 @@ fun TaskDetailSheet(
                                     },
                                     onDragEnd = {
                                         isDragging = false
-                                        val closeThreshold = screenHeightPx * 0.15f
-                                        val expandThreshold = 50f
+                                        val closeThreshold = screenHeightPx * 0.25f
+                                        val expandThreshold = 30f
                                         
                                         when {
-                                            // 下滑超过30%则关闭
+                                            // 下滑超过25%则关闭
                                             dragOffset > closeThreshold -> {
                                                 closeSheet()
                                             }

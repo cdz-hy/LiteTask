@@ -111,7 +111,7 @@ fun GooeyExpandableFab(
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
 
-    // 定义颜色：使用 MD3 的 Container 颜色，更加柔和且区分度高
+    // 定义颜色：使用 MD3 的统一色调系统，简约美观
     val colorScheme = MaterialTheme.colorScheme
     
     // 根据默认操作获取对应的点击事件和图标
@@ -127,36 +127,37 @@ fun GooeyExpandableFab(
         else -> Icons.Rounded.Mic
     }
 
+    // 优化颜色方案：使用统一的 Primary 色调系统，通过透明度和饱和度区分
     val menuItems = remember(colorScheme) {
         listOf(
-            // 顶部按钮：语音添加 (使用 Primary 色调，突出显示)
+            // 顶部按钮：语音添加 (主色调，最高优先级)
             FabMenuItem(
                 icon = Icons.Rounded.Mic,
                 label = "语音添加",
-                containerColor = colorScheme.primaryContainer,
-                contentColor = colorScheme.onPrimaryContainer,
+                containerColor = colorScheme.primary,
+                contentColor = colorScheme.onPrimary,
                 onClick = onVoiceClick
             ),
-            // 中间按钮：文字分析 (使用 Tertiary 色调)
+            // 中间按钮：文字分析 (主色调容器，中等优先级)
             FabMenuItem(
                 icon = Icons.Rounded.Edit,
                 label = "文字分析",
-                containerColor = colorScheme.tertiaryContainer,
-                contentColor = colorScheme.onTertiaryContainer,
+                containerColor = colorScheme.primaryContainer,
+                contentColor = colorScheme.onPrimaryContainer,
                 onClick = onTextInputClick
             ),
-            // 底部按钮：手动添加 (使用 Secondary 色调)
+            // 底部按钮：手动添加 (表面色调，基础功能)
             FabMenuItem(
                 icon = Icons.Rounded.Add,
                 label = "手动添加",
-                containerColor = colorScheme.secondaryContainer,
-                contentColor = colorScheme.onSecondaryContainer,
+                containerColor = colorScheme.surfaceContainerHigh,
+                contentColor = colorScheme.onSurface,
                 onClick = onManualInputClick
             )
         )
     }
 
-    // 主按钮颜色
+    // 主按钮颜色：始终使用和文字分析按钮一致的颜色（primaryContainer）
     val mainContainerColor = colorScheme.primaryContainer
     val mainContentColor = colorScheme.onPrimaryContainer
 
@@ -192,7 +193,7 @@ fun GooeyExpandableFab(
             .width(88.dp)
             .height(containerHeight)
             .offset(x = 12.dp) // 向右偏移一点
-            .padding(bottom = 13.dp), // 底部留出空间，避免融合效果粘连到屏幕底部
+            .padding(bottom = 12.dp), // 适中的底部 padding，平衡流体效果和边界控制
         contentAlignment = Alignment.BottomCenter
     ) {
         // ==================== 底层：Gooey 融合动画层 ====================
@@ -266,7 +267,7 @@ private fun GooeyLayerApi33(
                 runtimeShader.setFloatUniform("visibility", 0.35f) // 稍微提高阈值，减少扩散
                 val shader = RenderEffect.createRuntimeShaderEffect(runtimeShader, "composable")
                 renderEffect = RenderEffect.createChainEffect(shader, blur).asComposeRenderEffect()
-                // 裁剪到容器范围，避免扩散到底部
+                // 启用裁剪，但容器已经预留了合适的底部空间
                 clip = true
             },
         contentAlignment = Alignment.BottomCenter
@@ -314,8 +315,8 @@ private fun GooeyLayerApi31(
                     RenderEffect.createColorFilterEffect(android.graphics.ColorMatrixColorFilter(matrix)),
                     blur
                 ).asComposeRenderEffect()
-                // 裁剪到容器范围，避免扩散到底部
-                clip = true
+                // 减少裁剪，让底部流体效果更完整
+                clip = false
             },
         contentAlignment = Alignment.BottomCenter
     ) {
@@ -514,9 +515,8 @@ private fun InteractiveLayer(
                 // 使用主按钮对应颜色的半透明边框，增加渐变效果
                 .border(1.2.dp, mainContentColor.copy(alpha = 0.3f), CircleShape),
             shape = CircleShape,
-            // 适配 Gooey 效果：
-            // Android 12+ 依赖底层渲染颜色，顶层可以稍微透明一点点增强层次感
-            // 或者直接使用不透明颜色，确保图标清晰
+            // 使用动态颜色系统：根据默认操作调整主按钮颜色
+            // 确保颜色一致性和视觉层次清晰
             color = mainContainerColor,
             contentColor = mainContentColor
         ) {

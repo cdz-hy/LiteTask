@@ -116,10 +116,10 @@ fun TaskConfirmationSheet(
             // 拖拽时不使用动画，直接跟随
             androidx.compose.animation.core.snap()
         } else {
-            // 松手后使用弹性动画（弱化弹动）
+            // 松手后使用弹性动画（弱化弹动，减慢弹回速度）
             androidx.compose.animation.core.spring(
                 dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
-                stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+                stiffness = androidx.compose.animation.core.Spring.StiffnessLow
             )
         },
         label = "sheetHeight"
