@@ -24,7 +24,7 @@ import com.litetask.app.R
  * 数据加载策略：
  * 1. 未完成任务：通过 Room Flow 实时订阅，自动更新
  * 2. 已完成任务：分页加载，每页20条，滑动到底部时加载更多
- * 3. 懒更新：冷启动时自动将过期任务标记为已完成
+ * 3. 懒更新：冷启动时自动将截止时间在当前时间之前的任务标记为过期状态
  */
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -52,7 +52,7 @@ class HomeViewModel @Inject constructor(
      * 初始化数据加载
      * 
      * 执行顺序：
-     * 1. 懒更新：标记过期任务为已完成 + 标记过期提醒为已触发（IO线程）
+     * 1. 懒更新：标记过期任务为过期状态 + 标记过期提醒为已触发（IO线程）
      * 2. 加载首批历史任务（20条）
      * 
      * 注：未完成任务通过 Flow 自动订阅，无需手动加载
@@ -60,7 +60,7 @@ class HomeViewModel @Inject constructor(
     private fun initializeData() {
         viewModelScope.launch(Dispatchers.IO) {
             // Step 1: 懒更新 - 标记过期任务和提醒
-            markOverdueTasksAsDone()
+            markOverdueTasksAsExpired()
             // Step 2: 加载首批历史任务（切回主线程更新 StateFlow）
             withContext(Dispatchers.Main) {
                 loadMoreHistory()
@@ -142,12 +142,12 @@ class HomeViewModel @Inject constructor(
     // ==================== 数据加载方法 ====================
     
     /**
-     * 懒更新：标记过期任务为已完成 + 标记过期提醒为已触发
+     * 懒更新：标记过期任务为过期状态 + 标记过期提醒为已触发
      */
-    private suspend fun markOverdueTasksAsDone() {
+    private suspend fun markOverdueTasksAsExpired() {
         try {
             val now = System.currentTimeMillis()
-            taskRepository.autoMarkOverdueTasksAsDone(now)
+            taskRepository.autoMarkTasksAsExpired(now)
             taskRepository.autoMarkOverdueRemindersAsFired(now)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -201,7 +201,7 @@ class HomeViewModel @Inject constructor(
             try {
                 // 懒更新（IO线程）
                 withContext(Dispatchers.IO) {
-                    markOverdueTasksAsDone()
+                    markOverdueTasksAsExpired()
                 }
                 // 重新加载历史任务
                 val newHistory = withContext(Dispatchers.IO) {
@@ -590,12 +590,51 @@ class HomeViewModel @Inject constructor(
                 refreshHistoryAfterCompletion()
             } else {
                 // 重新激活任务：从历史列表移除
-                taskRepository.updateTask(task)
+                taskRepository.markTaskUndone(task)
                 _historyTasks.value = _historyTasks.value.filter { it.task.id != task.id }
             }
             WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
+    
+    /**
+     * 更新任务状态（带状态跟踪）
+     */
+    fun updateTaskWithStatusTracking(oldTask: Task, newTask: Task) {
+        viewModelScope.launch {
+            taskRepository.updateTaskWithStatusTracking(oldTask, newTask)
+            
+            // 如果任务状态发生变化，更新UI列表
+            when {
+                !oldTask.isDone && newTask.isDone -> {
+                    // 任务完成，刷新历史列表
+                    refreshHistoryAfterCompletion()
+                }
+                oldTask.isDone && !newTask.isDone -> {
+                    // 任务重新激活，从历史列表移除
+                    _historyTasks.value = _historyTasks.value.filter { it.task.id != newTask.id }
+                }
+            }
+            
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+    
+    /**
+     * 重新激活过期任务
+     */
+    fun reactivateExpiredTask(task: Task, newDeadline: Long) {
+        viewModelScope.launch {
+            taskRepository.reactivateExpiredTask(task.id, newDeadline)
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+    
+    /**
+     * 获取过期任务列表
+     */
+    suspend fun getExpiredTasks(limit: Int, offset: Int) = 
+        taskRepository.getExpiredTasks(limit, offset)
     
     /** 更新任务并更新提醒 */
     fun updateTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {

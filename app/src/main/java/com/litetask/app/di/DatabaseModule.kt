@@ -23,6 +23,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "litetask.db"
         )
+            .addMigrations(AppDatabase.MIGRATION_1_2)  // 添加迁移支持
             .fallbackToDestructiveMigration() // 允许在schema变化时重建数据库
             .build()
         

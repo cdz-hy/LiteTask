@@ -24,7 +24,7 @@ object WidgetDataProvider {
     private const val CACHE_EXPIRY_MS = 3000L
     
     /**
-     * 标记任务完成
+     * 标记任务完成（记录完成时间）
      * 使用 Binder.clearCallingIdentity() 确保在 App 进程被杀后也能正常访问数据库
      */
     suspend fun markTaskDone(context: android.content.Context, taskId: Long): Boolean {
@@ -32,14 +32,15 @@ object WidgetDataProvider {
         return try {
             val dao = com.litetask.app.data.local.AppDatabase.getInstance(context).taskDao()
             val task = dao.getTaskById(taskId)
-            if (task != null && !task.isDone) {
-                dao.updateTask(task.copy(isDone = true))
+            if (task != null && !task.isDone && !task.isExpired) {
+                // 使用新的方法标记完成，自动记录完成时间
+                dao.markTaskCompleted(taskId, System.currentTimeMillis())
                 // 记录完成时间到缓存
                 recentlyCompletedTasks[taskId] = System.currentTimeMillis()
                 Log.d(TAG, "Task marked done: $taskId")
                 true
             } else {
-                Log.w(TAG, "Task not found or already done: $taskId")
+                Log.w(TAG, "Task not found, already done, or expired: $taskId")
                 false
             }
         } catch (e: Exception) {
@@ -51,7 +52,7 @@ object WidgetDataProvider {
     }
     
     /**
-     * 撤销任务完成（标记为未完成）
+     * 撤销任务完成（标记为未完成，清除完成时间）
      * 使用 Binder.clearCallingIdentity() 确保在 App 进程被杀后也能正常访问数据库
      * 注意：此方法不操作缓存，缓存由调用方管理
      */
@@ -61,8 +62,8 @@ object WidgetDataProvider {
             val dao = com.litetask.app.data.local.AppDatabase.getInstance(context).taskDao()
             val task = dao.getTaskById(taskId)
             if (task != null) {
-                // 直接设为未完成，不检查当前状态（因为调用方已通过 isJustCompleted 确认）
-                dao.updateTask(task.copy(isDone = false))
+                // 使用新的方法标记未完成，自动清除完成时间
+                dao.markTaskUncompleted(taskId)
                 Log.d(TAG, "Task marked undone: $taskId")
                 true
             } else {
@@ -118,10 +119,10 @@ object WidgetDataProvider {
     }
     
     /**
-     * 计算任务进度百分比
+     * 计算任务进度百分比（过期任务显示100%）
      */
     fun calculateProgress(task: Task): Int {
-        if (task.isDone) return 100
+        if (task.isDone || task.isExpired) return 100
         
         val now = System.currentTimeMillis()
         val start = task.startTime
@@ -156,10 +157,10 @@ object WidgetDataProvider {
     }
     
     /**
-     * 判断任务是否紧急（24小时内截止）
+     * 判断任务是否紧急（24小时内截止且未过期）
      */
     fun isUrgent(task: Task): Boolean {
-        if (task.isDone) return false
+        if (task.isDone || task.isExpired) return false
         val remaining = task.deadline - System.currentTimeMillis()
         return remaining in 1..TimeUnit.HOURS.toMillis(24)
     }

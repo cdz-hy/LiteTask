@@ -11,32 +11,32 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface TaskDao {
 
-    // 1. 置顶任务 (无论是否完成，只要置顶就在最上面)
+    // 1. 置顶任务 (无论是否完成，只要置顶就在最上面，但排除已过期)
     // 排序：未完成在前，然后按截止时间
     @Transaction
     @Query("""
         SELECT * FROM tasks 
-        WHERE is_pinned = 1 
+        WHERE is_pinned = 1 AND is_expired = 0
         ORDER BY is_done ASC, deadline ASC
     """)
     fun getPinnedTasks(): Flow<List<TaskDetailComposite>>
 
-    // 2. 普通进行中任务 (不含置顶)
+    // 2. 普通进行中任务 (不含置顶，排除已过期)
     // 排序：开始时间早的在前 -> 截止时间早的在前
     @Transaction
     @Query("""
         SELECT * FROM tasks 
-        WHERE is_pinned = 0 AND is_done = 0 
+        WHERE is_pinned = 0 AND is_done = 0 AND is_expired = 0
         ORDER BY start_time ASC, deadline ASC
     """)
     fun getActiveNonPinnedTasks(): Flow<List<TaskDetailComposite>>
 
-    // 3. 所有未完成任务（包括置顶和非置顶）
-    // 按照要求：is_done = 0，置顶优先，然后按开始时间、截止时间排序
+    // 3. 所有未完成任务（包括置顶和非置顶，但排除已过期）
+    // 按照要求：is_done = 0 AND is_expired = 0，置顶优先，然后按开始时间、截止时间排序
     @Transaction
     @Query("""
         SELECT * FROM tasks 
-        WHERE is_done = 0 
+        WHERE is_done = 0 AND is_expired = 0
         ORDER BY is_pinned DESC, start_time ASC, deadline ASC
     """)
     fun getActiveTasks(): Flow<List<TaskDetailComposite>>
@@ -110,8 +110,76 @@ interface TaskDao {
     ): Flow<List<TaskDetailComposite>>
     
     // --- 兼容性保留 ---
-    @Query("UPDATE tasks SET is_done = 1 WHERE deadline < :currentTime AND is_done = 0")
-    suspend fun autoMarkOverdueTasksAsDone(currentTime: Long): Int
+    
+    /**
+     * 自动标记过期任务（不再自动完成，而是标记为过期状态）
+     * @param currentTime 当前时间戳
+     * @return 被标记为过期的任务数量
+     */
+    @Query("""
+        UPDATE tasks SET 
+            is_expired = 1,
+            expired_at = :currentTime
+        WHERE deadline < :currentTime 
+        AND is_done = 0 
+        AND is_expired = 0
+    """)
+    suspend fun autoMarkTasksAsExpired(currentTime: Long): Int
+    
+    /**
+     * 获取已过期但未完成的任务
+     * @param limit 限制数量
+     * @param offset 偏移量
+     * @return 过期任务列表
+     */
+    @Transaction
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE is_expired = 1 AND is_done = 0
+        ORDER BY expired_at DESC
+        LIMIT :limit OFFSET :offset
+    """)
+    suspend fun getExpiredTasks(limit: Int, offset: Int): List<TaskDetailComposite>
+    
+    /**
+     * 重新激活过期任务（清除过期状态，设置新的截止时间）
+     * @param taskId 任务ID
+     * @param newDeadline 新的截止时间
+     */
+    @Query("""
+        UPDATE tasks SET 
+            is_expired = 0,
+            expired_at = NULL,
+            deadline = :newDeadline
+        WHERE id = :taskId
+    """)
+    suspend fun reactivateExpiredTask(taskId: Long, newDeadline: Long)
+    
+    /**
+     * 标记任务完成（同时记录完成时间）
+     * @param taskId 任务ID
+     * @param completedAt 完成时间
+     */
+    @Query("""
+        UPDATE tasks SET 
+            is_done = 1,
+            completed_at = :completedAt,
+            is_pinned = 0
+        WHERE id = :taskId
+    """)
+    suspend fun markTaskCompleted(taskId: Long, completedAt: Long)
+    
+    /**
+     * 标记任务未完成（清除完成时间）
+     * @param taskId 任务ID
+     */
+    @Query("""
+        UPDATE tasks SET 
+            is_done = 0,
+            completed_at = NULL
+        WHERE id = :taskId
+    """)
+    suspend fun markTaskUncompleted(taskId: Long)
     
     /** 标记所有过期提醒为已触发 */
     @Query("UPDATE reminders SET is_fired = 1 WHERE trigger_at < :currentTime AND is_fired = 0")
@@ -166,23 +234,23 @@ interface TaskDao {
     // ========== Widget 专用查询方法 ==========
     
     /**
-     * 同步获取所有未完成任务（用于任务列表小组件）
+     * 同步获取所有未完成且未过期任务（用于任务列表小组件）
      * 排序：置顶优先 -> 开始时间 -> 截止时间
      */
     @Query("""
         SELECT * FROM tasks 
-        WHERE is_done = 0 
+        WHERE is_done = 0 AND is_expired = 0
         ORDER BY is_pinned DESC, start_time ASC, deadline ASC
     """)
     suspend fun getActiveTasksSync(): List<Task>
     
     /**
-     * 同步获取今日任务（用于甘特图小组件）
+     * 同步获取今日任务（用于甘特图小组件，排除已过期）
      * 包括：今天开始的任务 或 今天截止的任务 或 跨越今天的任务
      */
     @Query("""
         SELECT * FROM tasks 
-        WHERE is_done = 0 
+        WHERE is_expired = 0 
         AND (
             (start_time >= :startOfDay AND start_time < :endOfDay)
             OR (deadline >= :startOfDay AND deadline < :endOfDay)
@@ -193,7 +261,7 @@ interface TaskDao {
     suspend fun getTodayTasksSyncWithRange(startOfDay: Long, endOfDay: Long): List<Task>
     
     /**
-     * 获取今日任务完成进度
+     * 获取今日任务完成进度（排除已过期）
      * @return Pair<已完成数, 总数>
      */
     @Query("""
@@ -201,7 +269,7 @@ interface TaskDao {
             SUM(CASE WHEN is_done = 1 THEN 1 ELSE 0 END) as done,
             COUNT(*) as total
         FROM tasks 
-        WHERE (
+        WHERE is_expired = 0 AND (
             (start_time >= :startOfDay AND start_time < :endOfDay)
             OR (deadline >= :startOfDay AND deadline < :endOfDay)
             OR (start_time < :startOfDay AND deadline >= :endOfDay)
@@ -210,23 +278,23 @@ interface TaskDao {
     suspend fun getTodayTasksProgressWithRange(startOfDay: Long, endOfDay: Long): TaskProgress?
     
     /**
-     * 同步获取即将截止的任务（用于截止提醒小组件）
+     * 同步获取即将截止的任务（用于截止提醒小组件，排除已过期）
      * 按截止时间排序，最紧急的在前
      */
     @Query("""
         SELECT * FROM tasks 
-        WHERE is_done = 0 AND deadline > :currentTime
+        WHERE is_done = 0 AND is_expired = 0 AND deadline > :currentTime
         ORDER BY deadline ASC
         LIMIT :limit
     """)
     suspend fun getUpcomingDeadlinesSyncWithTime(currentTime: Long, limit: Int): List<Task>
     
     /**
-     * 获取最紧急的未完成任务
+     * 获取最紧急的未完成且未过期任务
      */
     @Query("""
         SELECT * FROM tasks 
-        WHERE is_done = 0 AND deadline > :currentTime
+        WHERE is_done = 0 AND is_expired = 0 AND deadline > :currentTime
         ORDER BY deadline ASC
         LIMIT 1
     """)
@@ -239,19 +307,19 @@ interface TaskDao {
      */
     @Query("""
         SELECT * FROM tasks 
-        WHERE is_done = 0 AND deadline > :currentTime
+        WHERE is_done = 0 AND is_expired = 0 AND deadline > :currentTime
         ORDER BY is_pinned DESC, start_time ASC, deadline ASC
         LIMIT 20
     """)
     suspend fun getActiveTasksWithRecentlyCompletedSync(currentTime: Long = System.currentTimeMillis()): List<Task>
     
     /**
-     * 同步获取今日相关的所有任务（包括已完成的，用于甘特图小组件）
+     * 同步获取今日相关的所有任务（包括已完成的，用于甘特图小组件，排除已过期）
      * 包括：今天开始的任务 或 今天截止的任务 或 跨越今天的任务
      */
     @Query("""
         SELECT * FROM tasks 
-        WHERE (
+        WHERE is_expired = 0 AND (
             (start_time >= :startOfDay AND start_time < :endOfDay)
             OR (deadline >= :startOfDay AND deadline < :endOfDay)
             OR (start_time < :startOfDay AND deadline >= :endOfDay)

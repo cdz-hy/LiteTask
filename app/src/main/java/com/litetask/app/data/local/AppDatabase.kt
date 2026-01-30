@@ -10,7 +10,7 @@ import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.TaskTypeConverter
 
-@Database(entities = [Task::class, SubTask::class, Reminder::class], version = 1, exportSchema = false)
+@Database(entities = [Task::class, SubTask::class, Reminder::class], version = 2, exportSchema = false)
 @TypeConverters(TaskTypeConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
@@ -21,6 +21,42 @@ abstract class AppDatabase : RoomDatabase() {
         
         @Volatile
         private var INSTANCE: AppDatabase? = null
+        
+        /**
+         * 数据库迁移：从版本1到版本2
+         * 添加新的任务状态字段
+         */
+        val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 添加过期状态字段
+                database.execSQL("ALTER TABLE tasks ADD COLUMN is_expired INTEGER NOT NULL DEFAULT 0")
+                
+                // 添加过期时间字段
+                database.execSQL("ALTER TABLE tasks ADD COLUMN expired_at INTEGER")
+                
+                // 添加任务创建时间字段（使用start_time作为默认值）
+                database.execSQL("ALTER TABLE tasks ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("UPDATE tasks SET created_at = start_time WHERE created_at = 0")
+                
+                // 添加任务完成时间字段
+                database.execSQL("ALTER TABLE tasks ADD COLUMN completed_at INTEGER")
+                
+                // 为新字段添加索引
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_is_expired ON tasks(is_expired)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_created_at ON tasks(created_at)")
+                
+                // 将当前已过期但未完成的任务标记为过期状态
+                val currentTime = System.currentTimeMillis()
+                database.execSQL("""
+                    UPDATE tasks SET 
+                        is_expired = 1,
+                        expired_at = $currentTime
+                    WHERE deadline < $currentTime 
+                    AND is_done = 0 
+                    AND is_expired = 0
+                """)
+            }
+        }
         
         /**
          * 获取数据库单例
@@ -34,6 +70,7 @@ abstract class AppDatabase : RoomDatabase() {
                         AppDatabase::class.java,
                         DATABASE_NAME
                     )
+                        .addMigrations(MIGRATION_1_2)  // 添加迁移
                         .fallbackToDestructiveMigration()
                         .build()
                     INSTANCE = instance

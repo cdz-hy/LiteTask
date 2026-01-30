@@ -10,7 +10,9 @@ import androidx.room.Index
     indices = [
         Index(value = ["deadline"]),   // 核心索引：首页列表完全依赖此字段排序
         Index(value = ["is_done"]),    // 过滤索引：区分"进行中"和"归档"
-        Index(value = ["is_pinned"])   // 置顶索引
+        Index(value = ["is_pinned"]),  // 置顶索引
+        Index(value = ["is_expired"]), // 过期状态索引
+        Index(value = ["created_at"])  // 创建时间索引
     ]
 )
 data class Task(
@@ -50,7 +52,39 @@ data class Task(
     @ColumnInfo(name = "type")
     val type: TaskType = TaskType.WORK, // 枚举：WORK, LIFE, URGENT
 
-    // --- 4. AI 字段 ---
+    // --- 4. 新增状态字段 ---
+    
+    // 过期标记 - 任务已过截止时间但未完成
+    @ColumnInfo(name = "is_expired")
+    val isExpired: Boolean = false,
+
+    // 过期时间 - 记录任务何时被标记为过期
+    @ColumnInfo(name = "expired_at")
+    val expiredAt: Long? = null,
+
+    // 任务创建时间 - 记录任务实际创建的时间
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long = System.currentTimeMillis(),
+
+    // 任务完成时间 - 记录任务被标记为完成的时间
+    @ColumnInfo(name = "completed_at")
+    val completedAt: Long? = null,
+
+    // --- 5. AI 字段 ---
     @ColumnInfo(name = "original_voice_text")
     val originalVoiceText: String? = null
-)
+) {
+    // 计算属性：任务是否处于活跃状态（未完成且未过期）
+    val isActive: Boolean get() = !isDone && !isExpired
+    
+    // 计算属性：任务是否已结束（完成或过期）
+    val isFinished: Boolean get() = isDone || isExpired
+    
+    // 计算属性：获取任务的实际状态描述
+    val statusDescription: String get() = when {
+        isDone -> "已完成"
+        isExpired -> "已过期"
+        System.currentTimeMillis() < startTime -> "未开始"
+        else -> "进行中"
+    }
+}
