@@ -47,6 +47,7 @@
     <string name="set_new_deadline">设置新截止时间</string>
     <string name="expired_task_hint">此任务已过期，您可以标记完成或重新设置截止时间</string>
     <string name="expired_tasks_section">已过期任务</string>
+    <string name="expired_tasks_header">已过期</string>
     
     <!-- 时间相关 -->
     <string name="start_time">开始时间</string>

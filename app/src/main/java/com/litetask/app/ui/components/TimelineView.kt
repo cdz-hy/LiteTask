@@ -209,6 +209,29 @@ fun TimelineView(
                             )
                         }
                     }
+                    is TimelineItem.ExpiredHeader -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            HorizontalDivider(
+                                modifier = Modifier.weight(1f),
+                                color = extendedColors.deadlineUrgent.copy(alpha = 0.3f)
+                            )
+                            Text(
+                                stringResource(R.string.expired_tasks_header),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = extendedColors.deadlineUrgent.copy(alpha = 0.8f),
+                                modifier = Modifier.padding(horizontal = 12.dp)
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.weight(1f),
+                                color = extendedColors.deadlineUrgent.copy(alpha = 0.3f)
+                            )
+                        }
+                    }
                     is TimelineItem.Loading -> {
                         Box(
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -244,21 +267,41 @@ fun HtmlStyleTaskCard(
 
     val isDone = task.isDone
     val isPinned = task.isPinned
+    val isExpired = task.isExpired  // 使用新的过期状态字段
 
     // 获取颜色配置
-    val primaryColor = if (isDone) extendedColors.textTertiary else getTaskPrimaryColor(task.type)
-    val surfaceColor = if (isDone) extendedColors.cardBackground else getTaskSurfaceColor(task.type)
+    val primaryColor = when {
+        isDone -> extendedColors.textTertiary
+        isExpired -> getTaskPrimaryColor(task.type).copy(alpha = 0.5f)  // 过期任务颜色更淡
+        else -> getTaskPrimaryColor(task.type)
+    }
+    
+    val surfaceColor = when {
+        isDone -> extendedColors.cardBackground
+        isExpired -> getTaskSurfaceColor(task.type).copy(alpha = 0.3f)  // 过期任务表面色更淡
+        else -> getTaskSurfaceColor(task.type)
+    }
 
     // 背景色：置顶任务使用浅色实心背景，普通任务使用卡片背景色
-    val containerColor = if (isPinned && !isDone) surfaceColor else extendedColors.cardBackground
+    val containerColor = when {
+        isPinned && !isDone && !isExpired -> surfaceColor  // 未完成置顶任务
+        isPinned && !isDone && isExpired -> extendedColors.cardBackground  // 过期置顶任务使用普通背景
+        else -> extendedColors.cardBackground
+    }
 
     // 边框：置顶任务有浅色边框
-    val borderStroke = if (isPinned && !isDone) {
-        androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.2f))
-    } else null
+    val borderStroke = when {
+        isPinned && !isDone && !isExpired -> androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.2f))  // 未完成置顶
+        isPinned && !isDone && isExpired -> androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f))   // 过期置顶
+        else -> null
+    }
 
     // 阴影：置顶任务阴影稍重
-    val elevation = if (isPinned && !isDone) 2.dp else 0.5.dp
+    val elevation = when {
+        isPinned && !isDone && !isExpired -> 2.dp  // 未完成置顶任务
+        isPinned && !isDone && isExpired -> 1.5.dp  // 过期置顶任务
+        else -> 0.5.dp
+    }
 
     // 进度计算
     val totalSub = subTasks.size
@@ -273,188 +316,258 @@ fun HtmlStyleTaskCard(
         border = borderStroke,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+        Box {
+            Row(modifier = Modifier.height(IntrinsicSize.Min)) {
 
-            // 左侧色条
-            Box(
-                modifier = Modifier
-                    .width(8.dp)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
-                    .background(primaryColor.copy(alpha = if (isDone) 0.3f else 0.8f))
-            )
+                // 左侧色条
+                Box(
+                    modifier = Modifier
+                        .width(8.dp)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
+                        .background(primaryColor.copy(alpha = if (isDone) 0.3f else if (isExpired) 0.4f else 0.8f))
+                )
 
-            // 右侧内容
-            Column(
-                modifier = Modifier
-                    .padding(start = 14.dp, end = 16.dp, top = 16.dp, bottom = 16.dp)
-                    .weight(1f)
-            ) {
-                // 1. 标题行
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
+                // 右侧内容
+                Column(
+                    modifier = Modifier
+                        .padding(start = 14.dp, end = 16.dp, top = 16.dp, bottom = 16.dp)
+                        .weight(1f)
                 ) {
-                    Text(
-                        text = task.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (isPinned) FontWeight.Bold else FontWeight.SemiBold,
-                        color = if (isDone) extendedColors.textTertiary else extendedColors.textPrimary,
-                        textDecoration = if (isDone) TextDecoration.LineThrough else null,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f).padding(end = 8.dp)
-                    )
-
-                    // 状态图标
-                    if (isDone) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = "Done",
-                            tint = extendedColors.lifeTask,
-                            modifier = Modifier.size(20.dp)
+                    // 1. 标题行
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = task.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = if (isPinned) FontWeight.Bold else FontWeight.SemiBold,
+                            color = when {
+                                isDone -> extendedColors.textTertiary
+                                isExpired -> extendedColors.textPrimary.copy(alpha = 0.6f)  // 过期任务标题变淡
+                                else -> extendedColors.textPrimary
+                            },
+                            textDecoration = if (isDone) TextDecoration.LineThrough else null,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp)
                         )
-                    } else if (isPinned) {
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.6f), 
-                                    CircleShape
-                                )
-                                .padding(4.dp)
-                        ) {
+
+                        // 状态图标
+                        if (isDone) {
                             Icon(
-                                imageVector = Icons.Default.PushPin,
-                                contentDescription = "Pinned",
-                                tint = primaryColor,
-                                modifier = Modifier.size(14.dp).rotate(45f)
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Done",
+                                tint = extendedColors.lifeTask,
+                                modifier = Modifier.size(20.dp)
                             )
-                        }
-                    } else {
-                        // 类型标签
-                        Surface(
-                            color = primaryColor.copy(alpha = 0.1f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                text = getTaskTypeName(task.type),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 10.sp,
-                                color = primaryColor,
-                                fontWeight = FontWeight.Bold
+                        } else if (isExpired) {
+                            // 过期任务显示过期图标
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = "Expired",
+                                tint = extendedColors.deadlineUrgent.copy(alpha = 0.8f),
+                                modifier = Modifier.size(20.dp)
                             )
+                        } else if (isPinned) {
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.6f), 
+                                        CircleShape
+                                    )
+                                    .padding(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PushPin,
+                                    contentDescription = "Pinned",
+                                    tint = primaryColor,
+                                    modifier = Modifier.size(14.dp).rotate(45f)
+                                )
+                            }
+                        } else {
+                            // 类型标签
+                            Surface(
+                                color = primaryColor.copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = getTaskTypeName(task.type),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    color = primaryColor,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                // 2. 信息行：时间 + 地点 + 截止
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    val infoColor = extendedColors.textSecondary.copy(alpha = if (isDone) 0.5f else 0.8f)
+                    // 2. 信息行：时间 + 地点 + 截止
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val infoColor = when {
+                            isDone -> extendedColors.textSecondary.copy(alpha = 0.5f)
+                            isExpired -> extendedColors.textSecondary.copy(alpha = 0.5f)  // 过期任务信息变淡
+                            else -> extendedColors.textSecondary.copy(alpha = 0.8f)
+                        }
 
-                    Icon(
-                        imageVector = Icons.Default.AccessTime,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = infoColor
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = formatSmartTime(task.startTime, task.deadline),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = infoColor
-                    )
+                        Icon(
+                            imageVector = Icons.Default.AccessTime,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = infoColor
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = formatSmartTime(task.startTime, task.deadline),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = infoColor
+                        )
 
-                    // 紧急标签
-                    if (!isDone && task.deadline > 0) {
-                        val timeLeft = task.deadline - System.currentTimeMillis()
-                        if (timeLeft in 0..(24 * 3600 * 1000)) {
+                        // 过期标签（替代紧急标签）- 仅未完成任务显示
+                        if (isExpired && !isDone) {
                             Spacer(modifier = Modifier.width(8.dp))
-                            val isVeryUrgent = timeLeft < (3 * 3600 * 1000)
                             Surface(
-                                color = if (isVeryUrgent) 
-                                    extendedColors.urgentTaskSurface 
-                                else 
-                                    extendedColors.workTaskSurface,
+                                color = extendedColors.deadlineUrgentSurface.copy(alpha = 0.8f),
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
-                                    text = if (timeLeft < 0) stringResource(R.string.overdue) else stringResource(R.string.within_24h),
+                                    text = stringResource(R.string.expired_tasks_header),
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
+                                    color = extendedColors.deadlineUrgent.copy(alpha = 0.9f)
+                                )
+                            }
+                        } else if (!isDone && task.deadline > 0) {
+                            // 紧急标签（仅未完成且未过期任务）
+                            val timeLeft = task.deadline - System.currentTimeMillis()
+                            if (timeLeft in 0..(24 * 3600 * 1000)) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                val isVeryUrgent = timeLeft < (3 * 3600 * 1000)
+                                Surface(
                                     color = if (isVeryUrgent) 
-                                        extendedColors.urgentTask 
+                                        extendedColors.urgentTaskSurface 
                                     else 
-                                        extendedColors.workTask
+                                        extendedColors.workTaskSurface,
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = if (timeLeft < 0) stringResource(R.string.overdue) else stringResource(R.string.within_24h),
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        color = if (isVeryUrgent) 
+                                            extendedColors.urgentTask 
+                                        else 
+                                            extendedColors.workTask
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. 子任务与进度 (仅未完成且有子任务时)
+                    if (subTasks.isNotEmpty() && !isDone) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // 进度条
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = primaryColor,
+                                trackColor = primaryColor.copy(alpha = 0.15f),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "${(progress * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = primaryColor
+                            )
+                        }
+
+                        // Next Action
+                        val nextAction = subTasks.firstOrNull { !it.isCompleted }
+                        if (nextAction != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(
+                                            alpha = if (isExpired) 0.3f else 0.5f
+                                        ), 
+                                        RoundedCornerShape(6.dp)
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .fillMaxWidth()
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .background(
+                                            if (isExpired) 
+                                                extendedColors.textTertiary.copy(alpha = 0.5f)
+                                            else 
+                                                extendedColors.textTertiary, 
+                                            CircleShape
+                                        )
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "${stringResource(R.string.next_action_prefix)} ${nextAction.content}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isExpired) 
+                                        extendedColors.textSecondary.copy(alpha = 0.5f)
+                                    else 
+                                        extendedColors.textSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
                     }
                 }
-
-                // 3. 子任务与进度 (仅未完成且有子任务时)
-                if (subTasks.isNotEmpty() && !isDone) {
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // 进度条
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp)),
-                            color = primaryColor,
-                            trackColor = primaryColor.copy(alpha = 0.15f),
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "${(progress * 100).toInt()}%",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = primaryColor
-                        )
-                    }
-
-                    // Next Action
-                    val nextAction = subTasks.firstOrNull { !it.isCompleted }
-                    if (nextAction != null) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .background(
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), 
-                                    RoundedCornerShape(6.dp)
-                                )
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                .fillMaxWidth()
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .background(extendedColors.textTertiary, CircleShape)
+            }
+            
+            // 遮罩层处理
+            when {
+                // 过期且置顶的任务：使用特殊的置顶过期遮罩
+                isExpired && !isDone && isPinned -> {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                primaryColor.copy(alpha = 0.08f),  // 使用任务类型颜色的浅色遮罩
+                                RoundedCornerShape(24.dp)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "${stringResource(R.string.next_action_prefix)} ${nextAction.content}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = extendedColors.textSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                    )
+                }
+                // 普通过期任务：使用灰色遮罩
+                isExpired && !isDone -> {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                Color.Gray.copy(alpha = 0.2f),
+                                RoundedCornerShape(24.dp)
                             )
-                        }
-                    }
+                    )
                 }
             }
         }
@@ -472,9 +585,8 @@ fun SwipeRevealItem(
 ) {
     val density = LocalDensity.current
     val extendedColors = LocalExtendedColors.current
-    val isTaskExpired = task.deadline < System.currentTimeMillis()
     val isTaskCompleted = task.isDone
-    val canPinTask = !isTaskExpired && !isTaskCompleted
+    val canPinTask = !isTaskCompleted  // 只要未完成就可以置顶（包括过期任务）
     
     // 根据是否可以置顶任务调整操作按钮数量和宽度
     val actionCount = if (canPinTask) 3 else 2
@@ -497,7 +609,7 @@ fun SwipeRevealItem(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 只有未完成且未过期的任务才能置顶
+                // 只有未完成的任务才能置顶（包括过期任务）
                 if (canPinTask) {
                     ActionIcon(
                         icon = if (task.isPinned) Icons.Outlined.PushPin else Icons.Default.PushPin,

@@ -1,6 +1,7 @@
 package com.litetask.app.ui.home
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.litetask.app.data.model.Task
@@ -53,31 +54,29 @@ class HomeViewModel @Inject constructor(
      * 
      * 执行顺序：
      * 1. 懒更新：标记过期任务为过期状态 + 标记过期提醒为已触发（IO线程）
-     * 2. 加载首批历史任务（20条）
      * 
-     * 注：未完成任务通过 Flow 自动订阅，无需手动加载
+     * 注：主要任务数据通过 getAllDisplayTasks() Flow 自动订阅，无需手动加载
      */
     private fun initializeData() {
         viewModelScope.launch(Dispatchers.IO) {
-            // Step 1: 懒更新 - 标记过期任务和提醒
+            // 懒更新 - 标记过期任务和提醒
             markOverdueTasksAsExpired()
-            // Step 2: 加载首批历史任务（切回主线程更新 StateFlow）
-            withContext(Dispatchers.Main) {
-                loadMoreHistory()
-            }
         }
     }
 
     // ==================== 数据流定义 ====================
     
-    /** 未完成任务流（实时订阅，自动更新） */
+    /** 所有需要显示的任务流（未完成 + 已过期 + 前20条已完成） */
+    private val _allDisplayTasks = taskRepository.getAllDisplayTasks()
+    
+    /** 未完成任务流（实时订阅，自动更新） - 保留用于日历视图等 */
     private val _activeTasks = taskRepository.getActiveTasks()
     
-    /** 已完成任务列表（分页加载） */
-    private val _historyTasks = MutableStateFlow<List<TaskDetailComposite>>(emptyList())
+    /** 额外的已完成任务列表（分页加载，用于"查看更多"功能） */
+    private val _additionalHistoryTasks = MutableStateFlow<List<TaskDetailComposite>>(emptyList())
     
     /** 历史任务分页状态 */
-    private var _historyPage = 0
+    private var _historyPage = 1  // 从第1页开始，因为前20条已经在主流中
     private var _isHistoryExhausted = false
     private val _isLoadingHistory = MutableStateFlow(false)
     val isLoadingHistory: StateFlow<Boolean> = _isLoadingHistory.asStateFlow()
@@ -93,22 +92,36 @@ class HomeViewModel @Inject constructor(
     /**
      * 合并后的 Timeline 列表
      * 
-     * 结构：[未完成任务] + [历史分隔线] + [已完成任务] + [加载指示器]
+     * 结构：[未完成任务] + [已过期任务] + [已完成任务分隔线] + [前20条已完成任务] + [更多已完成任务] + [加载指示器]
      */
     val timelineItems: StateFlow<List<TimelineItem>> = combine(
-        _activeTasks,
-        _historyTasks,
+        _allDisplayTasks,
+        _additionalHistoryTasks,
         _isLoadingHistory
-    ) { active, history, isLoading ->
+    ) { allTasks, additionalHistory, isLoading ->
         buildList {
-            // 未完成任务（置顶优先）
-            addAll(active.map { TimelineItem.TaskItem(it) })
-            // 历史分隔线 + 已完成任务
-            if (history.isNotEmpty()) {
-                add(TimelineItem.HistoryHeader)
-                addAll(history.map { TimelineItem.TaskItem(it) })
+            // 分离不同状态的任务
+            val activeTasks = allTasks.filter { !it.task.isDone && !it.task.isExpired }
+            val expiredTasks = allTasks.filter { !it.task.isDone && it.task.isExpired }
+            val completedTasks = allTasks.filter { it.task.isDone }
+            
+            // 1. 未完成任务（置顶优先）
+            addAll(activeTasks.map { TimelineItem.TaskItem(it) })
+            
+            // 2. 已过期任务
+            if (expiredTasks.isNotEmpty()) {
+                add(TimelineItem.ExpiredHeader)
+                addAll(expiredTasks.map { TimelineItem.TaskItem(it) })
             }
-            // 加载指示器
+            
+            // 3. 已完成任务
+            if (completedTasks.isNotEmpty() || additionalHistory.isNotEmpty()) {
+                add(TimelineItem.HistoryHeader)
+                addAll(completedTasks.map { TimelineItem.TaskItem(it) })
+                addAll(additionalHistory.map { TimelineItem.TaskItem(it) })
+            }
+            
+            // 4. 加载指示器
             if (isLoading) add(TimelineItem.Loading)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -155,10 +168,10 @@ class HomeViewModel @Inject constructor(
     }
     
     /**
-     * 加载更多历史任务（分页）
+     * 加载更多已完成任务（分页，超过前20条的部分）
      * 
      * 触发时机：列表滑动到底部
-     * 加载策略：每次加载20条，直到没有更多数据
+     * 加载策略：每次加载20条，从第21条开始，直到没有更多数据
      */
     fun loadMoreHistory() {
         if (_isLoadingHistory.value || _isHistoryExhausted) return
@@ -166,7 +179,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoadingHistory.value = true
             try {
-                val offset = _historyPage * PAGE_SIZE
+                val offset = 20 + (_historyPage - 1) * PAGE_SIZE  // 跳过前20条
                 val newItems = withContext(Dispatchers.IO) {
                     taskRepository.getHistoryTasks(PAGE_SIZE, offset)
                 }
@@ -174,7 +187,7 @@ class HomeViewModel @Inject constructor(
                 if (newItems.isEmpty()) {
                     _isHistoryExhausted = true
                 } else {
-                    _historyTasks.value = _historyTasks.value + newItems
+                    _additionalHistoryTasks.value = _additionalHistoryTasks.value + newItems
                     _historyPage++
                 }
             } catch (e: Exception) {
@@ -190,8 +203,9 @@ class HomeViewModel @Inject constructor(
      * 
      * 执行流程：
      * 1. 懒更新过期任务和提醒
-     * 2. 重置分页状态
-     * 3. 重新加载首批历史任务
+     * 2. 重置额外历史任务分页状态
+     * 
+     * 注：主要数据通过Flow自动刷新
      */
     fun onRefresh() {
         if (_isRefreshing.value) return
@@ -203,11 +217,8 @@ class HomeViewModel @Inject constructor(
                 withContext(Dispatchers.IO) {
                     markOverdueTasksAsExpired()
                 }
-                // 重新加载历史任务
-                val newHistory = withContext(Dispatchers.IO) {
-                    taskRepository.getHistoryTasks(PAGE_SIZE, 0)
-                }
-                resetHistoryPagination(newHistory)
+                // 重置额外历史任务分页状态
+                resetAdditionalHistoryPagination()
                 // 动画延迟
                 kotlinx.coroutines.delay(300)
             } catch (e: Exception) {
@@ -219,12 +230,12 @@ class HomeViewModel @Inject constructor(
     }
     
     /**
-     * 重置历史任务分页状态
+     * 重置额外历史任务分页状态
      */
-    private fun resetHistoryPagination(newData: List<TaskDetailComposite>) {
-        _historyTasks.value = newData
-        _historyPage = if (newData.isNotEmpty()) 1 else 0
-        _isHistoryExhausted = newData.size < PAGE_SIZE
+    private fun resetAdditionalHistoryPagination() {
+        _additionalHistoryTasks.value = emptyList()
+        _historyPage = 1
+        _isHistoryExhausted = false
     }
 
     // ==================== 任务详情 ====================
@@ -585,13 +596,14 @@ class HomeViewModel @Inject constructor(
     fun updateTask(task: Task) {
         viewModelScope.launch {
             if (task.isDone) {
-                // 完成任务：取消闹钟，刷新历史列表
+                // 完成任务：使用专门的完成方法，会取消闹钟并记录完成时间
                 taskRepository.markTaskDone(task)
                 refreshHistoryAfterCompletion()
             } else {
-                // 重新激活任务：从历史列表移除
-                taskRepository.markTaskUndone(task)
-                _historyTasks.value = _historyTasks.value.filter { it.task.id != task.id }
+                // 未完成任务的更新：直接更新任务（包括置顶状态变化等）
+                taskRepository.updateTask(task)
+                // 如果任务从历史列表中重新激活，从额外历史列表移除
+                _additionalHistoryTasks.value = _additionalHistoryTasks.value.filter { it.task.id != task.id }
             }
             WidgetUpdateHelper.refreshAllWidgets(application)
         }
@@ -611,8 +623,8 @@ class HomeViewModel @Inject constructor(
                     refreshHistoryAfterCompletion()
                 }
                 oldTask.isDone && !newTask.isDone -> {
-                    // 任务重新激活，从历史列表移除
-                    _historyTasks.value = _historyTasks.value.filter { it.task.id != newTask.id }
+                    // 任务重新激活，从额外历史列表移除
+                    _additionalHistoryTasks.value = _additionalHistoryTasks.value.filter { it.task.id != newTask.id }
                 }
             }
             
@@ -653,7 +665,7 @@ class HomeViewModel @Inject constructor(
                 } else null
             }
             taskRepository.updateTaskWithReminders(task, reminders)
-            _historyTasks.value = _historyTasks.value.filter { it.task.id != task.id }
+            _additionalHistoryTasks.value = _additionalHistoryTasks.value.filter { it.task.id != task.id }
             WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
@@ -665,11 +677,10 @@ class HomeViewModel @Inject constructor(
         }
     }
     
-    /** 任务完成后刷新历史列表 */
+    /** 任务完成后刷新额外历史列表 */
     private suspend fun refreshHistoryAfterCompletion() {
-        val totalLoaded = (_historyPage + 1) * PAGE_SIZE
-        val newHistory = taskRepository.getHistoryTasks(totalLoaded, 0)
-        _historyTasks.value = newHistory
+        // 由于主要数据通过Flow自动更新，这里只需要重置额外的历史任务
+        resetAdditionalHistoryPagination()
     }
 
     // ==================== 子任务操作 ====================

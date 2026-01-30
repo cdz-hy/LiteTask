@@ -40,6 +40,43 @@ interface TaskDao {
         ORDER BY is_pinned DESC, start_time ASC, deadline ASC
     """)
     fun getActiveTasks(): Flow<List<TaskDetailComposite>>
+    
+    // 获取所有需要在首页显示的任务（未完成 + 已过期 + 前20条已完成）
+    @Transaction
+    @RewriteQueriesToDropUnusedColumns
+    @Query("""
+        SELECT * FROM (
+            -- 未完成任务（置顶优先，然后按开始时间、截止时间排序）
+            SELECT *, 1 as priority FROM tasks 
+            WHERE is_done = 0 AND is_expired = 0
+            
+            UNION ALL
+            
+            -- 已过期任务（置顶优先，然后按过期时间倒序排序）
+            SELECT *, 2 as priority FROM tasks 
+            WHERE is_done = 0 AND is_expired = 1
+            
+            UNION ALL
+            
+            -- 前20条已完成任务（按完成时间倒序，不支持置顶）
+            SELECT *, 3 as priority FROM tasks 
+            WHERE is_done = 1
+            ORDER BY completed_at DESC
+            LIMIT 20
+        )
+        ORDER BY 
+            priority ASC,
+            -- 未完成任务排序：置顶优先 -> 开始时间 -> 截止时间
+            CASE WHEN priority = 1 THEN is_pinned END DESC,
+            CASE WHEN priority = 1 THEN start_time END ASC,
+            CASE WHEN priority = 1 THEN deadline END ASC,
+            -- 已过期任务排序：置顶优先 -> 过期时间倒序
+            CASE WHEN priority = 2 THEN is_pinned END DESC,
+            CASE WHEN priority = 2 THEN expired_at END DESC,
+            -- 已完成任务排序：完成时间倒序
+            CASE WHEN priority = 3 THEN completed_at END DESC
+    """)
+    fun getAllDisplayTasks(): Flow<List<TaskDetailComposite>>
 
     // 4. 历史任务 (已完成) - 分页加载
     // 排序：最近截止/完成的在前 (DESC)

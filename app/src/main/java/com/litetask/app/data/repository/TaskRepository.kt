@@ -24,6 +24,9 @@ class TaskRepositoryImpl @Inject constructor(
     fun getActiveNonPinnedTasks() = taskDao.getActiveNonPinnedTasks()
     fun getActiveTasks() = taskDao.getActiveTasks()
     
+    // 获取所有需要在首页显示的任务
+    fun getAllDisplayTasks() = taskDao.getAllDisplayTasks()
+    
     // 分页加载历史
     suspend fun getHistoryTasks(limit: Int, offset: Int) = taskDao.getHistoryTasks(limit, offset)
 
@@ -224,9 +227,18 @@ class TaskRepositoryImpl @Inject constructor(
             oldTask.isDone && !newTask.isDone -> {
                 taskDao.updateTask(newTask.copy(completedAt = null))
             }
-            // 其他情况：正常更新
+            // 其他情况：检查是否需要重置过期状态
             else -> {
-                taskDao.updateTask(newTask)
+                val finalTask = if (oldTask.isExpired && newTask.deadline > System.currentTimeMillis()) {
+                    // 如果任务原本已过期，但新的截止时间在未来，则重置过期状态
+                    newTask.copy(
+                        isExpired = false,
+                        expiredAt = null
+                    )
+                } else {
+                    newTask
+                }
+                taskDao.updateTask(finalTask)
             }
         }
     }

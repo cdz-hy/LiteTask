@@ -387,8 +387,7 @@ fun AddTaskDialog(
                             Spacer(modifier = Modifier.height(16.dp))
                             
                             // 置顶设置
-                            val isTaskExpired = deadlineMillis < System.currentTimeMillis()
-                            val pinEnabled = !isTaskExpired && !isTaskDone
+                            val pinEnabled = !isTaskDone  // 只有已完成任务不能置顶
                             val displayIsPinned = if (isTaskDone) false else isPinned
                             
                             Row(
@@ -417,13 +416,7 @@ fun AddTaskDialog(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = extendedColors.textTertiary
                                     )
-                                    if (isTaskExpired) {
-                                        Text(
-                                            stringResource(R.string.task_expired_cannot_pin),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = extendedColors.deadlineUrgent
-                                        )
-                                    } else if (isTaskDone) {
+                                    if (isTaskDone) {
                                         Text(
                                             stringResource(R.string.task_cannot_pin_completed),
                                             style = MaterialTheme.typography.bodySmall,
@@ -475,7 +468,13 @@ fun AddTaskDialog(
                                     startTime = startTimeMillis,
                                     deadline = deadlineMillis,
                                     isPinned = effectiveIsPinned,
-                                    isDone = initialTask?.isDone ?: false
+                                    isDone = initialTask?.isDone ?: false,
+                                    // 保留过期状态相关字段，避免编辑时被重置
+                                    isExpired = initialTask?.isExpired ?: false,
+                                    expiredAt = initialTask?.expiredAt,
+                                    createdAt = initialTask?.createdAt ?: System.currentTimeMillis(),
+                                    completedAt = initialTask?.completedAt,
+                                    originalVoiceText = initialTask?.originalVoiceText
                                 )
                                 
                                 // 如果提供了带提醒的回调，使用它

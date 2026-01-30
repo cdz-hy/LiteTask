@@ -380,9 +380,8 @@ fun HomeScreen(
                         onPinClick = {
                             if (it.isDone) {
                                 Toast.makeText(context, context.getString(R.string.task_cannot_pin_done), Toast.LENGTH_SHORT).show()
-                            } else if (it.deadline < System.currentTimeMillis()) {
-                                Toast.makeText(context, context.getString(R.string.task_cannot_pin_expired), Toast.LENGTH_SHORT).show()
                             } else {
+                                // 允许未完成任务和已过期任务置顶（在各自区域内）
                                 viewModel.updateTask(it.copy(isPinned = !it.isPinned))
                             }
                         },
@@ -409,9 +408,8 @@ fun HomeScreen(
                         onPinClick = { task ->
                             if (task.isDone) {
                                 Toast.makeText(context, context.getString(R.string.task_cannot_pin_done), Toast.LENGTH_SHORT).show()
-                            } else if (task.deadline < System.currentTimeMillis()) {
-                                Toast.makeText(context, context.getString(R.string.task_cannot_pin_expired), Toast.LENGTH_SHORT).show()
                             } else {
+                                // 允许未完成任务和已过期任务置顶（在各自区域内）
                                 viewModel.updateTask(task.copy(isPinned = !task.isPinned))
                             }
                         }

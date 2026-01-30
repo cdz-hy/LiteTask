@@ -6,6 +6,7 @@ import com.litetask.app.data.model.TaskDetailComposite
 sealed class TimelineItem {
     data class PinnedHeader(val count: Int) : TimelineItem()
     data class TaskItem(val composite: TaskDetailComposite) : TimelineItem()
-    object HistoryHeader : TimelineItem()
+    object ExpiredHeader : TimelineItem()  // 已过期任务分隔线
+    object HistoryHeader : TimelineItem()  // 已完成任务分隔线
     object Loading : TimelineItem()
 }

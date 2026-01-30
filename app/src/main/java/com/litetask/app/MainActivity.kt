@@ -256,9 +256,8 @@ private fun SearchScreenWrapper(
         onPinClick = { task ->
             if (task.isDone) {
                 Toast.makeText(context, "已完成的任务不能置顶", Toast.LENGTH_SHORT).show()
-            } else if (task.deadline < System.currentTimeMillis()) {
-                Toast.makeText(context, "已过期的任务不能置顶", Toast.LENGTH_SHORT).show()
             } else {
+                // 允许未完成任务和已过期任务置顶（在各自区域内）
                 homeViewModel.updateTask(task.copy(isPinned = !task.isPinned))
                 Toast.makeText(
                     context,
