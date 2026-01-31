@@ -49,9 +49,9 @@ fun DeadlineView(
 ) {
     val now = System.currentTimeMillis()
     
-    // Filter unfinished tasks with a deadline, sorted by deadline
+    // Filter only active tasks (not done and not expired) with a deadline, sorted by deadline
     val deadlineTasks = tasks
-        .filter { !it.task.isDone && it.task.deadline > 0 }
+        .filter { !it.task.isDone && !it.task.isExpired && it.task.deadline > 0 }
         .sortedBy { it.task.deadline }
 
     // Group tasks

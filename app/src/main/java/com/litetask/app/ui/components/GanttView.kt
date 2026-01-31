@@ -82,7 +82,7 @@ fun GanttView(
     val startOfView = startOfToday + (startOffset * 24 * 60 * 60 * 1000L)
     val endOfView = startOfView + (daysToShow * 24 * 60 * 60 * 1000L)
 
-    // Filter tasks that overlap with the view
+    // Filter tasks that overlap with the view (包含所有状态的任务)
     val visibleTasks = taskComposites.filter { composite ->
         val taskStart = composite.task.startTime
         val taskEnd = composite.task.deadline
@@ -563,15 +563,29 @@ fun GanttTaskCard(
         0f
     }
 
-    // Determine Colors using theme
-    val (bg, border, text, fill) = if (task.isDone) {
-        Quad(extendedColors.ganttDoneBackground, extendedColors.ganttDoneText, extendedColors.ganttDoneText, extendedColors.ganttDoneText)
-    } else {
-        when (task.type) {
-            TaskType.WORK -> Quad(extendedColors.ganttWorkBackground, extendedColors.ganttWorkBorder, extendedColors.ganttWork, extendedColors.ganttWork)
-            TaskType.LIFE -> Quad(extendedColors.ganttLifeBackground, extendedColors.ganttLifeBorder, extendedColors.ganttLife, extendedColors.ganttLife)
-            TaskType.STUDY -> Quad(extendedColors.ganttStudyBackground, extendedColors.ganttStudyBorder, extendedColors.ganttStudy, extendedColors.ganttStudy)
-            TaskType.URGENT -> Quad(extendedColors.ganttUrgentBackground, extendedColors.ganttUrgentBorder, extendedColors.ganttUrgent, extendedColors.ganttUrgent)
+    // Determine Colors using theme - 避免卡片半透明，保持实心背景
+    val (bg, border, text, fill) = when {
+        task.isDone -> {
+            // 已完成任务：灰色显示
+            Quad(extendedColors.ganttDoneBackground, extendedColors.ganttDoneText, extendedColors.ganttDoneText, extendedColors.ganttDoneText)
+        }
+        task.isExpired -> {
+            // 已过期任务：使用任务类型颜色但文字透明度降低，背景保持实心
+            when (task.type) {
+                TaskType.WORK -> Quad(extendedColors.ganttWorkBackground, extendedColors.ganttWorkBorder, extendedColors.ganttWork.copy(alpha = 0.7f), extendedColors.ganttWork.copy(alpha = 0.7f))
+                TaskType.LIFE -> Quad(extendedColors.ganttLifeBackground, extendedColors.ganttLifeBorder, extendedColors.ganttLife.copy(alpha = 0.7f), extendedColors.ganttLife.copy(alpha = 0.7f))
+                TaskType.STUDY -> Quad(extendedColors.ganttStudyBackground, extendedColors.ganttStudyBorder, extendedColors.ganttStudy.copy(alpha = 0.7f), extendedColors.ganttStudy.copy(alpha = 0.7f))
+                TaskType.URGENT -> Quad(extendedColors.ganttUrgentBackground, extendedColors.ganttUrgentBorder, extendedColors.ganttUrgent.copy(alpha = 0.7f), extendedColors.ganttUrgent.copy(alpha = 0.7f))
+            }
+        }
+        else -> {
+            // 未完成任务：正常显示
+            when (task.type) {
+                TaskType.WORK -> Quad(extendedColors.ganttWorkBackground, extendedColors.ganttWorkBorder, extendedColors.ganttWork, extendedColors.ganttWork)
+                TaskType.LIFE -> Quad(extendedColors.ganttLifeBackground, extendedColors.ganttLifeBorder, extendedColors.ganttLife, extendedColors.ganttLife)
+                TaskType.STUDY -> Quad(extendedColors.ganttStudyBackground, extendedColors.ganttStudyBorder, extendedColors.ganttStudy, extendedColors.ganttStudy)
+                TaskType.URGENT -> Quad(extendedColors.ganttUrgentBackground, extendedColors.ganttUrgentBorder, extendedColors.ganttUrgent, extendedColors.ganttUrgent)
+            }
         }
     }
     
@@ -662,6 +676,18 @@ fun GanttTaskCard(
                         .fillMaxWidth(progress)
                         .background(fill)
                         .align(Alignment.BottomStart)
+                )
+            }
+            
+            // 过期任务的灰色半透明遮罩（普通过期和过期置顶统一样式）
+            if (task.isExpired && !task.isDone) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Color.Gray.copy(alpha = 0.2f),
+                            RoundedCornerShape(8.dp)
+                        )
                 )
             }
         }

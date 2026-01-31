@@ -106,18 +106,9 @@ fun HomeScreen(
         allLoadedTasks.count { !it.task.isDone }
     }
 
-    // 甘特图任务（3天内的任务）
-    val ganttTasks = remember(allLoadedTasks) {
-        val now = System.currentTimeMillis()
-        val calendar = java.util.Calendar.getInstance()
-        calendar.timeInMillis = now
-        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
-        calendar.set(java.util.Calendar.MINUTE, 0)
-        calendar.set(java.util.Calendar.SECOND, 0)
-        calendar.set(java.util.Calendar.MILLISECOND, 0)
-        val startOfToday = calendar.timeInMillis
-        val endOfThreeDays = startOfToday + (3 * 24 * 60 * 60 * 1000L)
-        allLoadedTasks.filter { it.task.startTime < endOfThreeDays && it.task.deadline > startOfToday }
+    // 甘特图任务（所有任务，让GanttView内部处理筛选和显示）
+    val ganttTasks = remember(timelineItems) {
+        timelineItems.filterIsInstance<TimelineItem.TaskItem>().map { it.composite }
     }
 
     val pullToRefreshState = rememberPullToRefreshState()
