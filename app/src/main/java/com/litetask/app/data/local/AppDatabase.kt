@@ -8,12 +8,14 @@ import androidx.room.TypeConverters
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Reminder
+import com.litetask.app.data.model.AIHistory
 import com.litetask.app.data.model.TaskTypeConverter
 
-@Database(entities = [Task::class, SubTask::class, Reminder::class], version = 2, exportSchema = false)
+@Database(entities = [Task::class, SubTask::class, Reminder::class, AIHistory::class], version = 3, exportSchema = false)
 @TypeConverters(TaskTypeConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
+    abstract fun aiHistoryDao(): AIHistoryDao
     
     companion object {
         // 数据库名称必须与 DatabaseModule 中的一致
@@ -57,6 +59,26 @@ abstract class AppDatabase : RoomDatabase() {
                 """)
             }
         }
+
+        /**
+         * 数据库迁移：从版本2到版本3
+         * 添加 AI 分析历史表
+         */
+        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `ai_history` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+                        `content` TEXT NOT NULL, 
+                        `source_type` TEXT NOT NULL, 
+                        `timestamp` INTEGER NOT NULL,
+                        `parsed_count` INTEGER NOT NULL DEFAULT 0,
+                        `is_success` INTEGER NOT NULL DEFAULT 1
+                    )
+                """.trimIndent())
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_history_timestamp` ON `ai_history` (`timestamp`)")
+            }
+        }
         
         /**
          * 获取数据库单例
@@ -70,7 +92,7 @@ abstract class AppDatabase : RoomDatabase() {
                         AppDatabase::class.java,
                         DATABASE_NAME
                     )
-                        .addMigrations(MIGRATION_1_2)  // 添加迁移
+                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3)  // 添加迁移
                         .fallbackToDestructiveMigration()
                         .build()
                     INSTANCE = instance

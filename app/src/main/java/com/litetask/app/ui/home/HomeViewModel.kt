@@ -32,6 +32,7 @@ class HomeViewModel @Inject constructor(
     private val application: Application,
     private val taskRepository: TaskRepositoryImpl,
     private val aiRepository: AIRepository,
+    private val aiHistoryRepository: com.litetask.app.data.repository.AIHistoryRepository,
     private val speechHelper: com.litetask.app.util.SpeechRecognizerHelper,
     private val preferenceManager: com.litetask.app.data.local.PreferenceManager
 ) : ViewModel() {
@@ -429,6 +430,18 @@ class HomeViewModel @Inject constructor(
             val result = aiRepository.parseTasksFromText("", text) // 空字符串让 Repository 使用存储的 Key
             
             result.onSuccess { tasks ->
+                // 记录 AI 历史
+                viewModelScope.launch {
+                    aiHistoryRepository.insertHistory(
+                        com.litetask.app.data.model.AIHistory(
+                            content = text,
+                            sourceType = com.litetask.app.data.model.AIHistorySource.VOICE,
+                            parsedCount = tasks.size,
+                            isSuccess = true
+                        )
+                    )
+                }
+                
                 // 无论是否有任务，都显示 TaskConfirmationSheet（空结果会在界面中显示提示）
                 _uiState.value = _uiState.value.copy(
                     isAnalyzing = false,
@@ -437,6 +450,17 @@ class HomeViewModel @Inject constructor(
                     recordingState = com.litetask.app.util.RecordingState.IDLE
                 )
             }.onFailure { error ->
+                // 记录失败历史
+                viewModelScope.launch {
+                    aiHistoryRepository.insertHistory(
+                        com.litetask.app.data.model.AIHistory(
+                            content = text,
+                            sourceType = com.litetask.app.data.model.AIHistorySource.VOICE,
+                            parsedCount = 0,
+                            isSuccess = false
+                        )
+                    )
+                }
                 val errorMessage = when {
                     error.message?.contains("API Key 无效") == true -> 
                         application.getString(R.string.error_api_key_invalid)
@@ -474,12 +498,35 @@ class HomeViewModel @Inject constructor(
             val result = aiRepository.parseTasksFromText("", text)
             
             result.onSuccess { tasks ->
+                // 记录 AI 历史
+                viewModelScope.launch {
+                    aiHistoryRepository.insertHistory(
+                        com.litetask.app.data.model.AIHistory(
+                            content = text,
+                            sourceType = com.litetask.app.data.model.AIHistorySource.TEXT,
+                            parsedCount = tasks.size,
+                            isSuccess = true
+                        )
+                    )
+                }
+                
                 _uiState.value = _uiState.value.copy(
                     isAnalyzing = false,
                     showAiResult = true,
                     aiParsedTasks = tasks
                 )
             }.onFailure { error ->
+                // 记录失败历史
+                viewModelScope.launch {
+                    aiHistoryRepository.insertHistory(
+                        com.litetask.app.data.model.AIHistory(
+                            content = text,
+                            sourceType = com.litetask.app.data.model.AIHistorySource.TEXT,
+                            parsedCount = 0,
+                            isSuccess = false
+                        )
+                    )
+                }
                 val errorMessage = when {
                     error.message?.contains("API Key 无效") == true -> 
                         application.getString(R.string.error_api_key_invalid)
@@ -756,6 +803,18 @@ class HomeViewModel @Inject constructor(
                 val result = provider.generateSubTasks(apiKey, task)
                 
                 result.onSuccess { subTasks ->
+                    // 记录 AI 历史
+                    viewModelScope.launch {
+                        aiHistoryRepository.insertHistory(
+                            com.litetask.app.data.model.AIHistory(
+                                content = "自动拆解: ${task.title}",
+                                sourceType = com.litetask.app.data.model.AIHistorySource.SUBTASK,
+                                parsedCount = subTasks.size,
+                                isSuccess = true
+                            )
+                        )
+                    }
+
                     _uiState.value = _uiState.value.copy(
                         isAnalyzing = false,
                         showSubTaskResult = true,
@@ -763,6 +822,17 @@ class HomeViewModel @Inject constructor(
                         currentTask = task
                     )
                 }.onFailure { error ->
+                    // 记录失败历史
+                    viewModelScope.launch {
+                        aiHistoryRepository.insertHistory(
+                            com.litetask.app.data.model.AIHistory(
+                                content = "自动拆解失败: ${task.title}",
+                                sourceType = com.litetask.app.data.model.AIHistorySource.SUBTASK,
+                                parsedCount = 0,
+                                isSuccess = false
+                            )
+                        )
+                    }
                     val errorMessage = parseAiError(error.message ?: "")
                     _uiState.value = _uiState.value.copy(
                         isAnalyzing = false,
@@ -816,6 +886,18 @@ class HomeViewModel @Inject constructor(
                 val result = provider.generateSubTasks(apiKey, task, additionalContext)
                 
                 result.onSuccess { subTasks ->
+                    // 记录 AI 历史
+                    viewModelScope.launch {
+                        aiHistoryRepository.insertHistory(
+                            com.litetask.app.data.model.AIHistory(
+                                content = "[${task.title}] 详细输入: $additionalContext",
+                                sourceType = com.litetask.app.data.model.AIHistorySource.SUBTASK,
+                                parsedCount = subTasks.size,
+                                isSuccess = true
+                            )
+                        )
+                    }
+
                     _uiState.value = _uiState.value.copy(
                         isAnalyzing = false,
                         showSubTaskResult = true,
@@ -824,6 +906,17 @@ class HomeViewModel @Inject constructor(
                         showSubTaskInput = false
                     )
                 }.onFailure { error ->
+                    // 记录失败历史
+                    viewModelScope.launch {
+                        aiHistoryRepository.insertHistory(
+                            com.litetask.app.data.model.AIHistory(
+                                content = "[${task.title}] 详细输入失败: $additionalContext",
+                                sourceType = com.litetask.app.data.model.AIHistorySource.SUBTASK,
+                                parsedCount = 0,
+                                isSuccess = false
+                            )
+                        )
+                    }
                     val errorMessage = parseAiError(error.message ?: "")
                     _uiState.value = _uiState.value.copy(
                         isAnalyzing = false,

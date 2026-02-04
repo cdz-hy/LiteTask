@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.List
@@ -70,6 +71,7 @@ import java.util.Locale
 fun HomeScreen(
     onNavigateToAdd: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToHistory: () -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToGanttFullscreen: (com.litetask.app.ui.components.GanttViewMode) -> Unit,
     initialView: String = "timeline",
@@ -212,6 +214,22 @@ fun HomeScreen(
                 )
 
                 HorizontalDivider()
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // AI 分析历史记录选项
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.History, contentDescription = null) },
+                    label = { Text(stringResource(R.string.ai_history)) },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                        onNavigateToHistory()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 

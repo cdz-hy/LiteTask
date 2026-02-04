@@ -23,7 +23,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "litetask.db"
         )
-            .addMigrations(AppDatabase.MIGRATION_1_2)  // 添加迁移支持
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)  // 添加迁移支持
             .fallbackToDestructiveMigration() // 允许在schema变化时重建数据库
             .build()
         
@@ -36,5 +36,10 @@ object DatabaseModule {
     @Provides
     fun provideTaskDao(database: AppDatabase): TaskDao {
         return database.taskDao()
+    }
+
+    @Provides
+    fun provideAIHistoryDao(database: AppDatabase): com.litetask.app.data.local.AIHistoryDao {
+        return database.aiHistoryDao()
     }
 }

@@ -187,6 +187,7 @@ fun AppContent(
                 onViewChanged = { view -> currentHomeView = view },
                 hasCheckedPermissions = hasCheckedPermissions,
                 onPermissionChecked = { hasCheckedPermissions = true },
+                onNavigateToHistory = { navController.navigate("ai_history") },
                 initialAction = initialAction,
                 onActionHandled = onActionHandled
             )
@@ -194,6 +195,12 @@ fun AppContent(
         
         composable("settings") {
             com.litetask.app.ui.settings.SettingsScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        
+        composable("ai_history") {
+            com.litetask.app.ui.history.AIHistoryScreen(
                 onBack = { navController.popBackStack() }
             )
         }
@@ -228,6 +235,7 @@ private fun HomeScreenWrapper(
     onViewChanged: (String) -> Unit,
     hasCheckedPermissions: Boolean,
     onPermissionChecked: () -> Unit,
+    onNavigateToHistory: () -> Unit,
     initialAction: String? = null,
     onActionHandled: () -> Unit = {}
 ) {
@@ -236,6 +244,7 @@ private fun HomeScreenWrapper(
     com.litetask.app.ui.home.HomeScreen(
         onNavigateToAdd = { /* 添加任务功能保持在 HomeScreen 内部 */ },
         onNavigateToSettings = { navController.navigate("settings") },
+        onNavigateToHistory = onNavigateToHistory,
         onNavigateToSearch = { navController.navigate("search") },
         onNavigateToGanttFullscreen = { viewMode ->
             // 通过 savedStateHandle 传递参数
