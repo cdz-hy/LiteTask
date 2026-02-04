@@ -35,7 +35,15 @@ class TaskRepositoryImpl @Inject constructor(
     suspend fun insertTask(task: Task) = taskDao.insertTask(task)
     suspend fun insertSubTask(subTask: SubTask) = taskDao.insertSubTask(subTask)
     
-    suspend fun updateTask(task: Task) = taskDao.updateTask(task)
+    suspend fun updateTask(task: Task) {
+        // 如果截止时间在未来，自动清除过期状态（防止 UI 传回过时的过期标记）
+        val taskToUpdate = if (task.isExpired && task.deadline > System.currentTimeMillis()) {
+            task.copy(isExpired = false, expiredAt = null)
+        } else {
+            task
+        }
+        taskDao.updateTask(taskToUpdate)
+    }
     suspend fun deleteTask(task: Task) = taskDao.deleteTask(task)
     suspend fun updateSubTaskStatus(id: Long, completed: Boolean) = taskDao.updateSubTaskStatus(id, completed)
     suspend fun deleteSubTask(subTask: SubTask) = taskDao.deleteSubTask(subTask)
@@ -52,8 +60,10 @@ class TaskRepositoryImpl @Inject constructor(
     suspend fun insertTasks(tasks: List<Task>) = taskDao.insertTasks(tasks)
     
     /**
-     * 自动标记过期任务（不再自动完成，而是标记为过期状态）
+     * 同步任务过期状态（双向：标记过期 + 恢复未过期）
      */
+    suspend fun autoSyncTaskExpiredStatus(time: Long) = taskDao.autoSyncTaskExpiredStatus(time)
+    
     suspend fun autoMarkTasksAsExpired(time: Long) = taskDao.autoMarkTasksAsExpired(time)
     suspend fun autoMarkOverdueRemindersAsFired(time: Long) = taskDao.autoMarkOverdueRemindersAsFired(time)
     
@@ -114,7 +124,13 @@ class TaskRepositoryImpl @Inject constructor(
         }
         
         // 2. 更新数据库
-        taskDao.updateTask(task)
+        // 如果截止时间在未来，自动清除过期状态
+        val taskToUpdate = if (task.isExpired && task.deadline > System.currentTimeMillis()) {
+            task.copy(isExpired = false, expiredAt = null)
+        } else {
+            task
+        }
+        taskDao.updateTask(taskToUpdate)
         taskDao.deleteRemindersByTaskId(task.id)
         
         // 3. 只有任务未完成时才注册新闹钟

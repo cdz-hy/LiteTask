@@ -160,7 +160,7 @@ class HomeViewModel @Inject constructor(
     private suspend fun markOverdueTasksAsExpired() {
         try {
             val now = System.currentTimeMillis()
-            taskRepository.autoMarkTasksAsExpired(now)
+            taskRepository.autoSyncTaskExpiredStatus(now)
             taskRepository.autoMarkOverdueRemindersAsFired(now)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -651,9 +651,9 @@ class HomeViewModel @Inject constructor(
     /** 更新任务并更新提醒 */
     fun updateTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
         viewModelScope.launch {
+            // 对于已完成任务，只更新任务信息，不处理提醒（已完成任务不需要提醒）
             if (task.isDone) {
-                taskRepository.markTaskDone(task)
-                refreshHistoryAfterCompletion()
+                taskRepository.updateTask(task)
                 WidgetUpdateHelper.refreshAllWidgets(application)
                 return@launch
             }

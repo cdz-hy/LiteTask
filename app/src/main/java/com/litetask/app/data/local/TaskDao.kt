@@ -9,7 +9,7 @@ import com.litetask.app.data.model.TaskProgress
 import kotlinx.coroutines.flow.Flow
 
 @Dao
-interface TaskDao {
+abstract class TaskDao {
 
     // 1. 置顶任务 (无论是否完成，只要置顶就在最上面，但排除已过期)
     // 排序：未完成在前，然后按截止时间
@@ -19,7 +19,7 @@ interface TaskDao {
         WHERE is_pinned = 1 AND is_expired = 0
         ORDER BY is_done ASC, deadline ASC
     """)
-    fun getPinnedTasks(): Flow<List<TaskDetailComposite>>
+    abstract fun getPinnedTasks(): Flow<List<TaskDetailComposite>>
 
     // 2. 普通进行中任务 (不含置顶，排除已过期)
     // 排序：开始时间早的在前 -> 截止时间早的在前
@@ -29,7 +29,7 @@ interface TaskDao {
         WHERE is_pinned = 0 AND is_done = 0 AND is_expired = 0
         ORDER BY start_time ASC, deadline ASC
     """)
-    fun getActiveNonPinnedTasks(): Flow<List<TaskDetailComposite>>
+    abstract fun getActiveNonPinnedTasks(): Flow<List<TaskDetailComposite>>
 
     // 3. 所有未完成任务（包括置顶和非置顶，但排除已过期）
     // 按照要求：is_done = 0 AND is_expired = 0，置顶优先，然后按开始时间、截止时间排序
@@ -39,7 +39,7 @@ interface TaskDao {
         WHERE is_done = 0 AND is_expired = 0
         ORDER BY is_pinned DESC, start_time ASC, deadline ASC
     """)
-    fun getActiveTasks(): Flow<List<TaskDetailComposite>>
+    abstract fun getActiveTasks(): Flow<List<TaskDetailComposite>>
     
     // 获取所有需要在首页显示的任务（未完成 + 已过期 + 前20条已完成）
     @Transaction
@@ -76,7 +76,7 @@ interface TaskDao {
             -- 已完成任务排序：完成时间倒序
             CASE WHEN priority = 3 THEN completed_at END DESC
     """)
-    fun getAllDisplayTasks(): Flow<List<TaskDetailComposite>>
+    abstract fun getAllDisplayTasks(): Flow<List<TaskDetailComposite>>
 
     // 4. 历史任务 (已完成) - 分页加载
     // 排序：最近截止/完成的在前 (DESC)
@@ -87,40 +87,40 @@ interface TaskDao {
         ORDER BY deadline DESC
         LIMIT :limit OFFSET :offset
     """)
-    suspend fun getHistoryTasks(limit: Int, offset: Int): List<TaskDetailComposite>
+    abstract suspend fun getHistoryTasks(limit: Int, offset: Int): List<TaskDetailComposite>
 
     // --- 详情与操作 ---
     @Transaction
     @Query("SELECT * FROM tasks WHERE id = :taskId")
-    fun getTaskDetail(taskId: Long): Flow<TaskDetailComposite>
+    abstract fun getTaskDetail(taskId: Long): Flow<TaskDetailComposite>
 
     @Query("SELECT * FROM tasks WHERE id = :id")
-    suspend fun getTaskById(id: Long): Task?
+    abstract suspend fun getTaskById(id: Long): Task?
 
     // --- 基础增删改 ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTask(task: Task): Long
+    abstract suspend fun insertTask(task: Task): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSubTask(subTask: SubTask) // 单个插入
+    abstract suspend fun insertSubTask(subTask: SubTask) // 单个插入
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertSubTasks(subTasks: List<SubTask>)
+    abstract suspend fun insertSubTasks(subTasks: List<SubTask>)
 
     @Update
-    suspend fun updateTask(task: Task)
+    abstract suspend fun updateTask(task: Task)
 
     @Delete
-    suspend fun deleteTask(task: Task)
+    abstract suspend fun deleteTask(task: Task)
     
     @Query("UPDATE sub_tasks SET is_completed = :completed WHERE id = :subTaskId")
-    suspend fun updateSubTaskStatus(subTaskId: Long, completed: Boolean)
+    abstract suspend fun updateSubTaskStatus(subTaskId: Long, completed: Boolean)
     
     @Delete
-    suspend fun deleteSubTask(subTask: SubTask)
+    abstract suspend fun deleteSubTask(subTask: SubTask)
 
     @Query("DELETE FROM sub_tasks WHERE task_id = :taskId")
-    suspend fun deleteSubTasksByTaskId(taskId: Long)
+    abstract suspend fun deleteSubTasksByTaskId(taskId: Long)
     
     // --- 搜索功能 ---
     @Transaction
@@ -138,7 +138,7 @@ interface TaskDao {
         AND (:endDate IS NULL OR t.deadline <= :endDate)
         ORDER BY t.is_done ASC, t.deadline ASC
     """)
-    fun searchTasks(
+    abstract fun searchTasks(
         query: String,
         types: List<String>,
         typesEmpty: Boolean,
@@ -161,7 +161,31 @@ interface TaskDao {
         AND is_done = 0 
         AND is_expired = 0
     """)
-    suspend fun autoMarkTasksAsExpired(currentTime: Long): Int
+    abstract suspend fun autoMarkTasksAsExpired(currentTime: Long): Int
+
+    /**
+     * 自动恢复被错误标记为过期的任务（例如截止时间被修改到了未来）
+     * @param currentTime 当前时间戳
+     * @return 被恢复的任务数量
+     */
+    @Query("""
+        UPDATE tasks SET 
+            is_expired = 0,
+            expired_at = NULL
+        WHERE deadline >= :currentTime 
+        AND is_done = 0 
+        AND is_expired = 1
+    """)
+    abstract suspend fun autoUnmarkExpiredTasks(currentTime: Long): Int
+
+    /**
+     * 同步任务过期状态（双向同步）
+     */
+    @Transaction
+    open suspend fun autoSyncTaskExpiredStatus(currentTime: Long) {
+        autoMarkTasksAsExpired(currentTime)
+        autoUnmarkExpiredTasks(currentTime)
+    }
     
     /**
      * 获取已过期但未完成的任务
@@ -176,7 +200,7 @@ interface TaskDao {
         ORDER BY expired_at DESC
         LIMIT :limit OFFSET :offset
     """)
-    suspend fun getExpiredTasks(limit: Int, offset: Int): List<TaskDetailComposite>
+    abstract suspend fun getExpiredTasks(limit: Int, offset: Int): List<TaskDetailComposite>
     
     /**
      * 重新激活过期任务（清除过期状态，设置新的截止时间）
@@ -190,7 +214,7 @@ interface TaskDao {
             deadline = :newDeadline
         WHERE id = :taskId
     """)
-    suspend fun reactivateExpiredTask(taskId: Long, newDeadline: Long)
+    abstract suspend fun reactivateExpiredTask(taskId: Long, newDeadline: Long)
     
     /**
      * 标记任务完成（同时记录完成时间）
@@ -204,7 +228,7 @@ interface TaskDao {
             is_pinned = 0
         WHERE id = :taskId
     """)
-    suspend fun markTaskCompleted(taskId: Long, completedAt: Long)
+    abstract suspend fun markTaskCompleted(taskId: Long, completedAt: Long)
     
     /**
      * 标记任务未完成（清除完成时间）
@@ -216,57 +240,57 @@ interface TaskDao {
             completed_at = NULL
         WHERE id = :taskId
     """)
-    suspend fun markTaskUncompleted(taskId: Long)
+    abstract suspend fun markTaskUncompleted(taskId: Long)
     
     /** 标记所有过期提醒为已触发 */
     @Query("UPDATE reminders SET is_fired = 1 WHERE trigger_at < :currentTime AND is_fired = 0")
-    suspend fun autoMarkOverdueRemindersAsFired(currentTime: Long): Int
+    abstract suspend fun autoMarkOverdueRemindersAsFired(currentTime: Long): Int
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTasks(tasks: List<Task>)
+    abstract suspend fun insertTasks(tasks: List<Task>)
     
     @Query("SELECT * FROM tasks ORDER BY start_time ASC")
-    fun getAllTasks(): Flow<List<Task>>
+    abstract fun getAllTasks(): Flow<List<Task>>
     
     @Query("SELECT * FROM tasks WHERE start_time >= :start AND deadline <= :end ORDER BY deadline ASC")
-    fun getTasksInRange(start: Long, end: Long): Flow<List<Task>>
+    abstract fun getTasksInRange(start: Long, end: Long): Flow<List<Task>>
     
     // --- 提醒相关操作 ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertReminder(reminder: Reminder): Long
+    abstract suspend fun insertReminder(reminder: Reminder): Long
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertReminders(reminders: List<Reminder>)
+    abstract suspend fun insertReminders(reminders: List<Reminder>)
     
     @Query("SELECT * FROM reminders WHERE task_id = :taskId ORDER BY trigger_at ASC")
-    fun getRemindersByTaskId(taskId: Long): Flow<List<Reminder>>
+    abstract fun getRemindersByTaskId(taskId: Long): Flow<List<Reminder>>
     
     @Query("SELECT * FROM reminders WHERE task_id = :taskId ORDER BY trigger_at ASC")
-    suspend fun getRemindersByTaskIdSync(taskId: Long): List<Reminder>
+    abstract suspend fun getRemindersByTaskIdSync(taskId: Long): List<Reminder>
     
     @Query("DELETE FROM reminders WHERE task_id = :taskId")
-    suspend fun deleteRemindersByTaskId(taskId: Long)
+    abstract suspend fun deleteRemindersByTaskId(taskId: Long)
     
     @Delete
-    suspend fun deleteReminder(reminder: Reminder)
+    abstract suspend fun deleteReminder(reminder: Reminder)
     
     @Query("UPDATE reminders SET is_fired = :fired WHERE id = :reminderId")
-    suspend fun updateReminderFired(reminderId: Long, fired: Boolean)
+    abstract suspend fun updateReminderFired(reminderId: Long, fired: Boolean)
     
     @Query("SELECT * FROM reminders WHERE is_fired = 0 AND trigger_at <= :currentTime")
-    suspend fun getPendingReminders(currentTime: Long): List<Reminder>
+    abstract suspend fun getPendingReminders(currentTime: Long): List<Reminder>
     
     // 获取所有未触发且触发时间在未来的提醒（用于开机恢复）
     @Query("SELECT * FROM reminders WHERE is_fired = 0 AND trigger_at > :currentTime")
-    suspend fun getFutureReminders(currentTime: Long): List<Reminder>
+    abstract suspend fun getFutureReminders(currentTime: Long): List<Reminder>
     
     // 同步获取任务（用于广播接收器中的校验）
     @Query("SELECT * FROM tasks WHERE id = :id")
-    suspend fun getTaskByIdSync(id: Long): Task?
+    abstract suspend fun getTaskByIdSync(id: Long): Task?
     
     // 同步获取提醒
     @Query("SELECT * FROM reminders WHERE id = :id")
-    suspend fun getReminderByIdSync(id: Long): Reminder?
+    abstract suspend fun getReminderByIdSync(id: Long): Reminder?
     
     // ========== Widget 专用查询方法 ==========
     
@@ -279,7 +303,7 @@ interface TaskDao {
         WHERE is_done = 0 AND is_expired = 0
         ORDER BY is_pinned DESC, start_time ASC, deadline ASC
     """)
-    suspend fun getActiveTasksSync(): List<Task>
+    abstract suspend fun getActiveTasksSync(): List<Task>
     
     /**
      * 同步获取今日任务（用于甘特图小组件，排除已过期）
@@ -295,7 +319,7 @@ interface TaskDao {
         )
         ORDER BY start_time ASC, deadline ASC
     """)
-    suspend fun getTodayTasksSyncWithRange(startOfDay: Long, endOfDay: Long): List<Task>
+    abstract suspend fun getTodayTasksSyncWithRange(startOfDay: Long, endOfDay: Long): List<Task>
     
     /**
      * 获取今日任务完成进度（排除已过期）
@@ -312,7 +336,7 @@ interface TaskDao {
             OR (start_time < :startOfDay AND deadline >= :endOfDay)
         )
     """)
-    suspend fun getTodayTasksProgressWithRange(startOfDay: Long, endOfDay: Long): TaskProgress?
+    abstract suspend fun getTodayTasksProgressWithRange(startOfDay: Long, endOfDay: Long): TaskProgress?
     
     /**
      * 同步获取即将截止的任务（用于截止提醒小组件，排除已过期）
@@ -324,7 +348,7 @@ interface TaskDao {
         ORDER BY deadline ASC
         LIMIT :limit
     """)
-    suspend fun getUpcomingDeadlinesSyncWithTime(currentTime: Long, limit: Int): List<Task>
+    abstract suspend fun getUpcomingDeadlinesSyncWithTime(currentTime: Long, limit: Int): List<Task>
     
     /**
      * 获取最紧急的未完成且未过期任务
@@ -335,20 +359,20 @@ interface TaskDao {
         ORDER BY deadline ASC
         LIMIT 1
     """)
-    suspend fun getMostUrgentTaskSyncWithTime(currentTime: Long): Task?
+    abstract suspend fun getMostUrgentTaskSyncWithTime(currentTime: Long): Task?
     
     /**
-     * 获取所有活跃任务（用于任务列表小组件）
-     * 排序：未完成优先 -> 置顶优先 -> 开始时间 -> 截止时间
-     * 过滤：只显示未完成且未过期的任务
+     * 获取所有进行中的任务（包括未完成且未过期，以及已过期但未完成的任务）
+     * 用于任务列表小组件
+     * 排序要求：置顶未完成 -> 未完成 -> 置顶已过期 -> 已过期
      */
     @Query("""
         SELECT * FROM tasks 
-        WHERE is_done = 0 AND is_expired = 0 AND deadline > :currentTime
-        ORDER BY is_pinned DESC, start_time ASC, deadline ASC
-        LIMIT 20
+        WHERE is_done = 0
+        ORDER BY is_expired ASC, is_pinned DESC, start_time ASC, deadline ASC
+        LIMIT 40
     """)
-    suspend fun getActiveTasksWithRecentlyCompletedSync(currentTime: Long = System.currentTimeMillis()): List<Task>
+    abstract suspend fun getActiveTasksWithExpiredSync(): List<Task>
     
     /**
      * 同步获取今日相关的所有任务（包括已完成的，用于甘特图小组件，排除已过期）
@@ -363,5 +387,5 @@ interface TaskDao {
         )
         ORDER BY is_done ASC, start_time ASC, deadline ASC
     """)
-    suspend fun getTodayAllTasksSync(startOfDay: Long, endOfDay: Long): List<Task>
+    abstract suspend fun getTodayAllTasksSync(startOfDay: Long, endOfDay: Long): List<Task>
 }

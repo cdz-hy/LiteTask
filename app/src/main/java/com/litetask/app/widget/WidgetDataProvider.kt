@@ -32,7 +32,7 @@ object WidgetDataProvider {
         return try {
             val dao = com.litetask.app.data.local.AppDatabase.getInstance(context).taskDao()
             val task = dao.getTaskById(taskId)
-            if (task != null && !task.isDone && !task.isExpired) {
+            if (task != null && !task.isDone) {
                 // 使用新的方法标记完成，自动记录完成时间
                 dao.markTaskCompleted(taskId, System.currentTimeMillis())
                 // 记录完成时间到缓存
@@ -40,7 +40,7 @@ object WidgetDataProvider {
                 Log.d(TAG, "Task marked done: $taskId")
                 true
             } else {
-                Log.w(TAG, "Task not found, already done, or expired: $taskId")
+                Log.w(TAG, "Task not found or already done: $taskId")
                 false
             }
         } catch (e: Exception) {
