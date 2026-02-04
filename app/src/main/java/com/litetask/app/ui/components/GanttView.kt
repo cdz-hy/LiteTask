@@ -329,6 +329,7 @@ fun GanttHeader(
             LegendItem(color = extendedColors.ganttWork, label = stringResource(R.string.task_type_work))
             LegendItem(color = extendedColors.ganttLife, label = stringResource(R.string.task_type_life))
             LegendItem(color = extendedColors.ganttStudy, label = stringResource(R.string.task_type_study))
+            LegendItem(color = extendedColors.ganttUrgent, label = stringResource(R.string.task_type_urgent))
         }
     }
 }
@@ -476,9 +477,10 @@ fun GanttTasks(
     taskComposites: List<TaskDetailComposite>,
     startOfView: Long,
     dayWidth: Dp,
+    enabled: Boolean = true,
     onTaskClick: (Task) -> Unit
 ) {
-    GanttTasksLayout(taskComposites, startOfView, dayWidth, onTaskClick)
+    GanttTasksLayout(taskComposites, startOfView, dayWidth, enabled, onTaskClick)
 }
 
 @Composable
@@ -486,6 +488,7 @@ fun GanttTasksLayout(
     taskComposites: List<TaskDetailComposite>,
     startOfView: Long,
     dayWidth: Dp,
+    enabled: Boolean = true,
     onTaskClick: (Task) -> Unit
 ) {
     val density = LocalDensity.current
@@ -494,7 +497,11 @@ fun GanttTasksLayout(
     Layout(
         content = {
             taskComposites.forEach { composite ->
-                GanttTaskCard(composite = composite, onClick = { onTaskClick(composite.task) })
+                GanttTaskCard(
+                    composite = composite, 
+                    enabled = enabled,
+                    onClick = { onTaskClick(composite.task) }
+                )
             }
         }
     ) { measurables, constraints ->
@@ -548,12 +555,12 @@ fun GanttTasksLayout(
 @Composable
 fun GanttTaskCard(
     composite: TaskDetailComposite,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val task = composite.task
     val subTasks = composite.subTasks
     val extendedColors = LocalExtendedColors.current
-    
     // Calculate Progress
     val hasSubtasks = subTasks.isNotEmpty()
     val progress = if (hasSubtasks) {
@@ -592,7 +599,7 @@ fun GanttTaskCard(
     Surface(
         modifier = Modifier
             .height(56.dp)
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         shape = RoundedCornerShape(8.dp),
         color = bg,
         border = androidx.compose.foundation.BorderStroke(1.dp, border),

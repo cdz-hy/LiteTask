@@ -432,54 +432,8 @@ private fun GanttFullscreenWrapper(
     
     com.litetask.app.ui.components.GanttFullscreenView(
         taskComposites = allLoadedTasks,
-        onTaskClick = { task ->
-            onSelectedTaskIdChange(task.id)
-        },
+        onTaskClick = { /* 横屏全屏模式下屏蔽点击详情，以避免沉浸式下的布局偏移问题 */ },
         initialViewMode = actualViewMode,
         onBack = { navController.popBackStack() }
     )
-    
-    // 任务详情 Sheet
-    selectedTaskId?.let { taskId ->
-        val taskComposite by produceState<com.litetask.app.data.model.TaskDetailComposite?>(
-            initialValue = null,
-            key1 = taskId
-        ) {
-            viewModel.getTaskDetailFlow(taskId).collect { composite ->
-                value = composite
-            }
-        }
-        
-        val uiState by viewModel.uiState.collectAsState()
-        taskComposite?.let { composite ->
-            TaskDetailSheet(
-                task = composite.task,
-                subTasks = composite.subTasks,
-                reminders = composite.reminders,
-                onDismiss = { onSelectedTaskIdChange(null) },
-                onDelete = { 
-                    viewModel.deleteTask(it)
-                    onSelectedTaskIdChange(null)
-                    Toast.makeText(context, "任务已删除", Toast.LENGTH_SHORT).show()
-                },
-                onUpdateTask = { viewModel.updateTask(it) },
-                onUpdateSubTask = { sub, isCompleted -> 
-                    viewModel.updateSubTaskStatus(sub.id, isCompleted)
-                },
-                onAddSubTask = { content ->
-                    viewModel.addSubTask(composite.task.id, content)
-                },
-                onDeleteSubTask = { subTask ->
-                    viewModel.deleteSubTask(subTask)
-                },
-                onGenerateSubTasks = {
-                    viewModel.generateSubTasks(composite.task)
-                },
-                onGenerateSubTasksWithContext = { task ->
-                    viewModel.showSubTaskInputDialog(task)
-                },
-                isGeneratingSubTasks = uiState.isAnalyzing
-            )
-        }
-    }
 }

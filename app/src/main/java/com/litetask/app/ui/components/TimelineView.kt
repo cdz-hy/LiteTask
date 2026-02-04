@@ -1,7 +1,7 @@
 package com.litetask.app.ui.components
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,7 +26,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -40,6 +42,7 @@ import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.home.TimelineItem
 import com.litetask.app.ui.theme.LocalExtendedColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -594,13 +597,42 @@ fun SwipeRevealItem(
     val actionWidthPx = with(density) { actionWidth.toPx() }
     val offsetX = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    
+    // --- 核心优化：删除离场动画状态 ---
+    var isDismissed by remember { mutableStateOf(false) }
+    val animationDuration = 400 // MD3 标准出场时间
 
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.CenterEnd
+    AnimatedVisibility(
+        visible = !isDismissed,
+        exit = shrinkVertically(
+            animationSpec = tween(animationDuration, easing = FastOutSlowInEasing)
+        ) + fadeOut(
+            animationSpec = tween(animationDuration / 2)
+        )
     ) {
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.CenterEnd
+        ) {
         // 背景操作层
         if (offsetX.value < -30f) {
+            var isDeleteConfirming by remember { mutableStateOf(false) }
+            
+            // 自动重置确认状态
+            LaunchedEffect(isDeleteConfirming) {
+                if (isDeleteConfirming) {
+                    delay(3000)
+                    isDeleteConfirming = false
+                }
+            }
+            // 当滑动关闭时也重置状态
+            LaunchedEffect(offsetX.value) {
+                if (offsetX.value > -10f) {
+                    isDeleteConfirming = false
+                }
+            }
+
             Row(
                 modifier = Modifier
                     .width(actionWidth)
@@ -623,10 +655,29 @@ fun SwipeRevealItem(
                     color = MaterialTheme.colorScheme.primary,
                     onClick = { scope.launch { offsetX.animateTo(0f); onEdit() } }
                 )
+                
                 ActionIcon(
-                    icon = Icons.Default.Delete,
-                    color = extendedColors.deadlineUrgent,
-                    onClick = { scope.launch { offsetX.animateTo(0f); onDelete() } }
+                    icon = if (isDeleteConfirming) Icons.Default.DeleteForever else Icons.Default.Delete,
+                    color = if (isDeleteConfirming) Color.White else extendedColors.deadlineUrgent,
+                    containerColor = if (isDeleteConfirming) extendedColors.deadlineUrgent else extendedColors.deadlineUrgent.copy(alpha = 0.1f),
+                    onClick = { 
+                        if (isDeleteConfirming) {
+                            // 触发动效
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            scope.launch { 
+                                // 1. 先把侧滑状态滑回去，视觉上更连贯
+                                offsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMedium))
+                                // 2. 标记离场，触发 AnimatedVisibility 的 exit 动画
+                                isDismissed = true
+                                // 3. 等待动画完成后执行真正的物理删除
+                                delay(animationDuration.toLong())
+                                onDelete() 
+                            }
+                        } else {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            isDeleteConfirming = true
+                        }
+                    }
                 )
             }
         }
@@ -659,13 +710,19 @@ fun SwipeRevealItem(
         }
     }
 }
+}
 
 @Composable
-fun ActionIcon(icon: ImageVector, color: Color, onClick: () -> Unit) {
+fun ActionIcon(
+    icon: ImageVector, 
+    color: Color, 
+    containerColor: Color = color.copy(alpha = 0.1f),
+    onClick: () -> Unit
+) {
     IconButton(
         onClick = onClick,
         modifier = Modifier
-            .background(color.copy(alpha = 0.1f), CircleShape)
+            .background(containerColor, CircleShape)
             .size(48.dp)
     ) {
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
