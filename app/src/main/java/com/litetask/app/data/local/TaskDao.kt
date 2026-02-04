@@ -380,7 +380,7 @@ abstract class TaskDao {
      */
     @Query("""
         SELECT * FROM tasks 
-        WHERE is_expired = 0 AND (
+        WHERE (
             (start_time >= :startOfDay AND start_time < :endOfDay)
             OR (deadline >= :startOfDay AND deadline < :endOfDay)
             OR (start_time < :startOfDay AND deadline >= :endOfDay)

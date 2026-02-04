@@ -41,8 +41,9 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     
-    // 用于传递从通知点击的任务 ID
-    private var pendingTaskId: Long? = null
+    // 用于从外部（如通知或小组件）传递的动作或任务ID
+    private var pendingTaskId = mutableStateOf<Long?>(null)
+    private var pendingAction = mutableStateOf<String?>(null)
     
     // 通知权限请求
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -58,8 +59,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 处理从通知点击进入的情况
-        handleNotificationIntent(intent)
+        // 处理从通知或小组件点击进入的情况
+        handleIntent(intent)
         
         // 请求必要的权限
         requestRequiredPermissions()
@@ -70,7 +71,11 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    AppContent(initialTaskId = pendingTaskId)
+                    AppContent(
+                        initialTaskId = pendingTaskId.value,
+                        initialAction = pendingAction.value,
+                        onActionHandled = { pendingAction.value = null }
+                    )
                 }
             }
         }
@@ -94,13 +99,22 @@ class MainActivity : ComponentActivity() {
     
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // 处理 App 已在前台时从通知点击的情况
-        handleNotificationIntent(intent)
+        // 处理 App 已在前台时从外部点击的情况
+        handleIntent(intent)
     }
     
-    private fun handleNotificationIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra(NotificationHelper.EXTRA_FROM_NOTIFICATION, false) == true) {
-            pendingTaskId = intent.getLongExtra(NotificationHelper.EXTRA_TASK_ID, -1).takeIf { it != -1L }
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) return
+        
+        // 处理通知点击
+        if (intent.getBooleanExtra(NotificationHelper.EXTRA_FROM_NOTIFICATION, false)) {
+            pendingTaskId.value = intent.getLongExtra(NotificationHelper.EXTRA_TASK_ID, -1).takeIf { it != -1L }
+        }
+        
+        // 处理动作请求（如来自小组件的 add_task）
+        val action = intent.getStringExtra("action")
+        if (action != null) {
+            pendingAction.value = action
         }
     }
     
@@ -112,7 +126,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppContent(initialTaskId: Long? = null) {
+fun AppContent(
+    initialTaskId: Long? = null,
+    initialAction: String? = null,
+    onActionHandled: () -> Unit = {}
+) {
     val navController = rememberNavController()
     var currentHomeView by remember { mutableStateOf("timeline") } // 记住 HomeScreen 的当前视图
     var selectedTaskId by remember { mutableStateOf<Long?>(initialTaskId) }
@@ -168,7 +186,9 @@ fun AppContent(initialTaskId: Long? = null) {
                 currentHomeView = currentHomeView,
                 onViewChanged = { view -> currentHomeView = view },
                 hasCheckedPermissions = hasCheckedPermissions,
-                onPermissionChecked = { hasCheckedPermissions = true }
+                onPermissionChecked = { hasCheckedPermissions = true },
+                initialAction = initialAction,
+                onActionHandled = onActionHandled
             )
         }
         
@@ -207,7 +227,9 @@ private fun HomeScreenWrapper(
     currentHomeView: String,
     onViewChanged: (String) -> Unit,
     hasCheckedPermissions: Boolean,
-    onPermissionChecked: () -> Unit
+    onPermissionChecked: () -> Unit,
+    initialAction: String? = null,
+    onActionHandled: () -> Unit = {}
 ) {
     val viewModel: HomeViewModel = hiltViewModel()
     
@@ -224,7 +246,9 @@ private fun HomeScreenWrapper(
         onViewChanged = onViewChanged,
         shouldCheckPermissions = !hasCheckedPermissions,
         onPermissionChecked = onPermissionChecked,
-        viewModel = viewModel
+        viewModel = viewModel,
+        initialAction = initialAction,
+        onActionHandled = onActionHandled
     )
 }
 

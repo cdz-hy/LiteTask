@@ -76,7 +76,9 @@ fun HomeScreen(
     onViewChanged: (String) -> Unit = {},
     shouldCheckPermissions: Boolean = true,
     onPermissionChecked: () -> Unit = {},
-    viewModel: HomeViewModel = hiltViewModel()
+    viewModel: HomeViewModel = hiltViewModel(),
+    initialAction: String? = null,
+    onActionHandled: () -> Unit = {}
 ) {
     // ViewModel 数据流
     val todayTasks by viewModel.tasks.collectAsState()
@@ -353,6 +355,18 @@ fun HomeScreen(
                     // 调整位置，确保展开时不被遮挡
                     modifier = Modifier.padding(bottom = 16.dp, end = 16.dp)
                 )
+
+                // 处理从外部（如小组件）传来的动作
+                LaunchedEffect(initialAction) {
+                    if (initialAction == "add_task") {
+                        when (defaultFabAction) {
+                            "voice" -> onVoiceClickAction()
+                            "text" -> onTextInputClickAction()
+                            "manual" -> showAddTaskDialog = true
+                        }
+                        onActionHandled() // 标记动作已处理
+                    }
+                }
             }
         ) { paddingValues ->
             Box(

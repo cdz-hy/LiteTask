@@ -1,5 +1,6 @@
 package com.litetask.app.widget
 
+import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.os.Binder
@@ -98,13 +99,16 @@ class TaskListWidgetService : RemoteViewsService() {
     }
     
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
-        return TaskListRemoteViewsFactory(applicationContext)
+        return TaskListRemoteViewsFactory(applicationContext, intent)
     }
 }
 
 class TaskListRemoteViewsFactory(
-    private val context: Context
+    private val context: Context,
+    intent: Intent
 ) : RemoteViewsService.RemoteViewsFactory {
+    
+    private val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
     
     private var tasks: List<Task> = emptyList()
     private var justCompletedTaskIds: Set<Long> = emptySet()
@@ -209,13 +213,22 @@ class TaskListRemoteViewsFactory(
             if (task.isPinned) android.view.View.VISIBLE else android.view.View.GONE)
         
         // 设置任务类型标签
+        val appWidgetManager = AppWidgetManager.getInstance(context)
+        val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
+        val minWidth = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH) ?: 0
+        val isNarrow = minWidth != 0 && minWidth < 180
+        
         if (task.isExpired && !task.isDone) {
-            // 已过期：显示“已过期”标签
-            views.setViewVisibility(R.id.urgent_badge, android.view.View.VISIBLE)
-            views.setTextViewText(R.id.urgent_badge, context.getString(R.string.expired_tasks_header))
-            views.setInt(R.id.urgent_badge, "setBackgroundResource", R.drawable.widget_urgent_badge) // 仍用红色背景，但整体会变暗
+            // 已过期：显示“已过期”标签（除非宽度太窄需要给标题让位）
+            if (isNarrow) {
+                views.setViewVisibility(R.id.urgent_badge, android.view.View.GONE)
+            } else {
+                views.setViewVisibility(R.id.urgent_badge, android.view.View.VISIBLE)
+                views.setTextViewText(R.id.urgent_badge, context.getString(R.string.expired_tasks_header))
+                views.setInt(R.id.urgent_badge, "setBackgroundResource", R.drawable.widget_urgent_badge)
+            }
         } else {
-            // 未过期：按原逻辑显示（如果是紧急任务则显示标签，此处简化为始终显示类型）
+            // 未过期：按原逻辑显示（始终显示类型）
             views.setViewVisibility(R.id.urgent_badge, android.view.View.VISIBLE)
             views.setTextViewText(R.id.urgent_badge, getTypeText(task.type))
             views.setInt(R.id.urgent_badge, "setBackgroundResource", getTypeBadgeBackground(task.type))

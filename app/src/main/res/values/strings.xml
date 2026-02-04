@@ -335,7 +335,8 @@
     <string name="widget_task_complete_failed">操作失败</string>
     <string name="widget_task_undone">已撤销完成</string>
     <string name="widget_task_not_started">任务未开始</string>
-    <string name="widget_task_in_progress">任务已开始 %1$d%%</string>
+    <string name="widget_task_in_progress">时长已过 %1$d%%</string>
     <string name="widget_task_ended">任务已结束</string>
     <string name="widget_task_done">任务已完成</string>
+    <string name="widget_task_expired">任务已过期</string>
 </resources>

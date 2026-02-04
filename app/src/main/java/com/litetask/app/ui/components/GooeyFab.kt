@@ -53,10 +53,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -192,8 +196,8 @@ fun GooeyExpandableFab(
         modifier = modifier
             .width(88.dp)
             .height(containerHeight)
-            .offset(x = 12.dp) // 向右偏移一点
-            .padding(bottom = 12.dp), // 适中的底部 padding，平衡流体效果和边界控制
+            .offset(x = 12.dp)
+            .padding(bottom = 8.dp), // 减小底部 padding，配合软裁剪
         contentAlignment = Alignment.BottomCenter
     ) {
         // ==================== 底层：Gooey 融合动画层 ====================
@@ -262,13 +266,25 @@ private fun GooeyLayerApi33(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
-                // 使用 CLAMP 模式避免边缘黑色，减小模糊半径避免过度扩散
-                val blur = RenderEffect.createBlurEffect(33f, 33f, Shader.TileMode.CLAMP)
-                runtimeShader.setFloatUniform("visibility", 0.35f) // 稍微提高阈值，减少扩散
+                val blur = RenderEffect.createBlurEffect(32f, 32f, Shader.TileMode.CLAMP)
+                runtimeShader.setFloatUniform("visibility", 0.35f)
                 val shader = RenderEffect.createRuntimeShaderEffect(runtimeShader, "composable")
                 renderEffect = RenderEffect.createChainEffect(shader, blur).asComposeRenderEffect()
-                // 启用裁剪，但容器已经预留了合适的底部空间
-                clip = true
+                
+                // 核心修复点：禁用强制裁剪(clip=false)，改用软裁剪
+                clip = false
+                compositingStrategy = CompositingStrategy.Offscreen
+            }
+            .drawWithContent {
+                drawContent()
+                // 软裁剪实现：在底部边缘使用渐变蒙层，让流体效果自然消失而非被生硬切断
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0.92f to Color.Black,   // 此位置以上完全保持
+                        1.0f to Color.Transparent // 最底部边缘完全消失
+                    ),
+                    blendMode = BlendMode.DstIn // 蒙层混合模式
+                )
             },
         contentAlignment = Alignment.BottomCenter
     ) {
@@ -301,22 +317,31 @@ private fun GooeyLayerApi31(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
-                // 使用 CLAMP 模式避免边缘黑色，减小模糊半径
                 val blur = RenderEffect.createBlurEffect(20f, 20f, Shader.TileMode.CLAMP)
-                // 调整矩阵：增强 Alpha 对比度，同时保持 RGB 通道
-                // 稍微提升 RGB 亮度来补偿边缘变暗
                 val matrix = android.graphics.ColorMatrix(floatArrayOf(
                     1.1f, 0f, 0f, 0f, 10f,
                     0f, 1.1f, 0f, 0f, 10f,
                     0f, 0f, 1.1f, 0f, 10f,
-                    0f, 0f, 0f, 28f, -14f // 稍微提高 Alpha 对比度
+                    0f, 0f, 0f, 28f, -14f
                 ))
                 renderEffect = RenderEffect.createChainEffect(
                     RenderEffect.createColorFilterEffect(android.graphics.ColorMatrixColorFilter(matrix)),
                     blur
                 ).asComposeRenderEffect()
-                // 减少裁剪，让底部流体效果更完整
+                
                 clip = false
+                compositingStrategy = CompositingStrategy.Offscreen
+            }
+            .drawWithContent {
+                drawContent()
+                // 同步应用软裁剪
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0.92f to Color.Black,
+                        1.0f to Color.Transparent
+                    ),
+                    blendMode = BlendMode.DstIn
+                )
             },
         contentAlignment = Alignment.BottomCenter
     ) {

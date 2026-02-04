@@ -61,6 +61,9 @@ class GanttRemoteViewsFactory(
                     calendar.add(Calendar.DAY_OF_YEAR, 1)
                     val endOfDay = calendar.timeInMillis
                     
+                    // 自动同步状态
+                    dao.autoSyncTaskExpiredStatus(System.currentTimeMillis())
+                    
                     // 获取今日相关的所有任务（包括已完成的）
                     tasks = dao.getTodayAllTasksSync(startOfDay, endOfDay)
                     
@@ -109,15 +112,15 @@ class GanttRemoteViewsFactory(
         views.setProgressBar(R.id.progress_bar, 100, progress, false)
         
         // 设置类型指示条颜色
-        if (task.isDone) {
-            // 已完成任务使用灰色指示条
+        if (task.isDone || task.isExpired) {
+            // 已完成或已过期任务使用灰色指示条
             views.setImageViewResource(R.id.type_indicator, R.drawable.widget_type_indicator_done)
         } else {
             views.setImageViewResource(R.id.type_indicator, getTypeIndicatorRes(task.type))
         }
         
-        // 设置已完成任务样式 - 整体变灰变淡
-        if (task.isDone) {
+        // 设置已完成或已过期任务样式 - 整体变灰变淡
+        if (task.isDone || task.isExpired) {
             views.setTextColor(R.id.task_title, context.getColor(R.color.outline))
             views.setTextColor(R.id.progress_text, context.getColor(R.color.outline))
             views.setTextColor(R.id.time_range, context.getColor(R.color.outline))
@@ -192,6 +195,7 @@ class GanttRemoteViewsFactory(
     private fun getProgressStatusText(task: Task, progress: Int, now: Long): String {
         return when {
             task.isDone -> context.getString(R.string.widget_task_done)
+            task.isExpired -> context.getString(R.string.widget_task_expired)
             now < task.startTime -> context.getString(R.string.widget_task_not_started)
             now >= task.deadline -> context.getString(R.string.widget_task_ended)
             else -> context.getString(R.string.widget_task_in_progress, progress)
