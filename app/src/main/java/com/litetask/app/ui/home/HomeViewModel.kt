@@ -595,15 +595,18 @@ class HomeViewModel @Inject constructor(
 
     fun updateTask(task: Task) {
         viewModelScope.launch {
-            if (task.isDone) {
-                // 完成任务：使用专门的完成方法，会取消闹钟并记录完成时间
+            if (task.isDone && task.completedAt == null) {
+                // 核心逻辑：只有从未完成变为完成（即 completedAt 为空）时，才触发完成专门处理
+                // 这确保了编辑已完成任务时，原始完成时间不会被“现在”覆盖
                 taskRepository.markTaskDone(task)
                 refreshHistoryAfterCompletion()
             } else {
-                // 未完成任务的更新：直接更新任务（包括置顶状态变化等）
+                // 已完成任务的编辑，或者从未完成到未完成的更新
                 taskRepository.updateTask(task)
                 // 如果任务从历史列表中重新激活，从额外历史列表移除
-                _additionalHistoryTasks.value = _additionalHistoryTasks.value.filter { it.task.id != task.id }
+                if (!task.isDone) {
+                    _additionalHistoryTasks.value = _additionalHistoryTasks.value.filter { it.task.id != task.id }
+                }
             }
             WidgetUpdateHelper.refreshAllWidgets(application)
         }

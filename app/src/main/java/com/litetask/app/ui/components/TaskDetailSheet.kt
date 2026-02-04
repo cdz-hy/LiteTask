@@ -586,9 +586,11 @@ fun TaskDetailSheet(
                                                 ).show()
                                             } else {
                                                 val updatedTask = if (!task.isDone) {
-                                                    task.copy(isDone = true, isPinned = false)
+                                                    // mark as done
+                                                    task.copy(isDone = true, isPinned = false, completedAt = null) // completedAt will be set by Repository.markTaskDone
                                                 } else {
-                                                    task.copy(isDone = false)
+                                                    // reopen
+                                                    task.copy(isDone = false, completedAt = null)
                                                 }
                                                 onUpdateTask(updatedTask)
                                                 closeSheet()

@@ -36,15 +36,12 @@
         <ImageView
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:paddingStart="2dp"
-            android:paddingEnd="2dp"
-            android:paddingTop="2dp"
-            android:paddingBottom="2dp"
+            android:padding="2dp"
             android:src="@drawable/ic_widget_add"
             android:contentDescription="@null" />
     </LinearLayout>
 
-    <!-- 预览任务项1 -->
+    <!-- 预览任务项1: 正常工作任务 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -92,6 +89,17 @@
                 android:textSize="10sp" />
         </LinearLayout>
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:paddingHorizontal="4dp"
+            android:paddingVertical="1dp"
+            android:background="@drawable/widget_badge_work"
+            android:text="@string/task_type_work"
+            android:textColor="@android:color/white"
+            android:textSize="8sp" />
+
         <ImageView
             android:layout_width="24dp"
             android:layout_height="24dp"
@@ -99,7 +107,74 @@
             android:contentDescription="@null" />
     </LinearLayout>
 
-    <!-- 预览任务项2 -->
+    <!-- 预览任务项2: 已过期任务 (60% 透明度效果) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/widget_item_background"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginTop="1dp"
+        android:layout_marginBottom="3dp"
+        android:alpha="0.6">
+
+        <ImageView
+            android:layout_width="3dp"
+            android:layout_height="24dp"
+            android:src="@drawable/widget_type_indicator_urgent"
+            android:scaleType="fitXY"
+            android:contentDescription="@null" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="6dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="发送邮件反馈"
+                android:textColor="@color/on_surface_variant"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:maxLines="1" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="昨天 17:30"
+                android:textColor="@color/outline"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:paddingHorizontal="4dp"
+            android:paddingVertical="1dp"
+            android:background="@drawable/widget_urgent_badge"
+            android:text="@string/expired_tasks_header"
+            android:textColor="@android:color/white"
+            android:textSize="8sp" />
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/widget_checkbox_unchecked"
+            android:contentDescription="@null" />
+    </LinearLayout>
+
+    <!-- 预览任务项3: 已完成任务 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -133,7 +208,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="健身锻炼"
+                android:text="健身一小时"
                 android:textColor="@color/on_surface"
                 android:textSize="12sp"
                 android:textStyle="bold"
@@ -142,15 +217,26 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="18:00 - 19:30"
+                android:text="18:30 - 19:30"
                 android:textColor="@color/on_surface_variant"
                 android:textSize="10sp" />
         </LinearLayout>
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:paddingHorizontal="4dp"
+            android:paddingVertical="1dp"
+            android:background="@drawable/widget_badge_life"
+            android:text="@string/task_type_life"
+            android:textColor="@android:color/white"
+            android:textSize="8sp" />
+
         <ImageView
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:src="@drawable/widget_checkbox_unchecked"
+            android:src="@drawable/widget_checkbox_checked"
             android:contentDescription="@null" />
     </LinearLayout>
 

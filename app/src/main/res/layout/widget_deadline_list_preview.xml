@@ -34,7 +34,7 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- 预览截止项1（紧急 - 红色） -->
+    <!-- 预览截止项1: 紧急 (小时计) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -50,7 +50,6 @@
         android:layout_marginTop="1dp"
         android:layout_marginBottom="3dp">
 
-        <!-- 倒计时区域 -->
         <LinearLayout
             android:layout_width="48dp"
             android:layout_height="wrap_content"
@@ -79,7 +78,7 @@
             android:layout_width="3dp"
             android:layout_height="32dp"
             android:layout_marginStart="6dp"
-            android:src="@drawable/widget_type_indicator_work"
+            android:src="@drawable/widget_type_indicator_urgent"
             android:scaleType="fitXY"
             android:contentDescription="@null" />
 
@@ -93,7 +92,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="前端界面开发"
+                android:text="交付产品演示视频"
                 android:textColor="@color/on_surface"
                 android:textSize="11sp"
                 android:textStyle="bold"
@@ -105,16 +104,14 @@
                 android:layout_marginTop="2dp"
                 android:orientation="horizontal"
                 android:gravity="center_vertical">
-
+                
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:paddingTop="1dp"
-                    android:paddingBottom="1dp"
-                    android:background="@drawable/widget_badge_work"
-                    android:text="@string/task_type_work"
+                    android:paddingHorizontal="4dp"
+                    android:paddingVertical="1dp"
+                    android:background="@drawable/widget_urgent_badge"
+                    android:text="紧急"
                     android:textColor="@android:color/white"
                     android:textSize="8sp" />
 
@@ -123,14 +120,14 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:layout_marginStart="6dp"
-                    android:text="今天 18:00"
+                    android:text="今天 23:59"
                     android:textColor="@color/on_surface_variant"
                     android:textSize="9sp" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 预览截止项2（普通） -->
+    <!-- 预览截止项2: 普通 (天计) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -146,7 +143,6 @@
         android:layout_marginTop="1dp"
         android:layout_marginBottom="3dp">
 
-        <!-- 倒计时区域 -->
         <LinearLayout
             android:layout_width="48dp"
             android:layout_height="wrap_content"
@@ -189,7 +185,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="复习考试内容"
+                android:text="Kotlin 深研笔记"
                 android:textColor="@color/on_surface"
                 android:textSize="11sp"
                 android:textStyle="bold"
@@ -205,12 +201,10 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:paddingTop="1dp"
-                    android:paddingBottom="1dp"
+                    android:paddingHorizontal="4dp"
+                    android:paddingVertical="1dp"
                     android:background="@drawable/widget_badge_study"
-                    android:text="@string/task_type_study"
+                    android:text="学习"
                     android:textColor="@android:color/white"
                     android:textSize="8sp" />
 
@@ -219,11 +213,10 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:layout_marginStart="6dp"
-                    android:text="01/06 12:00"
+                    android:text="周五 12:00"
                     android:textColor="@color/on_surface_variant"
                     android:textSize="9sp" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
-
 </LinearLayout>

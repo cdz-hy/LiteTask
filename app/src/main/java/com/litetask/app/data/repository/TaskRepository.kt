@@ -37,11 +37,17 @@ class TaskRepositoryImpl @Inject constructor(
     
     suspend fun updateTask(task: Task) {
         // 如果截止时间在未来，自动清除过期状态（防止 UI 传回过时的过期标记）
-        val taskToUpdate = if (task.isExpired && task.deadline > System.currentTimeMillis()) {
+        var taskToUpdate = if (task.isExpired && task.deadline > System.currentTimeMillis()) {
             task.copy(isExpired = false, expiredAt = null)
         } else {
             task
         }
+        
+        // 核心修正：确保未完成任务的完成时间字段为 null，避免数据不一致
+        if (!taskToUpdate.isDone && taskToUpdate.completedAt != null) {
+            taskToUpdate = taskToUpdate.copy(completedAt = null)
+        }
+        
         taskDao.updateTask(taskToUpdate)
     }
     suspend fun deleteTask(task: Task) = taskDao.deleteTask(task)

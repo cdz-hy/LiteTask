@@ -12,6 +12,5 @@
     android:initialLayout="@layout/widget_gantt"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
-    android:previewImage="@drawable/widget_preview_gantt"
     android:previewLayout="@layout/widget_gantt_preview"
     android:description="@string/widget_gantt_description" />
