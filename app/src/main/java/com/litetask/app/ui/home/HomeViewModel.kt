@@ -1,6 +1,7 @@
 package com.litetask.app.ui.home
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.litetask.app.data.model.Task
@@ -24,13 +25,14 @@ import com.litetask.app.R
  * 数据加载策略：
  * 1. 未完成任务：通过 Room Flow 实时订阅，自动更新
  * 2. 已完成任务：分页加载，每页20条，滑动到底部时加载更多
- * 3. 懒更新：冷启动时自动将过期任务标记为已完成
+ * 3. 懒更新：冷启动时自动将截止时间在当前时间之前的任务标记为过期状态
  */
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val application: Application,
     private val taskRepository: TaskRepositoryImpl,
     private val aiRepository: AIRepository,
+    private val aiHistoryRepository: com.litetask.app.data.repository.AIHistoryRepository,
     private val speechHelper: com.litetask.app.util.SpeechRecognizerHelper,
     private val preferenceManager: com.litetask.app.data.local.PreferenceManager
 ) : ViewModel() {
@@ -52,32 +54,30 @@ class HomeViewModel @Inject constructor(
      * 初始化数据加载
      * 
      * 执行顺序：
-     * 1. 懒更新：标记过期任务为已完成 + 标记过期提醒为已触发（IO线程）
-     * 2. 加载首批历史任务（20条）
+     * 1. 懒更新：标记过期任务为过期状态 + 标记过期提醒为已触发（IO线程）
      * 
-     * 注：未完成任务通过 Flow 自动订阅，无需手动加载
+     * 注：主要任务数据通过 getAllDisplayTasks() Flow 自动订阅，无需手动加载
      */
     private fun initializeData() {
         viewModelScope.launch(Dispatchers.IO) {
-            // Step 1: 懒更新 - 标记过期任务和提醒
-            markOverdueTasksAsDone()
-            // Step 2: 加载首批历史任务（切回主线程更新 StateFlow）
-            withContext(Dispatchers.Main) {
-                loadMoreHistory()
-            }
+            // 懒更新 - 标记过期任务和提醒
+            markOverdueTasksAsExpired()
         }
     }
 
     // ==================== 数据流定义 ====================
     
-    /** 未完成任务流（实时订阅，自动更新） */
+    /** 所有需要显示的任务流（未完成 + 已过期 + 前20条已完成） */
+    private val _allDisplayTasks = taskRepository.getAllDisplayTasks()
+    
+    /** 未完成任务流（实时订阅，自动更新） - 保留用于日历视图等 */
     private val _activeTasks = taskRepository.getActiveTasks()
     
-    /** 已完成任务列表（分页加载） */
-    private val _historyTasks = MutableStateFlow<List<TaskDetailComposite>>(emptyList())
+    /** 额外的已完成任务列表（分页加载，用于"查看更多"功能） */
+    private val _additionalHistoryTasks = MutableStateFlow<List<TaskDetailComposite>>(emptyList())
     
     /** 历史任务分页状态 */
-    private var _historyPage = 0
+    private var _historyPage = 1  // 从第1页开始，因为前20条已经在主流中
     private var _isHistoryExhausted = false
     private val _isLoadingHistory = MutableStateFlow(false)
     val isLoadingHistory: StateFlow<Boolean> = _isLoadingHistory.asStateFlow()
@@ -93,22 +93,44 @@ class HomeViewModel @Inject constructor(
     /**
      * 合并后的 Timeline 列表
      * 
-     * 结构：[未完成任务] + [历史分隔线] + [已完成任务] + [加载指示器]
+     * 结构：[未完成任务] + [已过期任务] + [已完成任务分隔线] + [前20条已完成任务] + [更多已完成任务] + [加载指示器]
      */
     val timelineItems: StateFlow<List<TimelineItem>> = combine(
-        _activeTasks,
-        _historyTasks,
+        _allDisplayTasks,
+        _additionalHistoryTasks,
         _isLoadingHistory
-    ) { active, history, isLoading ->
+    ) { allTasks, additionalHistory, isLoading ->
         buildList {
-            // 未完成任务（置顶优先）
-            addAll(active.map { TimelineItem.TaskItem(it) })
-            // 历史分隔线 + 已完成任务
-            if (history.isNotEmpty()) {
-                add(TimelineItem.HistoryHeader)
-                addAll(history.map { TimelineItem.TaskItem(it) })
+            // 分离不同状态的任务
+            val activeTasks = allTasks.filter { !it.task.isDone && !it.task.isExpired }
+            val expiredTasks = allTasks.filter { !it.task.isDone && it.task.isExpired }
+            val completedTasks = allTasks.filter { it.task.isDone }
+            
+            // 1. 未完成任务（置顶优先，不显示置顶头部）
+            addAll(activeTasks.map { TimelineItem.TaskItem(it) })
+            
+            // 2. 已过期任务
+            if (expiredTasks.isNotEmpty()) {
+                add(TimelineItem.ExpiredHeader)
+                addAll(expiredTasks.map { TimelineItem.TaskItem(it) })
             }
-            // 加载指示器
+            
+            // 3. 已完成任务
+            if (completedTasks.isNotEmpty() || additionalHistory.isNotEmpty()) {
+                add(TimelineItem.HistoryHeader)
+                addAll(completedTasks.map { TimelineItem.TaskItem(it) })
+                
+                // 核心修复：过滤掉已经在主流（前20条）中出现的已完成任务，避免分页加载时的 ID 重复导致 UI 异常或崩溃
+                // 同时确保数据一致性：只有真正的已完成任务才会出现在历史区域
+                val completedIds = completedTasks.map { it.task.id }.toSet()
+                val distinctAdditional = additionalHistory.filter { 
+                    it.task.id !in completedIds && it.task.isDone // 双重检查：确保是已完成任务
+                }
+                
+                addAll(distinctAdditional.map { TimelineItem.TaskItem(it) })
+            }
+            
+            // 4. 加载指示器
             if (isLoading) add(TimelineItem.Loading)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -142,12 +164,12 @@ class HomeViewModel @Inject constructor(
     // ==================== 数据加载方法 ====================
     
     /**
-     * 懒更新：标记过期任务为已完成 + 标记过期提醒为已触发
+     * 懒更新：标记过期任务为过期状态 + 标记过期提醒为已触发
      */
-    private suspend fun markOverdueTasksAsDone() {
+    private suspend fun markOverdueTasksAsExpired() {
         try {
             val now = System.currentTimeMillis()
-            taskRepository.autoMarkOverdueTasksAsDone(now)
+            taskRepository.autoSyncTaskExpiredStatus(now)
             taskRepository.autoMarkOverdueRemindersAsFired(now)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -155,10 +177,10 @@ class HomeViewModel @Inject constructor(
     }
     
     /**
-     * 加载更多历史任务（分页）
+     * 加载更多已完成任务（分页，超过前20条的部分）
      * 
      * 触发时机：列表滑动到底部
-     * 加载策略：每次加载20条，直到没有更多数据
+     * 加载策略：每次加载20条，从第21条开始，直到没有更多数据
      */
     fun loadMoreHistory() {
         if (_isLoadingHistory.value || _isHistoryExhausted) return
@@ -166,7 +188,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoadingHistory.value = true
             try {
-                val offset = _historyPage * PAGE_SIZE
+                val offset = 20 + (_historyPage - 1) * PAGE_SIZE  // 跳过前20条
                 val newItems = withContext(Dispatchers.IO) {
                     taskRepository.getHistoryTasks(PAGE_SIZE, offset)
                 }
@@ -174,7 +196,7 @@ class HomeViewModel @Inject constructor(
                 if (newItems.isEmpty()) {
                     _isHistoryExhausted = true
                 } else {
-                    _historyTasks.value = _historyTasks.value + newItems
+                    _additionalHistoryTasks.value = _additionalHistoryTasks.value + newItems
                     _historyPage++
                 }
             } catch (e: Exception) {
@@ -190,8 +212,9 @@ class HomeViewModel @Inject constructor(
      * 
      * 执行流程：
      * 1. 懒更新过期任务和提醒
-     * 2. 重置分页状态
-     * 3. 重新加载首批历史任务
+     * 2. 重置额外历史任务分页状态
+     * 
+     * 注：主要数据通过Flow自动刷新
      */
     fun onRefresh() {
         if (_isRefreshing.value) return
@@ -201,13 +224,10 @@ class HomeViewModel @Inject constructor(
             try {
                 // 懒更新（IO线程）
                 withContext(Dispatchers.IO) {
-                    markOverdueTasksAsDone()
+                    markOverdueTasksAsExpired()
                 }
-                // 重新加载历史任务
-                val newHistory = withContext(Dispatchers.IO) {
-                    taskRepository.getHistoryTasks(PAGE_SIZE, 0)
-                }
-                resetHistoryPagination(newHistory)
+                // 重置额外历史任务分页状态
+                resetAdditionalHistoryPagination()
                 // 动画延迟
                 kotlinx.coroutines.delay(300)
             } catch (e: Exception) {
@@ -219,12 +239,12 @@ class HomeViewModel @Inject constructor(
     }
     
     /**
-     * 重置历史任务分页状态
+     * 重置额外历史任务分页状态
      */
-    private fun resetHistoryPagination(newData: List<TaskDetailComposite>) {
-        _historyTasks.value = newData
-        _historyPage = if (newData.isNotEmpty()) 1 else 0
-        _isHistoryExhausted = newData.size < PAGE_SIZE
+    private fun resetAdditionalHistoryPagination() {
+        _additionalHistoryTasks.value = emptyList()
+        _historyPage = 1
+        _isHistoryExhausted = false
     }
 
     // ==================== 任务详情 ====================
@@ -418,6 +438,18 @@ class HomeViewModel @Inject constructor(
             val result = aiRepository.parseTasksFromText("", text) // 空字符串让 Repository 使用存储的 Key
             
             result.onSuccess { tasks ->
+                // 记录 AI 历史
+                viewModelScope.launch {
+                    aiHistoryRepository.insertHistory(
+                        com.litetask.app.data.model.AIHistory(
+                            content = text,
+                            sourceType = com.litetask.app.data.model.AIHistorySource.VOICE,
+                            parsedCount = tasks.size,
+                            isSuccess = true
+                        )
+                    )
+                }
+                
                 // 无论是否有任务，都显示 TaskConfirmationSheet（空结果会在界面中显示提示）
                 _uiState.value = _uiState.value.copy(
                     isAnalyzing = false,
@@ -426,6 +458,17 @@ class HomeViewModel @Inject constructor(
                     recordingState = com.litetask.app.util.RecordingState.IDLE
                 )
             }.onFailure { error ->
+                // 记录失败历史
+                viewModelScope.launch {
+                    aiHistoryRepository.insertHistory(
+                        com.litetask.app.data.model.AIHistory(
+                            content = text,
+                            sourceType = com.litetask.app.data.model.AIHistorySource.VOICE,
+                            parsedCount = 0,
+                            isSuccess = false
+                        )
+                    )
+                }
                 val errorMessage = when {
                     error.message?.contains("API Key 无效") == true -> 
                         application.getString(R.string.error_api_key_invalid)
@@ -463,12 +506,35 @@ class HomeViewModel @Inject constructor(
             val result = aiRepository.parseTasksFromText("", text)
             
             result.onSuccess { tasks ->
+                // 记录 AI 历史
+                viewModelScope.launch {
+                    aiHistoryRepository.insertHistory(
+                        com.litetask.app.data.model.AIHistory(
+                            content = text,
+                            sourceType = com.litetask.app.data.model.AIHistorySource.TEXT,
+                            parsedCount = tasks.size,
+                            isSuccess = true
+                        )
+                    )
+                }
+                
                 _uiState.value = _uiState.value.copy(
                     isAnalyzing = false,
                     showAiResult = true,
                     aiParsedTasks = tasks
                 )
             }.onFailure { error ->
+                // 记录失败历史
+                viewModelScope.launch {
+                    aiHistoryRepository.insertHistory(
+                        com.litetask.app.data.model.AIHistory(
+                            content = text,
+                            sourceType = com.litetask.app.data.model.AIHistorySource.TEXT,
+                            parsedCount = 0,
+                            isSuccess = false
+                        )
+                    )
+                }
                 val errorMessage = when {
                     error.message?.contains("API Key 无效") == true -> 
                         application.getString(R.string.error_api_key_invalid)
@@ -582,27 +648,86 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun updateTask(task: Task) {
+    fun toggleTaskDone(task: Task) {
         viewModelScope.launch {
-            if (task.isDone) {
-                // 完成任务：取消闹钟，刷新历史列表
+            if (!task.isDone) {
+                // 未完成 -> 已完成
                 taskRepository.markTaskDone(task)
                 refreshHistoryAfterCompletion()
             } else {
-                // 重新激活任务：从历史列表移除
+                // 已完成 -> 未完成：使用状态跟踪更新，确保数据一致性
+                taskRepository.updateTaskWithStatusTracking(task, task.copy(isDone = false))
+                // 从额外历史列表中移除（如果存在）
+                cleanupTaskFromAdditionalHistory(task.id)
+            }
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+
+    fun updateTask(task: Task) {
+        viewModelScope.launch {
+            if (task.isDone && task.completedAt == null) {
+                // 核心逻辑：只有从未完成变为完成（即 completedAt 为空）时，才触发完成专门处理
+                // 这确保了编辑已完成任务时，原始完成时间不会被“现在”覆盖
+                taskRepository.markTaskDone(task)
+                refreshHistoryAfterCompletion()
+            } else {
+                // 已完成任务的编辑，或者从未完成到未完成的更新
                 taskRepository.updateTask(task)
-                _historyTasks.value = _historyTasks.value.filter { it.task.id != task.id }
+                // 如果任务从历史列表中重新激活，从额外历史列表移除
+                if (!task.isDone) {
+                    cleanupTaskFromAdditionalHistory(task.id)
+                }
             }
             WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
     
+    /**
+     * 更新任务状态（带状态跟踪）
+     */
+    fun updateTaskWithStatusTracking(oldTask: Task, newTask: Task) {
+        viewModelScope.launch {
+            taskRepository.updateTaskWithStatusTracking(oldTask, newTask)
+            
+            // 如果任务状态发生变化，更新UI列表
+            when {
+                !oldTask.isDone && newTask.isDone -> {
+                    // 任务完成，刷新历史列表
+                    refreshHistoryAfterCompletion()
+                }
+                oldTask.isDone && !newTask.isDone -> {
+                    // 任务重新激活，从额外历史列表移除
+                    cleanupTaskFromAdditionalHistory(newTask.id)
+                }
+            }
+            
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+    
+    /**
+     * 重新激活过期任务
+     */
+    fun reactivateExpiredTask(task: Task, newDeadline: Long) {
+        viewModelScope.launch {
+            taskRepository.reactivateExpiredTask(task.id, newDeadline)
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+    
+    /**
+     * 获取过期任务列表
+     */
+    suspend fun getExpiredTasks(limit: Int, offset: Int) = 
+        taskRepository.getExpiredTasks(limit, offset)
+    
     /** 更新任务并更新提醒 */
     fun updateTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
         viewModelScope.launch {
+            // 对于已完成任务，只更新任务信息，不处理提醒（已完成任务不需要提醒）
             if (task.isDone) {
-                taskRepository.markTaskDone(task)
-                refreshHistoryAfterCompletion()
+                taskRepository.updateTask(task)
                 WidgetUpdateHelper.refreshAllWidgets(application)
                 return@launch
             }
@@ -614,7 +739,7 @@ class HomeViewModel @Inject constructor(
                 } else null
             }
             taskRepository.updateTaskWithReminders(task, reminders)
-            _historyTasks.value = _historyTasks.value.filter { it.task.id != task.id }
+            cleanupTaskFromAdditionalHistory(task.id)
             WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
@@ -626,11 +751,24 @@ class HomeViewModel @Inject constructor(
         }
     }
     
-    /** 任务完成后刷新历史列表 */
+    /** 任务完成后刷新额外历史列表 */
     private suspend fun refreshHistoryAfterCompletion() {
-        val totalLoaded = (_historyPage + 1) * PAGE_SIZE
-        val newHistory = taskRepository.getHistoryTasks(totalLoaded, 0)
-        _historyTasks.value = newHistory
+        // 由于主要数据通过Flow自动更新，这里只需要重置额外的历史任务
+        resetAdditionalHistoryPagination()
+        
+        // 延迟一小段时间确保数据库更新完成，避免UI闪烁
+        kotlinx.coroutines.delay(80)
+    }
+    
+    /**
+     * 从额外历史列表中移除指定任务
+     */
+    private fun cleanupTaskFromAdditionalHistory(taskId: Long) {
+        val current = _additionalHistoryTasks.value
+        val filtered = current.filter { it.task.id != taskId }
+        if (filtered.size != current.size) {
+            _additionalHistoryTasks.value = filtered
+        }
     }
 
     // ==================== 子任务操作 ====================
@@ -703,6 +841,18 @@ class HomeViewModel @Inject constructor(
                 val result = provider.generateSubTasks(apiKey, task)
                 
                 result.onSuccess { subTasks ->
+                    // 记录 AI 历史
+                    viewModelScope.launch {
+                        aiHistoryRepository.insertHistory(
+                            com.litetask.app.data.model.AIHistory(
+                                content = "自动拆解: ${task.title}",
+                                sourceType = com.litetask.app.data.model.AIHistorySource.SUBTASK,
+                                parsedCount = subTasks.size,
+                                isSuccess = true
+                            )
+                        )
+                    }
+
                     _uiState.value = _uiState.value.copy(
                         isAnalyzing = false,
                         showSubTaskResult = true,
@@ -710,6 +860,17 @@ class HomeViewModel @Inject constructor(
                         currentTask = task
                     )
                 }.onFailure { error ->
+                    // 记录失败历史
+                    viewModelScope.launch {
+                        aiHistoryRepository.insertHistory(
+                            com.litetask.app.data.model.AIHistory(
+                                content = "自动拆解失败: ${task.title}",
+                                sourceType = com.litetask.app.data.model.AIHistorySource.SUBTASK,
+                                parsedCount = 0,
+                                isSuccess = false
+                            )
+                        )
+                    }
                     val errorMessage = parseAiError(error.message ?: "")
                     _uiState.value = _uiState.value.copy(
                         isAnalyzing = false,
@@ -763,6 +924,18 @@ class HomeViewModel @Inject constructor(
                 val result = provider.generateSubTasks(apiKey, task, additionalContext)
                 
                 result.onSuccess { subTasks ->
+                    // 记录 AI 历史
+                    viewModelScope.launch {
+                        aiHistoryRepository.insertHistory(
+                            com.litetask.app.data.model.AIHistory(
+                                content = "[${task.title}] 详细输入: $additionalContext",
+                                sourceType = com.litetask.app.data.model.AIHistorySource.SUBTASK,
+                                parsedCount = subTasks.size,
+                                isSuccess = true
+                            )
+                        )
+                    }
+
                     _uiState.value = _uiState.value.copy(
                         isAnalyzing = false,
                         showSubTaskResult = true,
@@ -771,6 +944,17 @@ class HomeViewModel @Inject constructor(
                         showSubTaskInput = false
                     )
                 }.onFailure { error ->
+                    // 记录失败历史
+                    viewModelScope.launch {
+                        aiHistoryRepository.insertHistory(
+                            com.litetask.app.data.model.AIHistory(
+                                content = "[${task.title}] 详细输入失败: $additionalContext",
+                                sourceType = com.litetask.app.data.model.AIHistorySource.SUBTASK,
+                                parsedCount = 0,
+                                isSuccess = false
+                            )
+                        )
+                    }
                     val errorMessage = parseAiError(error.message ?: "")
                     _uiState.value = _uiState.value.copy(
                         isAnalyzing = false,

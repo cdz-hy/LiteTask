@@ -53,6 +53,9 @@ class DeadlineRemoteViewsFactory(
             runBlocking {
                 try {
                     val dao = AppDatabase.getInstance(context).taskDao()
+                    // 自动同步状态
+                    dao.autoSyncTaskExpiredStatus(System.currentTimeMillis())
+                    
                     tasks = dao.getUpcomingDeadlinesSyncWithTime(System.currentTimeMillis(), 10)
                     
                     Log.d("DeadlineWidget", "Loaded ${tasks.size} deadline tasks")

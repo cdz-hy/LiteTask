@@ -24,6 +24,9 @@ class TaskRepositoryImpl @Inject constructor(
     fun getActiveNonPinnedTasks() = taskDao.getActiveNonPinnedTasks()
     fun getActiveTasks() = taskDao.getActiveTasks()
     
+    // 获取所有需要在首页显示的任务
+    fun getAllDisplayTasks() = taskDao.getAllDisplayTasks()
+    
     // 分页加载历史
     suspend fun getHistoryTasks(limit: Int, offset: Int) = taskDao.getHistoryTasks(limit, offset)
 
@@ -32,7 +35,21 @@ class TaskRepositoryImpl @Inject constructor(
     suspend fun insertTask(task: Task) = taskDao.insertTask(task)
     suspend fun insertSubTask(subTask: SubTask) = taskDao.insertSubTask(subTask)
     
-    suspend fun updateTask(task: Task) = taskDao.updateTask(task)
+    suspend fun updateTask(task: Task) {
+        // 如果截止时间在未来，自动清除过期状态（防止 UI 传回过时的过期标记）
+        var taskToUpdate = if (task.isExpired && task.deadline > System.currentTimeMillis()) {
+            task.copy(isExpired = false, expiredAt = null)
+        } else {
+            task
+        }
+        
+        // 核心修正：确保未完成任务的完成时间字段为 null，避免数据不一致
+        if (!taskToUpdate.isDone && taskToUpdate.completedAt != null) {
+            taskToUpdate = taskToUpdate.copy(completedAt = null)
+        }
+        
+        taskDao.updateTask(taskToUpdate)
+    }
     suspend fun deleteTask(task: Task) = taskDao.deleteTask(task)
     suspend fun updateSubTaskStatus(id: Long, completed: Boolean) = taskDao.updateSubTaskStatus(id, completed)
     suspend fun deleteSubTask(subTask: SubTask) = taskDao.deleteSubTask(subTask)
@@ -47,8 +64,25 @@ class TaskRepositoryImpl @Inject constructor(
     }
     
     suspend fun insertTasks(tasks: List<Task>) = taskDao.insertTasks(tasks)
-    suspend fun autoMarkOverdueTasksAsDone(time: Long) = taskDao.autoMarkOverdueTasksAsDone(time)
+    
+    /**
+     * 同步任务过期状态（双向：标记过期 + 恢复未过期）
+     */
+    suspend fun autoSyncTaskExpiredStatus(time: Long) = taskDao.autoSyncTaskExpiredStatus(time)
+    
+    suspend fun autoMarkTasksAsExpired(time: Long) = taskDao.autoMarkTasksAsExpired(time)
     suspend fun autoMarkOverdueRemindersAsFired(time: Long) = taskDao.autoMarkOverdueRemindersAsFired(time)
+    
+    /**
+     * 获取已过期但未完成的任务
+     */
+    suspend fun getExpiredTasks(limit: Int, offset: Int) = taskDao.getExpiredTasks(limit, offset)
+    
+    /**
+     * 重新激活过期任务
+     */
+    suspend fun reactivateExpiredTask(taskId: Long, newDeadline: Long) = 
+        taskDao.reactivateExpiredTask(taskId, newDeadline)
     
     // 搜索
     fun searchTasks(
@@ -96,7 +130,13 @@ class TaskRepositoryImpl @Inject constructor(
         }
         
         // 2. 更新数据库
-        taskDao.updateTask(task)
+        // 如果截止时间在未来，自动清除过期状态
+        val taskToUpdate = if (task.isExpired && task.deadline > System.currentTimeMillis()) {
+            task.copy(isExpired = false, expiredAt = null)
+        } else {
+            task
+        }
+        taskDao.updateTask(taskToUpdate)
         taskDao.deleteRemindersByTaskId(task.id)
         
         // 3. 只有任务未完成时才注册新闹钟
@@ -169,7 +209,7 @@ class TaskRepositoryImpl @Inject constructor(
     }
     
     /**
-     * 标记任务完成（同时取消相关闹钟）
+     * 标记任务完成（同时取消相关闹钟并记录完成时间）
      */
     suspend fun markTaskDone(task: Task) {
         // 取消闹钟
@@ -178,7 +218,49 @@ class TaskRepositoryImpl @Inject constructor(
             reminderScheduler.cancelRemindersForTask(task.id, reminders.map { it.id })
         }
         
-        // 更新任务状态
-        taskDao.updateTask(task.copy(isDone = true))
+        // 更新任务状态，记录完成时间
+        taskDao.markTaskCompleted(task.id, System.currentTimeMillis())
+    }
+    
+    /**
+     * 标记任务未完成（清除完成时间）
+     */
+    suspend fun markTaskUndone(task: Task) {
+        taskDao.markTaskUncompleted(task.id)
+    }
+    
+    /**
+     * 更新任务状态（处理完成状态变化时的时间记录）
+     */
+    suspend fun updateTaskWithStatusTracking(oldTask: Task, newTask: Task) {
+        when {
+            // 从未完成变为完成：记录完成时间，取消闹钟
+            !oldTask.isDone && newTask.isDone -> {
+                val reminders = taskDao.getRemindersByTaskIdSync(oldTask.id)
+                if (reminders.isNotEmpty()) {
+                    reminderScheduler.cancelRemindersForTask(oldTask.id, reminders.map { it.id })
+                }
+                taskDao.updateTask(newTask.copy(
+                    completedAt = System.currentTimeMillis(),
+                    isPinned = false  // 完成时自动取消置顶
+                ))
+            }
+            // 从完成变为未完成：清除完成时间，并重新评估过期状态
+            oldTask.isDone && !newTask.isDone -> {
+                val currentTime = System.currentTimeMillis()
+                // 如果已过截止时间，立即标记为过期，确保它出现在过期列表中
+                val isNowExpired = newTask.deadline > 0 && newTask.deadline < currentTime
+                
+                taskDao.updateTask(newTask.copy(
+                    completedAt = null,
+                    isExpired = isNowExpired,
+                    expiredAt = if (isNowExpired) newTask.deadline else null
+                ))
+            }
+            // 其他情况
+            else -> {
+                taskDao.updateTask(newTask)
+            }
+        }
     }
 }

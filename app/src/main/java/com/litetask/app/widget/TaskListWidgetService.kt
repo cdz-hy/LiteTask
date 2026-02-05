@@ -1,5 +1,6 @@
 package com.litetask.app.widget
 
+import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.os.Binder
@@ -98,13 +99,16 @@ class TaskListWidgetService : RemoteViewsService() {
     }
     
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
-        return TaskListRemoteViewsFactory(applicationContext)
+        return TaskListRemoteViewsFactory(applicationContext, intent)
     }
 }
 
 class TaskListRemoteViewsFactory(
-    private val context: Context
+    private val context: Context,
+    intent: Intent
 ) : RemoteViewsService.RemoteViewsFactory {
+    
+    private val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
     
     private var tasks: List<Task> = emptyList()
     private var justCompletedTaskIds: Set<Long> = emptySet()
@@ -127,10 +131,13 @@ class TaskListRemoteViewsFactory(
             runBlocking {
                 try {
                     val dao = AppDatabase.getInstance(context).taskDao()
-                    // 获取所有未完成且未过期的任务
-                    val activeTasks = dao.getActiveTasksWithRecentlyCompletedSync(System.currentTimeMillis()).toMutableList()
+                    // 自动同步过期状态（双向：标记过期 + 恢复未过期）
+                    dao.autoSyncTaskExpiredStatus(System.currentTimeMillis())
                     
-                    Log.d("TaskListWidget", "Loaded ${activeTasks.size} active tasks")
+                    // 获取所有未完成的任务（包括未过期和已过期的）
+                    val activeTasks = dao.getActiveTasksWithExpiredSync().toMutableList()
+                    
+                    Log.d("TaskListWidget", "Loaded ${activeTasks.size} active tasks (including expired)")
                     
                     // 获取刚完成的任务（还在显示时间内的）
                     val justCompletedTasks = TaskListWidgetService.getAllJustCompletedTasks()
@@ -139,10 +146,15 @@ class TaskListRemoteViewsFactory(
                     val activeTaskIds = activeTasks.map { it.id }.toSet()
                     justCompletedTasks.forEach { completedTask ->
                         if (completedTask.id !in activeTaskIds) {
-                            // 找到合适的位置插入（按原来的排序规则）
+                            // 找到合适的位置插入（按新的排序规则：isExpired ASC, isPinned DESC, startTime ASC）
                             val insertIndex = activeTasks.indexOfFirst { 
-                                !it.isPinned && completedTask.isPinned ||
-                                (it.isPinned == completedTask.isPinned && it.startTime > completedTask.startTime)
+                                if (it.isExpired != completedTask.isExpired) {
+                                    it.isExpired > completedTask.isExpired
+                                } else if (it.isPinned != completedTask.isPinned) {
+                                    !it.isPinned && completedTask.isPinned
+                                } else {
+                                    it.startTime > completedTask.startTime
+                                }
                             }
                             if (insertIndex >= 0) {
                                 activeTasks.add(insertIndex, completedTask)
@@ -157,8 +169,8 @@ class TaskListRemoteViewsFactory(
                     
                     tasks = activeTasks
                     
-                    // 清理过期缓存（减少频率，只在数据加载时清理）
-                    if (System.currentTimeMillis() % 5000 < 1000) { // 大约每5秒清理一次
+                    // 清理过期缓存（由于现在加载更频繁，略微降低清理频率）
+                    if (System.currentTimeMillis() % 10000 < 1000) { 
                         TaskListWidgetService.cleanupExpiredCache()
                     }
                 } catch (e: Exception) {
@@ -200,23 +212,48 @@ class TaskListRemoteViewsFactory(
         views.setViewVisibility(R.id.pin_icon, 
             if (task.isPinned) android.view.View.VISIBLE else android.view.View.GONE)
         
-        // 设置任务类型标签（始终显示）
-        views.setViewVisibility(R.id.urgent_badge, android.view.View.VISIBLE)
-        views.setTextViewText(R.id.urgent_badge, getTypeText(task.type))
-        views.setInt(R.id.urgent_badge, "setBackgroundResource", getTypeBadgeBackground(task.type))
+        // 设置任务类型标签
+        val appWidgetManager = AppWidgetManager.getInstance(context)
+        val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
+        val minWidth = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH) ?: 0
+        val isNarrow = minWidth != 0 && minWidth < 180
         
-        // 根据完成状态只改变复选框图标
-        if (isJustCompleted) {
-            // 刚完成：显示勾选图标
+        if (task.isExpired && !task.isDone) {
+            // 已过期：显示“已过期”标签（除非宽度太窄需要给标题让位）
+            if (isNarrow) {
+                views.setViewVisibility(R.id.urgent_badge, android.view.View.GONE)
+            } else {
+                views.setViewVisibility(R.id.urgent_badge, android.view.View.VISIBLE)
+                views.setTextViewText(R.id.urgent_badge, context.getString(R.string.expired_tasks_header))
+                views.setInt(R.id.urgent_badge, "setBackgroundResource", R.drawable.widget_urgent_badge)
+            }
+        } else {
+            // 未过期：按原逻辑显示（始终显示类型）
+            views.setViewVisibility(R.id.urgent_badge, android.view.View.VISIBLE)
+            views.setTextViewText(R.id.urgent_badge, getTypeText(task.type))
+            views.setInt(R.id.urgent_badge, "setBackgroundResource", getTypeBadgeBackground(task.type))
+        }
+        
+        // 根据完成状态变化
+        if (isJustCompleted || task.isDone) {
+            // 已完成：显示勾选图标
             views.setImageViewResource(R.id.checkbox, R.drawable.widget_checkbox_checked)
         } else {
             // 未完成：显示空心圆
             views.setImageViewResource(R.id.checkbox, R.drawable.widget_checkbox_unchecked)
         }
         
-        // 统一使用相同的文字颜色和背景
-        views.setTextColor(R.id.task_title, context.getColor(R.color.on_surface))
-        views.setTextColor(R.id.task_time, context.getColor(R.color.on_surface_variant))
+        // 样式处理：过期任务变暗
+        if (task.isExpired && !task.isDone) {
+            views.setFloat(R.id.task_item_container, "setAlpha", 0.6f) // 60% 透明度
+            views.setTextColor(R.id.task_title, context.getColor(R.color.on_surface_variant))
+            views.setTextColor(R.id.task_time, context.getColor(R.color.outline))
+        } else {
+            views.setFloat(R.id.task_item_container, "setAlpha", 1.0f) // 不透明
+            views.setTextColor(R.id.task_title, context.getColor(R.color.on_surface))
+            views.setTextColor(R.id.task_time, context.getColor(R.color.on_surface_variant))
+        }
+        
         views.setInt(R.id.task_item_container, "setBackgroundResource", R.drawable.widget_item_background)
         
         // 设置点击事件（未完成和刚完成的都可以点击，刚完成的用于撤销）

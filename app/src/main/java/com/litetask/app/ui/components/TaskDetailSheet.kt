@@ -575,45 +575,37 @@ fun TaskDetailSheet(
                                 }
 
                                 // Complete/Reopen Button
-                                if (!task.isDone || task.deadline >= System.currentTimeMillis()) {
-                                    Button(
-                                        onClick = {
-                                            if (task.isDone && task.deadline < System.currentTimeMillis()) {
-                                                Toast.makeText(
-                                                    context,
-                                                    R.string.task_cannot_undone_expired,
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            } else {
-                                                val updatedTask = if (!task.isDone) {
-                                                    task.copy(isDone = true, isPinned = false)
-                                                } else {
-                                                    task.copy(isDone = false)
-                                                }
-                                                onUpdateTask(updatedTask)
-                                                closeSheet()
-                                            }
-                                        },
-                                        modifier = Modifier
-                                            .weight(1.5f)
-                                            .height(50.dp),
-                                        shape = RoundedCornerShape(16.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (task.isDone) extendedColors.textSecondary else themeColor
-                                        ),
-                                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
-                                    ) {
-                                        Icon(
-                                            if (task.isDone) Icons.Default.Refresh else Icons.Default.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = if (task.isDone) stringResource(R.string.mark_undone) else stringResource(R.string.mark_done),
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
+                                Button(
+                                    onClick = {
+                                        val updatedTask = if (!task.isDone) {
+                                            // mark as done
+                                            task.copy(isDone = true, isPinned = false, completedAt = null) 
+                                        } else {
+                                            // reopen
+                                            task.copy(isDone = false, completedAt = null)
+                                        }
+                                        onUpdateTask(updatedTask)
+                                        closeSheet()
+                                    },
+                                    modifier = Modifier
+                                        .weight(1.5f)
+                                        .height(50.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (task.isDone) extendedColors.textSecondary else themeColor
+                                    ),
+                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                                ) {
+                                    Icon(
+                                        if (task.isDone) Icons.Default.Refresh else Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (task.isDone) stringResource(R.string.mark_undone) else stringResource(R.string.mark_done),
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                         }

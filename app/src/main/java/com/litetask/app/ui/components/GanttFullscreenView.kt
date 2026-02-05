@@ -2,8 +2,11 @@ package com.litetask.app.ui.components
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -49,76 +52,55 @@ fun GanttFullscreenView(
     
     // 强制横屏显示并设置沉浸式全屏
     DisposableEffect(Unit) {
-        // 设置横屏
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        val window = activity?.window ?: return@DisposableEffect onDispose {}
+        val insetsController = WindowCompat.getInsetsController(window, view)
         
-        activity?.window?.let { window ->
-            // 关键：使用 FLAG_LAYOUT_NO_LIMITS 让内容延伸到系统栏区域
-            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-            
-            // 设置 layoutInDisplayCutoutMode 为 SHORT_EDGES，让内容延伸到刘海屏区域
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                window.attributes.layoutInDisplayCutoutMode = 
-                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            }
-            
-            // 设置窗口和 DecorView 背景为白色
-            window.setBackgroundDrawableResource(android.R.color.white)
-            window.decorView.setBackgroundColor(android.graphics.Color.WHITE)
-            
-            // 设置系统栏颜色为白色
-            window.statusBarColor = android.graphics.Color.WHITE
-            window.navigationBarColor = android.graphics.Color.WHITE
-            
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-            
-            // 隐藏系统栏
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                window.insetsController?.let { controller ->
-                    controller.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
-                    controller.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                }
-            } else {
-                @Suppress("DEPRECATION")
-                window.decorView.systemUiVisibility = (
-                    android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
-                )
-            }
+        // 记录原始属性以便恢复
+        val originalOrientation = activity.requestedOrientation
+        val originalAttributes = window.attributes
+        
+        // 1. 设置横屏
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        
+        // 2. 启用真正的全屏（允许延伸到刘海屏区域）
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode = 
+                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
         
+        // 3. 强制背景和状态栏颜色，防止出现黑边
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        window.setBackgroundDrawableResource(android.R.color.white)
+        
+        // 4. 配置 Insets 行为
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        insetsController.let { controller ->
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+
         onDispose {
-            // 恢复竖屏
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            // 恢复属性
+            activity.requestedOrientation = originalOrientation
             
-            activity?.window?.let { window ->
-                // 移除 FLAG_LAYOUT_NO_LIMITS
-                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-                
-                // 恢复 layoutInDisplayCutoutMode 为默认值
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                    window.attributes.layoutInDisplayCutoutMode = 
-                        android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
-                }
-                
-                // 恢复正常布局
-                WindowCompat.setDecorFitsSystemWindows(window, true)
-                
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                    window.insetsController?.show(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
-                } else {
-                    @Suppress("DEPRECATION")
-                    window.decorView.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_VISIBLE
-                }
-                
-                // 恢复原始颜色
-                window.statusBarColor = android.graphics.Color.WHITE
-                window.navigationBarColor = android.graphics.Color.WHITE
+            // 移除全屏 Flag
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+            
+            // 恢复刘海屏模式
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                window.attributes.layoutInDisplayCutoutMode = 
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
             }
+            
+            // 恢复系统显示
+            insetsController.show(WindowInsetsCompat.Type.systemBars())
+            
+            // 关键：恢复 DecorFitsSystemWindows，但为了防止位移，需要显式重置窗口颜色
+            WindowCompat.setDecorFitsSystemWindows(window, true)
+            window.statusBarColor = android.graphics.Color.WHITE
+            window.navigationBarColor = android.graphics.Color.WHITE
         }
     }
     
@@ -240,6 +222,7 @@ fun GanttFullscreenView(
                     taskComposites = visibleTasks,
                     startOfView = startOfView,
                     dayWidth = dayWidth,
+                    enabled = false,
                     onTaskClick = onTaskClick
                 )
             }
@@ -265,78 +248,98 @@ fun GanttFullscreenView(
             )
         }
         
-        // 视图模式切换器（右上角）
+        // 顶部操作栏（右上角：图例 + 视图模式切换器）
         var expanded by remember { mutableStateOf(false) }
-        Box(
+        Row(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(12.dp)
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            Surface(
-                onClick = { expanded = true },
-                shape = RoundedCornerShape(12.dp),
-                color = extendedColors.ganttWork.copy(alpha = 0.95f),
-                shadowElevation = 3.dp
+            // 图例 (仅在横屏非紧凑模式显示，此处全屏全显示)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .background(extendedColors.cardBackground.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .border(0.5.dp, extendedColors.divider.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                LegendItem(color = extendedColors.ganttWork, label = stringResource(R.string.task_type_work))
+                LegendItem(color = extendedColors.ganttLife, label = stringResource(R.string.task_type_life))
+                LegendItem(color = extendedColors.ganttStudy, label = stringResource(R.string.task_type_study))
+                LegendItem(color = extendedColors.ganttUrgent, label = stringResource(R.string.task_type_urgent))
+            }
+
+            // 切换器
+            Box {
+                Surface(
+                    onClick = { expanded = true },
+                    shape = RoundedCornerShape(12.dp),
+                    color = extendedColors.ganttWork.copy(alpha = 0.95f),
+                    shadowElevation = 3.dp
                 ) {
-                    Text(
-                        text = when (viewMode) {
-                            GanttViewMode.TODAY -> stringResource(R.string.today)
-                            GanttViewMode.THREE_DAY -> stringResource(R.string.three_day_view)
-                            GanttViewMode.SEVEN_DAY -> stringResource(R.string.seven_day_view)
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = when (viewMode) {
+                                GanttViewMode.TODAY -> stringResource(R.string.today)
+                                GanttViewMode.THREE_DAY -> stringResource(R.string.three_day_view)
+                                GanttViewMode.SEVEN_DAY -> stringResource(R.string.seven_day_view)
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                }
+                
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier.background(extendedColors.cardBackground, RoundedCornerShape(12.dp))
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.today_view), style = MaterialTheme.typography.bodyMedium) },
+                        onClick = {
+                            viewMode = GanttViewMode.TODAY
+                            expanded = false
                         },
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimary
+                        leadingIcon = {
+                            Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                        }
                     )
-                    Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onPrimary
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.three_day_view), style = MaterialTheme.typography.bodyMedium) },
+                        onClick = {
+                            viewMode = GanttViewMode.THREE_DAY
+                            expanded = false
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.seven_day_view), style = MaterialTheme.typography.bodyMedium) },
+                        onClick = {
+                            viewMode = GanttViewMode.SEVEN_DAY
+                            expanded = false
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                        }
                     )
                 }
-            }
-            
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                modifier = Modifier.background(extendedColors.cardBackground, RoundedCornerShape(12.dp))
-            ) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.today_view), style = MaterialTheme.typography.bodyMedium) },
-                    onClick = {
-                        viewMode = GanttViewMode.TODAY
-                        expanded = false
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.three_day_view), style = MaterialTheme.typography.bodyMedium) },
-                    onClick = {
-                        viewMode = GanttViewMode.THREE_DAY
-                        expanded = false
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.seven_day_view), style = MaterialTheme.typography.bodyMedium) },
-                    onClick = {
-                        viewMode = GanttViewMode.SEVEN_DAY
-                        expanded = false
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
-                    }
-                )
             }
         }
     }

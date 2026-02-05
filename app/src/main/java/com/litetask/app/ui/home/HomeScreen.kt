@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.List
@@ -70,13 +71,16 @@ import java.util.Locale
 fun HomeScreen(
     onNavigateToAdd: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToHistory: () -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToGanttFullscreen: (com.litetask.app.ui.components.GanttViewMode) -> Unit,
     initialView: String = "timeline",
     onViewChanged: (String) -> Unit = {},
     shouldCheckPermissions: Boolean = true,
     onPermissionChecked: () -> Unit = {},
-    viewModel: HomeViewModel = hiltViewModel()
+    viewModel: HomeViewModel = hiltViewModel(),
+    initialAction: String? = null,
+    onActionHandled: () -> Unit = {}
 ) {
     // ViewModel 数据流
     val todayTasks by viewModel.tasks.collectAsState()
@@ -106,18 +110,9 @@ fun HomeScreen(
         allLoadedTasks.count { !it.task.isDone }
     }
 
-    // 甘特图任务（3天内的任务）
-    val ganttTasks = remember(allLoadedTasks) {
-        val now = System.currentTimeMillis()
-        val calendar = java.util.Calendar.getInstance()
-        calendar.timeInMillis = now
-        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
-        calendar.set(java.util.Calendar.MINUTE, 0)
-        calendar.set(java.util.Calendar.SECOND, 0)
-        calendar.set(java.util.Calendar.MILLISECOND, 0)
-        val startOfToday = calendar.timeInMillis
-        val endOfThreeDays = startOfToday + (3 * 24 * 60 * 60 * 1000L)
-        allLoadedTasks.filter { it.task.startTime < endOfThreeDays && it.task.deadline > startOfToday }
+    // 甘特图任务（所有任务，让GanttView内部处理筛选和显示）
+    val ganttTasks = remember(timelineItems) {
+        timelineItems.filterIsInstance<TimelineItem.TaskItem>().map { it.composite }
     }
 
     val pullToRefreshState = rememberPullToRefreshState()
@@ -219,6 +214,22 @@ fun HomeScreen(
                 )
 
                 HorizontalDivider()
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // AI 分析历史记录选项
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.History, contentDescription = null) },
+                    label = { Text(stringResource(R.string.ai_history)) },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                        onNavigateToHistory()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -362,6 +373,18 @@ fun HomeScreen(
                     // 调整位置，确保展开时不被遮挡
                     modifier = Modifier.padding(bottom = 16.dp, end = 16.dp)
                 )
+
+                // 处理从外部（如小组件）传来的动作
+                LaunchedEffect(initialAction) {
+                    if (initialAction == "add_task") {
+                        when (defaultFabAction) {
+                            "voice" -> onVoiceClickAction()
+                            "text" -> onTextInputClickAction()
+                            "manual" -> showAddTaskDialog = true
+                        }
+                        onActionHandled() // 标记动作已处理
+                    }
+                }
             }
         ) { paddingValues ->
             Box(
@@ -380,9 +403,8 @@ fun HomeScreen(
                         onPinClick = {
                             if (it.isDone) {
                                 Toast.makeText(context, context.getString(R.string.task_cannot_pin_done), Toast.LENGTH_SHORT).show()
-                            } else if (it.deadline < System.currentTimeMillis()) {
-                                Toast.makeText(context, context.getString(R.string.task_cannot_pin_expired), Toast.LENGTH_SHORT).show()
                             } else {
+                                // 允许未完成任务和已过期任务置顶（在各自区域内）
                                 viewModel.updateTask(it.copy(isPinned = !it.isPinned))
                             }
                         },
@@ -390,6 +412,7 @@ fun HomeScreen(
                             // 只设置 taskToEdit，LaunchedEffect 会负责加载提醒并显示对话框
                             taskToEdit = it
                         },
+                        onToggleDone = { viewModel.toggleTaskDone(it) },
                         onLoadMore = { viewModel.loadMoreHistory() },
                         onSearchClick = { onNavigateToSearch() }
                     )
@@ -409,12 +432,12 @@ fun HomeScreen(
                         onPinClick = { task ->
                             if (task.isDone) {
                                 Toast.makeText(context, context.getString(R.string.task_cannot_pin_done), Toast.LENGTH_SHORT).show()
-                            } else if (task.deadline < System.currentTimeMillis()) {
-                                Toast.makeText(context, context.getString(R.string.task_cannot_pin_expired), Toast.LENGTH_SHORT).show()
                             } else {
+                                // 允许未完成任务和已过期任务置顶（在各自区域内）
                                 viewModel.updateTask(task.copy(isPinned = !task.isPinned))
                             }
-                        }
+                        },
+                        onToggleDone = { viewModel.toggleTaskDone(it) }
                     )
                 }
 

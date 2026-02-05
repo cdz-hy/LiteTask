@@ -82,7 +82,7 @@ fun GanttView(
     val startOfView = startOfToday + (startOffset * 24 * 60 * 60 * 1000L)
     val endOfView = startOfView + (daysToShow * 24 * 60 * 60 * 1000L)
 
-    // Filter tasks that overlap with the view
+    // Filter tasks that overlap with the view (包含所有状态的任务)
     val visibleTasks = taskComposites.filter { composite ->
         val taskStart = composite.task.startTime
         val taskEnd = composite.task.deadline
@@ -121,6 +121,15 @@ fun GanttView(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
+            if (visibleTasks.isEmpty()) {
+                EmptyStateView(
+                    icon = Icons.Default.DateRange,
+                    title = stringResource(R.string.no_tasks_yet),
+                    subtitle = stringResource(R.string.no_tasks_hint),
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+
             // Horizontal Scroll Container
             Box(
                 modifier = Modifier
@@ -329,6 +338,7 @@ fun GanttHeader(
             LegendItem(color = extendedColors.ganttWork, label = stringResource(R.string.task_type_work))
             LegendItem(color = extendedColors.ganttLife, label = stringResource(R.string.task_type_life))
             LegendItem(color = extendedColors.ganttStudy, label = stringResource(R.string.task_type_study))
+            LegendItem(color = extendedColors.ganttUrgent, label = stringResource(R.string.task_type_urgent))
         }
     }
 }
@@ -476,9 +486,10 @@ fun GanttTasks(
     taskComposites: List<TaskDetailComposite>,
     startOfView: Long,
     dayWidth: Dp,
+    enabled: Boolean = true,
     onTaskClick: (Task) -> Unit
 ) {
-    GanttTasksLayout(taskComposites, startOfView, dayWidth, onTaskClick)
+    GanttTasksLayout(taskComposites, startOfView, dayWidth, enabled, onTaskClick)
 }
 
 @Composable
@@ -486,6 +497,7 @@ fun GanttTasksLayout(
     taskComposites: List<TaskDetailComposite>,
     startOfView: Long,
     dayWidth: Dp,
+    enabled: Boolean = true,
     onTaskClick: (Task) -> Unit
 ) {
     val density = LocalDensity.current
@@ -494,7 +506,11 @@ fun GanttTasksLayout(
     Layout(
         content = {
             taskComposites.forEach { composite ->
-                GanttTaskCard(composite = composite, onClick = { onTaskClick(composite.task) })
+                GanttTaskCard(
+                    composite = composite, 
+                    enabled = enabled,
+                    onClick = { onTaskClick(composite.task) }
+                )
             }
         }
     ) { measurables, constraints ->
@@ -548,12 +564,12 @@ fun GanttTasksLayout(
 @Composable
 fun GanttTaskCard(
     composite: TaskDetailComposite,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val task = composite.task
     val subTasks = composite.subTasks
     val extendedColors = LocalExtendedColors.current
-    
     // Calculate Progress
     val hasSubtasks = subTasks.isNotEmpty()
     val progress = if (hasSubtasks) {
@@ -563,22 +579,36 @@ fun GanttTaskCard(
         0f
     }
 
-    // Determine Colors using theme
-    val (bg, border, text, fill) = if (task.isDone) {
-        Quad(extendedColors.ganttDoneBackground, extendedColors.ganttDoneText, extendedColors.ganttDoneText, extendedColors.ganttDoneText)
-    } else {
-        when (task.type) {
-            TaskType.WORK -> Quad(extendedColors.ganttWorkBackground, extendedColors.ganttWorkBorder, extendedColors.ganttWork, extendedColors.ganttWork)
-            TaskType.LIFE -> Quad(extendedColors.ganttLifeBackground, extendedColors.ganttLifeBorder, extendedColors.ganttLife, extendedColors.ganttLife)
-            TaskType.STUDY -> Quad(extendedColors.ganttStudyBackground, extendedColors.ganttStudyBorder, extendedColors.ganttStudy, extendedColors.ganttStudy)
-            TaskType.URGENT -> Quad(extendedColors.ganttUrgentBackground, extendedColors.ganttUrgentBorder, extendedColors.ganttUrgent, extendedColors.ganttUrgent)
+    // Determine Colors using theme - 避免卡片半透明，保持实心背景
+    val (bg, border, text, fill) = when {
+        task.isDone -> {
+            // 已完成任务：灰色显示
+            Quad(extendedColors.ganttDoneBackground, extendedColors.ganttDoneText, extendedColors.ganttDoneText, extendedColors.ganttDoneText)
+        }
+        task.isExpired -> {
+            // 已过期任务：使用任务类型颜色但文字透明度降低，背景保持实心
+            when (task.type) {
+                TaskType.WORK -> Quad(extendedColors.ganttWorkBackground, extendedColors.ganttWorkBorder, extendedColors.ganttWork.copy(alpha = 0.7f), extendedColors.ganttWork.copy(alpha = 0.7f))
+                TaskType.LIFE -> Quad(extendedColors.ganttLifeBackground, extendedColors.ganttLifeBorder, extendedColors.ganttLife.copy(alpha = 0.7f), extendedColors.ganttLife.copy(alpha = 0.7f))
+                TaskType.STUDY -> Quad(extendedColors.ganttStudyBackground, extendedColors.ganttStudyBorder, extendedColors.ganttStudy.copy(alpha = 0.7f), extendedColors.ganttStudy.copy(alpha = 0.7f))
+                TaskType.URGENT -> Quad(extendedColors.ganttUrgentBackground, extendedColors.ganttUrgentBorder, extendedColors.ganttUrgent.copy(alpha = 0.7f), extendedColors.ganttUrgent.copy(alpha = 0.7f))
+            }
+        }
+        else -> {
+            // 未完成任务：正常显示
+            when (task.type) {
+                TaskType.WORK -> Quad(extendedColors.ganttWorkBackground, extendedColors.ganttWorkBorder, extendedColors.ganttWork, extendedColors.ganttWork)
+                TaskType.LIFE -> Quad(extendedColors.ganttLifeBackground, extendedColors.ganttLifeBorder, extendedColors.ganttLife, extendedColors.ganttLife)
+                TaskType.STUDY -> Quad(extendedColors.ganttStudyBackground, extendedColors.ganttStudyBorder, extendedColors.ganttStudy, extendedColors.ganttStudy)
+                TaskType.URGENT -> Quad(extendedColors.ganttUrgentBackground, extendedColors.ganttUrgentBorder, extendedColors.ganttUrgent, extendedColors.ganttUrgent)
+            }
         }
     }
     
     Surface(
         modifier = Modifier
             .height(56.dp)
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         shape = RoundedCornerShape(8.dp),
         color = bg,
         border = androidx.compose.foundation.BorderStroke(1.dp, border),
@@ -662,6 +692,18 @@ fun GanttTaskCard(
                         .fillMaxWidth(progress)
                         .background(fill)
                         .align(Alignment.BottomStart)
+                )
+            }
+            
+            // 过期任务的灰色半透明遮罩（普通过期和过期置顶统一样式）
+            if (task.isExpired && !task.isDone) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Color.Gray.copy(alpha = 0.2f),
+                            RoundedCornerShape(8.dp)
+                        )
                 )
             }
         }

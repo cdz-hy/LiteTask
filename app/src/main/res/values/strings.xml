@@ -35,6 +35,20 @@
     <string name="task_fixed_top">将此任务固定在列表顶部</string>
     <string name="task_expired_cannot_pin">截止时间在现在时间前的任务不能置顶</string>
     
+    <!-- 新增任务状态 -->
+    <string name="task_status_pending">待处理</string>
+    <string name="task_status_in_progress">进行中</string>
+    <string name="task_status_completed">已完成</string>
+    <string name="task_status_expired">已过期</string>
+    <string name="task_status_not_started">未开始</string>
+    
+    <!-- 过期任务操作 -->
+    <string name="reactivate_expired_task">重新激活</string>
+    <string name="set_new_deadline">设置新截止时间</string>
+    <string name="expired_task_hint">此任务已过期，您可以标记完成或重新设置截止时间</string>
+    <string name="expired_tasks_section">已过期任务</string>
+    <string name="expired_tasks_header">已过期</string>
+    
     <!-- 时间相关 -->
     <string name="start_time">开始时间</string>
     <string name="deadline">截止时间</string>
@@ -321,7 +335,23 @@
     <string name="widget_task_complete_failed">操作失败</string>
     <string name="widget_task_undone">已撤销完成</string>
     <string name="widget_task_not_started">任务未开始</string>
-    <string name="widget_task_in_progress">任务已开始 %1$d%%</string>
+    <string name="widget_task_in_progress">时长已过 %1$d%%</string>
     <string name="widget_task_ended">任务已结束</string>
     <string name="widget_task_done">任务已完成</string>
+    <string name="widget_task_expired">任务已过期</string>
+
+    <!-- AI 历史记录 -->
+    <string name="ai_history">AI 分析历史</string>
+    <string name="ai_history_subtitle">记录所有的 AI 语音和文本分析记录</string>
+    <string name="ai_history_empty">暂无 AI 分析记录</string>
+    <string name="ai_history_clear_all">清空历史记录</string>
+    <string name="ai_history_clear_confirm">确认要清空所有的 AI 分析记录吗？此操作不可撤销。</string>
+    <string name="ai_history_delete_confirm">确认要删除这条历史记录吗？</string>
+    <string name="ai_history_copy_success">内容已复制到剪贴板</string>
+    <string name="ai_history_source_voice">语音输入</string>
+    <string name="ai_history_source_text">文本输入</string>
+    <string name="ai_history_source_subtask">子任务拆解</string>
+    <string name="ai_history_parsed_tasks">解析出 %d 个任务</string>
+    <string name="ai_history_parsed_subtasks">拆解出 %d 个步骤</string>
+    <string name="ai_history_detail">记录详情</string>
 </resources>

@@ -38,6 +38,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.max
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun DeadlineView(
     tasks: List<TaskDetailComposite>,
@@ -45,13 +46,14 @@ fun DeadlineView(
     onDeleteClick: (Task) -> Unit,
     onPinClick: (Task) -> Unit,
     onEditClick: (Task) -> Unit,
+    onToggleDone: (Task) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val now = System.currentTimeMillis()
     
-    // Filter unfinished tasks with a deadline, sorted by deadline
+    // Filter only active tasks (not done and not expired) with a deadline, sorted by deadline
     val deadlineTasks = tasks
-        .filter { !it.task.isDone && it.task.deadline > 0 }
+        .filter { !it.task.isDone && !it.task.isExpired && it.task.deadline > 0 }
         .sortedBy { it.task.deadline }
 
     // Group tasks
@@ -62,93 +64,111 @@ fun DeadlineView(
     }
     val futureTasks = deadlineTasks.filter { (it.task.deadline - now) >= 48 * 60 * 60 * 1000 }
 
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Urgent Section
-        if (urgentTasks.isNotEmpty()) {
-            item {
-                DeadlineSectionHeader(
-                    title = stringResource(R.string.deadline_urgent),
-                    count = urgentTasks.size,
-                    color = LiteTaskColors.urgentTask()
-                )
-            }
-            items(urgentTasks) { item ->
-                DeadlineTaskItem(
-                    composite = item,
-                    isUrgent = true,
-                    onTaskClick = onTaskClick,
-                    onDeleteClick = onDeleteClick,
-                    onPinClick = onPinClick,
-                    onEditClick = onEditClick
-                )
-            }
-        }
-
-        // Soon Section
-        if (soonTasks.isNotEmpty()) {
-            item {
-                if (urgentTasks.isNotEmpty()) Spacer(modifier = Modifier.height(8.dp))
-                DeadlineSectionHeader(
-                    title = stringResource(R.string.deadline_soon),
-                    count = soonTasks.size,
-                    color = Color(0xFFEAB308) // Amber/Yellow
-                )
-            }
-            items(soonTasks) { item ->
-                DeadlineTaskItem(
-                    composite = item,
-                    isUrgent = false,
-                    isSoon = true,
-                    onTaskClick = onTaskClick,
-                    onDeleteClick = onDeleteClick,
-                    onPinClick = onPinClick,
-                    onEditClick = onEditClick
-                )
-            }
-        }
-
-        // Future Section
-        if (futureTasks.isNotEmpty()) {
-            item {
-                if (urgentTasks.isNotEmpty() || soonTasks.isNotEmpty()) Spacer(modifier = Modifier.height(8.dp))
-                DeadlineSectionHeader(
-                    title = stringResource(R.string.deadline_future),
-                    count = futureTasks.size,
-                    color = Color(0xFF64748B) // Slate/Gray
-                )
-            }
-            items(futureTasks) { item ->
-                DeadlineTaskItem(
-                    composite = item,
-                    isUrgent = false,
-                    isSoon = false,
-                    onTaskClick = onTaskClick,
-                    onDeleteClick = onDeleteClick,
-                    onPinClick = onPinClick,
-                    onEditClick = onEditClick
-                )
-            }
-        }
-        
+    Box(modifier = modifier.fillMaxSize()) {
         if (deadlineTasks.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 100.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "没有即将截止的任务",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            EmptyStateView(
+                icon = Icons.Default.Flag,
+                title = stringResource(R.string.no_upcoming_deadlines),
+                subtitle = stringResource(R.string.no_tasks_hint),
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Urgent Section
+            if (urgentTasks.isNotEmpty()) {
+                item(key = "urgent_header") {
+                    Box(modifier = Modifier.animateItemPlacement()) {
+                        DeadlineSectionHeader(
+                            title = stringResource(R.string.deadline_urgent),
+                            count = urgentTasks.size,
+                            color = LiteTaskColors.urgentTask()
+                        )
+                    }
+                }
+                items(
+                    items = urgentTasks,
+                    key = { "urgent_${it.task.id}" }
+                ) { item ->
+                    Box(modifier = Modifier.animateItemPlacement()) {
+                        DeadlineTaskItem(
+                            composite = item,
+                            isUrgent = true,
+                            onTaskClick = onTaskClick,
+                            onDeleteClick = onDeleteClick,
+                            onPinClick = onPinClick,
+                            onEditClick = onEditClick,
+                            onToggleDone = { onToggleDone(item.task) }
+                        )
+                    }
+                }
+            }
+
+            // Soon Section
+            if (soonTasks.isNotEmpty()) {
+                item(key = "soon_header") {
+                    Box(modifier = Modifier.animateItemPlacement()) {
+                        if (urgentTasks.isNotEmpty()) Spacer(modifier = Modifier.height(8.dp))
+                        DeadlineSectionHeader(
+                            title = stringResource(R.string.deadline_soon),
+                            count = soonTasks.size,
+                            color = Color(0xFFEAB308) // Amber/Yellow
+                        )
+                    }
+                }
+                items(
+                    items = soonTasks,
+                    key = { "soon_${it.task.id}" }
+                ) { item ->
+                    Box(modifier = Modifier.animateItemPlacement()) {
+                        DeadlineTaskItem(
+                            composite = item,
+                            isUrgent = false,
+                            isSoon = true,
+                            onTaskClick = onTaskClick,
+                            onDeleteClick = onDeleteClick,
+                            onPinClick = onPinClick,
+                            onEditClick = onEditClick,
+                            onToggleDone = { onToggleDone(item.task) }
+                        )
+                    }
+                }
+            }
+
+            // Future Section
+            if (futureTasks.isNotEmpty()) {
+                item(key = "future_header") {
+                    Box(modifier = Modifier.animateItemPlacement()) {
+                        if (urgentTasks.isNotEmpty() || soonTasks.isNotEmpty()) Spacer(modifier = Modifier.height(8.dp))
+                        DeadlineSectionHeader(
+                            title = stringResource(R.string.deadline_future),
+                            count = futureTasks.size,
+                            color = Color(0xFF64748B) // Slate/Gray
+                        )
+                    }
+                }
+                items(
+                    items = futureTasks,
+                    key = { "future_${it.task.id}" }
+                ) { item ->
+                    Box(modifier = Modifier.animateItemPlacement()) {
+                        DeadlineTaskItem(
+                            composite = item,
+                            isUrgent = false,
+                            isSoon = false,
+                            onTaskClick = onTaskClick,
+                            onDeleteClick = onDeleteClick,
+                            onPinClick = onPinClick,
+                            onEditClick = onEditClick,
+                            onToggleDone = { onToggleDone(item.task) }
+                        )
+                    }
                 }
             }
         }
@@ -202,7 +222,8 @@ fun DeadlineTaskItem(
     onTaskClick: (Task) -> Unit,
     onDeleteClick: (Task) -> Unit,
     onPinClick: (Task) -> Unit,
-    onEditClick: (Task) -> Unit
+    onEditClick: (Task) -> Unit,
+    onToggleDone: () -> Unit = {}
 ) {
     val task = composite.task
     val now = System.currentTimeMillis()
@@ -325,7 +346,17 @@ fun DeadlineTaskItem(
                                 modifier = Modifier.weight(1f)
                             )
                             
-                            Spacer(modifier = Modifier.width(16.dp)) // 稍微右移一些
+                            // 中间空白区域的复选框
+                            TaskCheckbox(
+                                isDone = task.isDone,
+                                onCheckedChange = { onToggleDone() },
+                                checkColor = when {
+                                    isUrgent -> urgentColor
+                                    isSoon -> soonColor
+                                    else -> primaryColor
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
                             
                             // Type Badge
                             Surface(
