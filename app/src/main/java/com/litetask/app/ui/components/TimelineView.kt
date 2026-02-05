@@ -428,10 +428,16 @@ fun HtmlStyleTaskCard(
                         )
 
                         // 复选框
+                        val checkboxColor = if (isDone) {
+                            extendedColors.textTertiary
+                        } else {
+                            getTaskPrimaryColor(task.type)
+                        }
+                        
                         TaskCheckbox(
                             isDone = isDone,
                             onCheckedChange = { onToggleDone() },
-                            checkColor = if (isDone) extendedColors.textTertiary else getTaskPrimaryColor(task.type),
+                            checkColor = checkboxColor,
                             isGrayedOut = isDone,
                             modifier = Modifier.padding(horizontal = 4.dp)
                         )
