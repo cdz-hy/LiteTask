@@ -62,92 +62,86 @@ fun DeadlineView(
     }
     val futureTasks = deadlineTasks.filter { (it.task.deadline - now) >= 48 * 60 * 60 * 1000 }
 
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Urgent Section
-        if (urgentTasks.isNotEmpty()) {
-            item {
-                DeadlineSectionHeader(
-                    title = stringResource(R.string.deadline_urgent),
-                    count = urgentTasks.size,
-                    color = LiteTaskColors.urgentTask()
-                )
-            }
-            items(urgentTasks) { item ->
-                DeadlineTaskItem(
-                    composite = item,
-                    isUrgent = true,
-                    onTaskClick = onTaskClick,
-                    onDeleteClick = onDeleteClick,
-                    onPinClick = onPinClick,
-                    onEditClick = onEditClick
-                )
-            }
-        }
-
-        // Soon Section
-        if (soonTasks.isNotEmpty()) {
-            item {
-                if (urgentTasks.isNotEmpty()) Spacer(modifier = Modifier.height(8.dp))
-                DeadlineSectionHeader(
-                    title = stringResource(R.string.deadline_soon),
-                    count = soonTasks.size,
-                    color = Color(0xFFEAB308) // Amber/Yellow
-                )
-            }
-            items(soonTasks) { item ->
-                DeadlineTaskItem(
-                    composite = item,
-                    isUrgent = false,
-                    isSoon = true,
-                    onTaskClick = onTaskClick,
-                    onDeleteClick = onDeleteClick,
-                    onPinClick = onPinClick,
-                    onEditClick = onEditClick
-                )
-            }
-        }
-
-        // Future Section
-        if (futureTasks.isNotEmpty()) {
-            item {
-                if (urgentTasks.isNotEmpty() || soonTasks.isNotEmpty()) Spacer(modifier = Modifier.height(8.dp))
-                DeadlineSectionHeader(
-                    title = stringResource(R.string.deadline_future),
-                    count = futureTasks.size,
-                    color = Color(0xFF64748B) // Slate/Gray
-                )
-            }
-            items(futureTasks) { item ->
-                DeadlineTaskItem(
-                    composite = item,
-                    isUrgent = false,
-                    isSoon = false,
-                    onTaskClick = onTaskClick,
-                    onDeleteClick = onDeleteClick,
-                    onPinClick = onPinClick,
-                    onEditClick = onEditClick
-                )
-            }
-        }
-        
+    Box(modifier = modifier.fillMaxSize()) {
         if (deadlineTasks.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 100.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "没有即将截止的任务",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            EmptyStateView(
+                icon = Icons.Default.Flag,
+                title = stringResource(R.string.no_upcoming_deadlines),
+                subtitle = stringResource(R.string.no_tasks_hint),
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Urgent Section
+            if (urgentTasks.isNotEmpty()) {
+                item {
+                    DeadlineSectionHeader(
+                        title = stringResource(R.string.deadline_urgent),
+                        count = urgentTasks.size,
+                        color = LiteTaskColors.urgentTask()
+                    )
+                }
+                items(urgentTasks) { item ->
+                    DeadlineTaskItem(
+                        composite = item,
+                        isUrgent = true,
+                        onTaskClick = onTaskClick,
+                        onDeleteClick = onDeleteClick,
+                        onPinClick = onPinClick,
+                        onEditClick = onEditClick
+                    )
+                }
+            }
+
+            // Soon Section
+            if (soonTasks.isNotEmpty()) {
+                item {
+                    if (urgentTasks.isNotEmpty()) Spacer(modifier = Modifier.height(8.dp))
+                    DeadlineSectionHeader(
+                        title = stringResource(R.string.deadline_soon),
+                        count = soonTasks.size,
+                        color = Color(0xFFEAB308) // Amber/Yellow
+                    )
+                }
+                items(soonTasks) { item ->
+                    DeadlineTaskItem(
+                        composite = item,
+                        isUrgent = false,
+                        isSoon = true,
+                        onTaskClick = onTaskClick,
+                        onDeleteClick = onDeleteClick,
+                        onPinClick = onPinClick,
+                        onEditClick = onEditClick
+                    )
+                }
+            }
+
+            // Future Section
+            if (futureTasks.isNotEmpty()) {
+                item {
+                    if (urgentTasks.isNotEmpty() || soonTasks.isNotEmpty()) Spacer(modifier = Modifier.height(8.dp))
+                    DeadlineSectionHeader(
+                        title = stringResource(R.string.deadline_future),
+                        count = futureTasks.size,
+                        color = Color(0xFF64748B) // Slate/Gray
+                    )
+                }
+                items(futureTasks) { item ->
+                    DeadlineTaskItem(
+                        composite = item,
+                        isUrgent = false,
+                        isSoon = false,
+                        onTaskClick = onTaskClick,
+                        onDeleteClick = onDeleteClick,
+                        onPinClick = onPinClick,
+                        onEditClick = onEditClick
                     )
                 }
             }

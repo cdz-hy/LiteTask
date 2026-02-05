@@ -121,6 +121,15 @@ fun GanttView(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
+            if (visibleTasks.isEmpty()) {
+                EmptyStateView(
+                    icon = Icons.Default.DateRange,
+                    title = stringResource(R.string.no_tasks_yet),
+                    subtitle = stringResource(R.string.no_tasks_hint),
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+
             // Horizontal Scroll Container
             Box(
                 modifier = Modifier
