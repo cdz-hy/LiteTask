@@ -241,7 +241,11 @@ fun SearchScreen(
                         ) {
                             HtmlStyleTaskCard(
                                 composite = composite,
-                                onClick = { onTaskClick(composite.task) }
+                                onClick = { onTaskClick(composite.task) },
+                                onToggleDone = { 
+                                    // 搜索结果中直接更新状态
+                                    viewModel.toggleTaskDone(composite.task) 
+                                }
                             )
                         }
                     }
@@ -288,7 +292,10 @@ fun SearchScreen(
                         ) {
                             HtmlStyleTaskCard(
                                 composite = composite,
-                                onClick = { onTaskClick(composite.task) }
+                                onClick = { onTaskClick(composite.task) },
+                                onToggleDone = { 
+                                    viewModel.toggleTaskDone(composite.task) 
+                                }
                             )
                         }
                     }

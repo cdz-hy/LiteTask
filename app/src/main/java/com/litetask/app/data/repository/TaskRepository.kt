@@ -245,22 +245,21 @@ class TaskRepositoryImpl @Inject constructor(
                     isPinned = false  // 完成时自动取消置顶
                 ))
             }
-            // 从完成变为未完成：清除完成时间
+            // 从完成变为未完成：清除完成时间，并重新评估过期状态
             oldTask.isDone && !newTask.isDone -> {
-                taskDao.updateTask(newTask.copy(completedAt = null))
+                val currentTime = System.currentTimeMillis()
+                // 如果已过截止时间，立即标记为过期，确保它出现在过期列表中
+                val isNowExpired = newTask.deadline > 0 && newTask.deadline < currentTime
+                
+                taskDao.updateTask(newTask.copy(
+                    completedAt = null,
+                    isExpired = isNowExpired,
+                    expiredAt = if (isNowExpired) newTask.deadline else null
+                ))
             }
-            // 其他情况：检查是否需要重置过期状态
+            // 其他情况
             else -> {
-                val finalTask = if (oldTask.isExpired && newTask.deadline > System.currentTimeMillis()) {
-                    // 如果任务原本已过期，但新的截止时间在未来，则重置过期状态
-                    newTask.copy(
-                        isExpired = false,
-                        expiredAt = null
-                    )
-                } else {
-                    newTask
-                }
-                taskDao.updateTask(finalTask)
+                taskDao.updateTask(newTask)
             }
         }
     }

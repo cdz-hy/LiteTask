@@ -72,4 +72,14 @@ class SearchViewModel @Inject constructor(
         _selectedTypes.value = emptySet()
         _dateRange.value = null
     }
+
+    fun toggleTaskDone(task: com.litetask.app.data.model.Task) {
+        viewModelScope.launch {
+            if (!task.isDone) {
+                taskRepository.markTaskDone(task)
+            } else {
+                taskRepository.markTaskUndone(task)
+            }
+        }
+    }
 }
