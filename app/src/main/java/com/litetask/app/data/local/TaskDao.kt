@@ -46,23 +46,25 @@ abstract class TaskDao {
     @RewriteQueriesToDropUnusedColumns
     @Query("""
         SELECT * FROM (
-            -- 未完成任务（置顶优先，然后按开始时间、截止时间排序）
+            -- 1. 未完成任务（不限制数量，置顶优先，然后按开始时间、截止时间排序）
             SELECT *, 1 as priority FROM tasks 
             WHERE is_done = 0 AND is_expired = 0
             
             UNION ALL
             
-            -- 已过期任务（置顶优先，然后按截止时间倒序排序）
+            -- 2. 已过期任务（不限制数量，置顶优先，然后按截止时间倒序排序）
             SELECT *, 2 as priority FROM tasks 
             WHERE is_done = 0 AND is_expired = 1
             
             UNION ALL
             
-            -- 前20条已完成任务（按截止时间倒序，不支持置顶）
-            SELECT *, 3 as priority FROM tasks 
-            WHERE is_done = 1
-            ORDER BY deadline DESC
-            LIMIT 20
+            -- 3. 前 20 条已完成任务（仅限制此部分的初始显示数量）
+            SELECT * FROM (
+                SELECT *, 3 as priority FROM tasks 
+                WHERE is_done = 1
+                ORDER BY deadline DESC
+                LIMIT 20
+            )
         )
         ORDER BY 
             priority ASC,
