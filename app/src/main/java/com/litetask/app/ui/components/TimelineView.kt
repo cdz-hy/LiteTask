@@ -48,9 +48,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
 
-/**
- * 获取任务类型对应的主色
- */
+/** 获取任务类型主色 */
 @Composable
 private fun getTaskPrimaryColor(type: TaskType): Color {
     val extendedColors = LocalExtendedColors.current
@@ -62,9 +60,7 @@ private fun getTaskPrimaryColor(type: TaskType): Color {
     }
 }
 
-/**
- * 获取任务类型对应的表面色
- */
+/** 获取任务类型表面色 */
 @Composable
 private fun getTaskSurfaceColor(type: TaskType): Color {
     val extendedColors = LocalExtendedColors.current
@@ -76,6 +72,7 @@ private fun getTaskSurfaceColor(type: TaskType): Color {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun TimelineView(
     items: List<TimelineItem>,
@@ -83,6 +80,7 @@ fun TimelineView(
     onDeleteClick: (Task) -> Unit,
     onPinClick: (Task) -> Unit,
     onEditClick: (Task) -> Unit,
+    onToggleDone: (Task) -> Unit = {},
     onLoadMore: () -> Unit,
     onSearchClick: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -90,27 +88,54 @@ fun TimelineView(
     val listState = rememberLazyListState()
     val extendedColors = LocalExtendedColors.current
 
-    // 滚动监听加载更多
+    // 去重过滤：防止任务重复显示
+    val filteredItems = remember(items) {
+        val seenTaskIds = mutableSetOf<Long>()
+        items.filter { item ->
+            when (item) {
+                is TimelineItem.TaskItem -> {
+                    val taskId = item.composite.task.id
+                    if (taskId in seenTaskIds) {
+                        false
+                    } else {
+                        seenTaskIds.add(taskId)
+                        true
+                    }
+                }
+                else -> true
+            }
+        }
+    }
+
+    // 分页加载触发检测
     val isAtBottom by remember {
         derivedStateOf {
             val layoutInfo = listState.layoutInfo
             val totalItems = layoutInfo.totalItemsCount
             if (totalItems == 0) return@derivedStateOf false
             val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull() ?: return@derivedStateOf false
-            lastVisibleItem.index >= totalItems - 5
+            lastVisibleItem.index >= totalItems - 8
         }
     }
 
+    // 防抖加载更多
+    var lastLoadMoreTime by remember { mutableStateOf(0L) }
     LaunchedEffect(isAtBottom) {
-        if (isAtBottom) onLoadMore()
+        if (isAtBottom) {
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastLoadMoreTime > 500) {
+                lastLoadMoreTime = currentTime
+                onLoadMore()
+            }
+        }
     }
 
-    // 搜索栏显示/隐藏逻辑
+    // 搜索栏显示控制
     val showSearchBar by remember {
         derivedStateOf {
             val firstVisibleIndex = listState.firstVisibleItemIndex
             val firstVisibleOffset = listState.firstVisibleItemScrollOffset
-            firstVisibleIndex == 0 && firstVisibleOffset < 100
+            firstVisibleIndex == 0 && firstVisibleOffset < 50
         }
     }
 
@@ -157,8 +182,8 @@ fun TimelineView(
             )
         }
 
-        // 空状态提示
-        if (items.isEmpty()) {
+        // 空状态
+        if (filteredItems.isEmpty()) {
             EmptyStateView(
                 icon = Icons.Default.Inbox,
                 title = stringResource(R.string.no_tasks_yet),
@@ -174,81 +199,107 @@ fun TimelineView(
             contentPadding = PaddingValues(bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(items) { item ->
-                when (item) {
-                    is TimelineItem.TaskItem -> {
-                        SwipeRevealItem(
-                            task = item.composite.task,
-                            onDelete = { onDeleteClick(item.composite.task) },
-                            onEdit = { onEditClick(item.composite.task) },
-                            onPin = { onPinClick(item.composite.task) }
-                        ) {
-                            HtmlStyleTaskCard(
-                                composite = item.composite,
-                                onClick = { onTaskClick(item.composite.task) }
-                            )
+            items(
+                items = filteredItems,
+                key = { item ->
+                    when (item) {
+                        is TimelineItem.TaskItem -> {
+                            // 包含状态信息的稳定 key
+                            val task = item.composite.task
+                            "task_${task.id}_${task.isDone}_${task.isExpired}_${task.isPinned}"
                         }
+                        is TimelineItem.ExpiredHeader -> "expired_header"
+                        is TimelineItem.HistoryHeader -> "archived_header"
+                        is TimelineItem.Loading -> "loading"
                     }
-                    is TimelineItem.HistoryHeader -> {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            HorizontalDivider(
-                                modifier = Modifier.weight(1f),
-                                color = extendedColors.divider.copy(alpha = 0.5f)
-                            )
-                            Text(
-                                stringResource(R.string.archived),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = extendedColors.textTertiary,
-                                modifier = Modifier.padding(horizontal = 12.dp)
-                            )
-                            HorizontalDivider(
-                                modifier = Modifier.weight(1f),
-                                color = extendedColors.divider.copy(alpha = 0.5f)
-                            )
+                }
+            ) { item ->
+                // 稳定的动画参数
+                Box(modifier = Modifier.animateItemPlacement(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                )) {
+                    when (item) {
+                        is TimelineItem.TaskItem -> {
+                            SwipeRevealItem(
+                                task = item.composite.task,
+                                onDelete = { onDeleteClick(item.composite.task) },
+                                onEdit = { onEditClick(item.composite.task) },
+                                onPin = { onPinClick(item.composite.task) }
+                            ) {
+                                HtmlStyleTaskCard(
+                                    composite = item.composite,
+                                    onClick = { onTaskClick(item.composite.task) },
+                                    onToggleDone = { onToggleDone(item.composite.task) }
+                                )
+                            }
                         }
-                    }
-                    is TimelineItem.ExpiredHeader -> {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            HorizontalDivider(
-                                modifier = Modifier.weight(1f),
-                                color = extendedColors.deadlineUrgent.copy(alpha = 0.3f)
-                            )
-                            Text(
-                                stringResource(R.string.expired_tasks_header),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = extendedColors.deadlineUrgent.copy(alpha = 0.8f),
-                                modifier = Modifier.padding(horizontal = 12.dp)
-                            )
-                            HorizontalDivider(
-                                modifier = Modifier.weight(1f),
-                                color = extendedColors.deadlineUrgent.copy(alpha = 0.3f)
-                            )
+                        is TimelineItem.HistoryHeader -> {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                HorizontalDivider(
+                                    modifier = Modifier.weight(1f),
+                                    color = extendedColors.divider.copy(alpha = 0.5f)
+                                )
+                                Text(
+                                    stringResource(R.string.archived),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = extendedColors.textTertiary,
+                                    modifier = Modifier.padding(horizontal = 12.dp)
+                                )
+                                HorizontalDivider(
+                                    modifier = Modifier.weight(1f),
+                                    color = extendedColors.divider.copy(alpha = 0.5f)
+                                )
+                            }
                         }
-                    }
-                    is TimelineItem.Loading -> {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp), 
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                        is TimelineItem.ExpiredHeader -> {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                HorizontalDivider(
+                                    modifier = Modifier.weight(1f),
+                                    color = extendedColors.deadlineUrgent.copy(alpha = 0.3f)
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 12.dp)
+                                ) {
+                                    Text(
+                                        stringResource(R.string.expired_tasks_header),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = extendedColors.deadlineUrgent
+                                    )
+                                }
+                                HorizontalDivider(
+                                    modifier = Modifier.weight(1f),
+                                    color = extendedColors.deadlineUrgent.copy(alpha = 0.3f)
+                                )
+                            }
                         }
-                    }
-                    is TimelineItem.PinnedHeader -> {
-                        // 置顶任务头部，当前版本暂不显示额外内容
+                        is TimelineItem.Loading -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -256,13 +307,12 @@ fun TimelineView(
     }
 }
 
-/**
- * 核心卡片组件：Material Design 3 风格，支持暗色模式
- */
+/** Material Design 3 风格任务卡片 */
 @Composable
 fun HtmlStyleTaskCard(
     composite: TaskDetailComposite,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onToggleDone: () -> Unit = {}
 ) {
     val task = composite.task
     val subTasks = composite.subTasks
@@ -270,41 +320,57 @@ fun HtmlStyleTaskCard(
 
     val isDone = task.isDone
     val isPinned = task.isPinned
-    val isExpired = task.isExpired  // 使用新的过期状态字段
+    val isExpired = task.isExpired
 
-    // 获取颜色配置
+    // 颜色状态计算
     val primaryColor = when {
         isDone -> extendedColors.textTertiary
-        isExpired -> getTaskPrimaryColor(task.type).copy(alpha = 0.5f)  // 过期任务颜色更淡
+        isExpired -> getTaskPrimaryColor(task.type).copy(alpha = 0.5f)
         else -> getTaskPrimaryColor(task.type)
     }
     
     val surfaceColor = when {
         isDone -> extendedColors.cardBackground
-        isExpired -> getTaskSurfaceColor(task.type).copy(alpha = 0.3f)  // 过期任务表面色更淡
+        isExpired -> getTaskSurfaceColor(task.type).copy(alpha = 0.3f)
         else -> getTaskSurfaceColor(task.type)
     }
 
-    // 背景色：置顶任务使用浅色实心背景，普通任务使用卡片背景色
     val containerColor = when {
-        isPinned && !isDone && !isExpired -> surfaceColor  // 未完成置顶任务
-        isPinned && !isDone && isExpired -> extendedColors.cardBackground  // 过期置顶任务使用普通背景
+        isPinned && !isDone && !isExpired -> surfaceColor
+        isPinned && !isDone && isExpired -> extendedColors.cardBackground
         else -> extendedColors.cardBackground
     }
 
-    // 边框：置顶任务有浅色边框
+    val elevation = when {
+        isPinned && !isDone && !isExpired -> 2.dp
+        isPinned && !isDone && isExpired -> 1.5.dp
+        else -> 0.5.dp
+    }
+
     val borderStroke = when {
-        isPinned && !isDone && !isExpired -> androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.2f))  // 未完成置顶
-        isPinned && !isDone && isExpired -> androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f))   // 过期置顶
+        isPinned && !isDone && !isExpired -> androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.2f))
+        isPinned && !isDone && isExpired -> androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f))
         else -> null
     }
 
-    // 阴影：置顶任务阴影稍重
-    val elevation = when {
-        isPinned && !isDone && !isExpired -> 2.dp  // 未完成置顶任务
-        isPinned && !isDone && isExpired -> 1.5.dp  // 过期置顶任务
-        else -> 0.5.dp
-    }
+    // 动画颜色转换
+    val animatedPrimaryColor by animateColorAsState(
+        targetValue = primaryColor,
+        animationSpec = tween(300),
+        label = "primary_color"
+    )
+    
+    val animatedContainerColor by animateColorAsState(
+        targetValue = containerColor,
+        animationSpec = tween(300),
+        label = "container_color"
+    )
+
+    val animatedElevation by animateDpAsState(
+        targetValue = elevation,
+        animationSpec = tween(300),
+        label = "elevation"
+    )
 
     // 进度计算
     val totalSub = subTasks.size
@@ -314,9 +380,9 @@ fun HtmlStyleTaskCard(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(24.dp),
-        color = containerColor,
-        shadowElevation = elevation,
-        border = borderStroke,
+        color = animatedContainerColor,
+        shadowElevation = animatedElevation,
+        border = borderStroke, // 边框逻辑由于涉及 null 比较，暂时保持原样或稍后优化
         modifier = Modifier.fillMaxWidth()
     ) {
         Box {
@@ -328,7 +394,7 @@ fun HtmlStyleTaskCard(
                         .width(8.dp)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
-                        .background(primaryColor.copy(alpha = if (isDone) 0.3f else if (isExpired) 0.4f else 0.8f))
+                        .background(animatedPrimaryColor.copy(alpha = if (isDone) 0.3f else if (isExpired) 0.4f else 0.8f))
                 )
 
                 // 右侧内容
@@ -337,20 +403,23 @@ fun HtmlStyleTaskCard(
                         .padding(start = 14.dp, end = 16.dp, top = 16.dp, bottom = 16.dp)
                         .weight(1f)
                 ) {
-                    // 1. 标题行
+                    // 标题行
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.Top
                     ) {
+                        // 标题
                         Text(
                             text = task.title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = if (isPinned) FontWeight.Bold else FontWeight.SemiBold,
                             color = when {
                                 isDone -> extendedColors.textTertiary
-                                isExpired -> extendedColors.textPrimary.copy(alpha = 0.6f)  // 过期任务标题变淡
+                                isExpired -> extendedColors.textPrimary.copy(alpha = 0.6f)
                                 else -> extendedColors.textPrimary
+                            }.let { targetColor ->
+                                animateColorAsState(targetColor, tween(300)).value
                             },
                             textDecoration = if (isDone) TextDecoration.LineThrough else null,
                             maxLines = 2,
@@ -358,42 +427,28 @@ fun HtmlStyleTaskCard(
                             modifier = Modifier.weight(1f).padding(end = 8.dp)
                         )
 
-                        // 状态图标
-                        if (isDone) {
+                        // 复选框
+                        TaskCheckbox(
+                            isDone = isDone,
+                            onCheckedChange = { onToggleDone() },
+                            checkColor = if (isDone) extendedColors.textTertiary else getTaskPrimaryColor(task.type),
+                            isGrayedOut = isDone,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // 置顶图标或类型标签
+                        if (isPinned && !isDone) {
                             Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = "Done",
-                                tint = extendedColors.lifeTask,
-                                modifier = Modifier.size(20.dp)
+                                imageVector = Icons.Default.PushPin,
+                                contentDescription = "Pinned",
+                                tint = animatedPrimaryColor,
+                                modifier = Modifier.size(16.dp).rotate(45f)
                             )
-                        } else if (isExpired) {
-                            // 过期任务显示过期图标
-                            Icon(
-                                imageVector = Icons.Default.Schedule,
-                                contentDescription = "Expired",
-                                tint = extendedColors.deadlineUrgent.copy(alpha = 0.8f),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        } else if (isPinned) {
-                            Box(
-                                modifier = Modifier
-                                    .background(
-                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.6f), 
-                                        CircleShape
-                                    )
-                                    .padding(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PushPin,
-                                    contentDescription = "Pinned",
-                                    tint = primaryColor,
-                                    modifier = Modifier.size(14.dp).rotate(45f)
-                                )
-                            }
                         } else {
-                            // 类型标签
                             Surface(
-                                color = primaryColor.copy(alpha = 0.1f),
+                                color = animatedPrimaryColor.copy(alpha = 0.1f),
                                 shape = RoundedCornerShape(6.dp)
                             ) {
                                 Text(
@@ -401,7 +456,7 @@ fun HtmlStyleTaskCard(
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
-                                    color = primaryColor,
+                                    color = animatedPrimaryColor,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -410,31 +465,33 @@ fun HtmlStyleTaskCard(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // 2. 信息行：时间 + 地点 + 截止
+                    // 信息行：时间和状态标签
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         val infoColor = when {
                             isDone -> extendedColors.textSecondary.copy(alpha = 0.5f)
-                            isExpired -> extendedColors.textSecondary.copy(alpha = 0.5f)  // 过期任务信息变淡
+                            isExpired -> extendedColors.textSecondary.copy(alpha = 0.5f)
                             else -> extendedColors.textSecondary.copy(alpha = 0.8f)
                         }
+                        
+                        val animatedInfoColor by animateColorAsState(infoColor, tween(300), label = "info_color")
 
                         Icon(
                             imageVector = Icons.Default.AccessTime,
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            tint = infoColor
+                            tint = animatedInfoColor
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = formatSmartTime(task.startTime, task.deadline),
                             style = MaterialTheme.typography.bodySmall,
-                            color = infoColor
+                            color = animatedInfoColor
                         )
 
-                        // 过期标签（替代紧急标签）- 仅未完成任务显示
+                        // 过期标签
                         if (isExpired && !isDone) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
@@ -450,7 +507,7 @@ fun HtmlStyleTaskCard(
                                 )
                             }
                         } else if (!isDone && task.deadline > 0) {
-                            // 紧急标签（仅未完成且未过期任务）
+                            // 紧急标签
                             val timeLeft = task.deadline - System.currentTimeMillis()
                             if (timeLeft in 0..(24 * 3600 * 1000)) {
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -477,7 +534,7 @@ fun HtmlStyleTaskCard(
                         }
                     }
 
-                    // 3. 子任务与进度 (仅未完成且有子任务时)
+                    // 子任务进度 (仅未完成且有子任务时)
                     if (subTasks.isNotEmpty() && !isDone) {
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -504,7 +561,7 @@ fun HtmlStyleTaskCard(
                             )
                         }
 
-                        // Next Action
+                        // 下一步行动
                         val nextAction = subTasks.firstOrNull { !it.isCompleted }
                         if (nextAction != null) {
                             Spacer(modifier = Modifier.height(8.dp))
@@ -548,20 +605,20 @@ fun HtmlStyleTaskCard(
                 }
             }
             
-            // 遮罩层处理
+            // 状态遮罩
             when {
-                // 过期且置顶的任务：使用特殊的置顶过期遮罩
+                // 过期置顶任务遮罩
                 isExpired && !isDone && isPinned -> {
                     Box(
                         modifier = Modifier
                             .matchParentSize()
                             .background(
-                                primaryColor.copy(alpha = 0.08f),  // 使用任务类型颜色的浅色遮罩
+                                primaryColor.copy(alpha = 0.08f),
                                 RoundedCornerShape(24.dp)
                             )
                     )
                 }
-                // 普通过期任务：使用灰色遮罩
+                // 过期任务遮罩
                 isExpired && !isDone -> {
                     Box(
                         modifier = Modifier
@@ -589,9 +646,9 @@ fun SwipeRevealItem(
     val density = LocalDensity.current
     val extendedColors = LocalExtendedColors.current
     val isTaskCompleted = task.isDone
-    val canPinTask = !isTaskCompleted  // 只要未完成就可以置顶（包括过期任务）
+    val canPinTask = !isTaskCompleted
     
-    // 根据是否可以置顶任务调整操作按钮数量和宽度
+    // 操作按钮配置
     val actionCount = if (canPinTask) 3 else 2
     val actionWidth = (180 * actionCount / 3).dp
     val actionWidthPx = with(density) { actionWidth.toPx() }
@@ -599,9 +656,9 @@ fun SwipeRevealItem(
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     
-    // --- 核心优化：删除离场动画状态 ---
+    // 删除动画状态
     var isDismissed by remember { mutableStateOf(false) }
-    val animationDuration = 400 // MD3 标准出场时间
+    val animationDuration = 400
 
     AnimatedVisibility(
         visible = !isDismissed,
@@ -641,7 +698,7 @@ fun SwipeRevealItem(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 只有未完成的任务才能置顶（包括过期任务）
+                // 置顶按钮
                 if (canPinTask) {
                     ActionIcon(
                         icon = if (task.isPinned) Icons.Outlined.PushPin else Icons.Default.PushPin,
@@ -650,26 +707,24 @@ fun SwipeRevealItem(
                     )
                 }
                 
+                // 编辑按钮
                 ActionIcon(
                     icon = Icons.Default.Edit,
                     color = MaterialTheme.colorScheme.primary,
                     onClick = { scope.launch { offsetX.animateTo(0f); onEdit() } }
                 )
                 
+                // 删除按钮
                 ActionIcon(
                     icon = if (isDeleteConfirming) Icons.Default.DeleteForever else Icons.Default.Delete,
                     color = if (isDeleteConfirming) Color.White else extendedColors.deadlineUrgent,
                     containerColor = if (isDeleteConfirming) extendedColors.deadlineUrgent else extendedColors.deadlineUrgent.copy(alpha = 0.1f),
                     onClick = { 
                         if (isDeleteConfirming) {
-                            // 触发动效
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             scope.launch { 
-                                // 1. 先把侧滑状态滑回去，视觉上更连贯
                                 offsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMedium))
-                                // 2. 标记离场，触发 AnimatedVisibility 的 exit 动画
                                 isDismissed = true
-                                // 3. 等待动画完成后执行真正的物理删除
                                 delay(animationDuration.toLong())
                                 onDelete() 
                             }
@@ -682,7 +737,7 @@ fun SwipeRevealItem(
             }
         }
 
-        // 前景内容层
+        // 任务内容
         Box(
             modifier = Modifier
                 .offset { IntOffset(offsetX.value.roundToInt(), 0) }

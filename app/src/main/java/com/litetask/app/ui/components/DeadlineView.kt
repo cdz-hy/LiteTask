@@ -38,6 +38,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.max
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun DeadlineView(
     tasks: List<TaskDetailComposite>,
@@ -45,6 +46,7 @@ fun DeadlineView(
     onDeleteClick: (Task) -> Unit,
     onPinClick: (Task) -> Unit,
     onEditClick: (Task) -> Unit,
+    onToggleDone: (Task) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val now = System.currentTimeMillis()
@@ -81,68 +83,92 @@ fun DeadlineView(
         ) {
             // Urgent Section
             if (urgentTasks.isNotEmpty()) {
-                item {
-                    DeadlineSectionHeader(
-                        title = stringResource(R.string.deadline_urgent),
-                        count = urgentTasks.size,
-                        color = LiteTaskColors.urgentTask()
-                    )
+                item(key = "urgent_header") {
+                    Box(modifier = Modifier.animateItemPlacement()) {
+                        DeadlineSectionHeader(
+                            title = stringResource(R.string.deadline_urgent),
+                            count = urgentTasks.size,
+                            color = LiteTaskColors.urgentTask()
+                        )
+                    }
                 }
-                items(urgentTasks) { item ->
-                    DeadlineTaskItem(
-                        composite = item,
-                        isUrgent = true,
-                        onTaskClick = onTaskClick,
-                        onDeleteClick = onDeleteClick,
-                        onPinClick = onPinClick,
-                        onEditClick = onEditClick
-                    )
+                items(
+                    items = urgentTasks,
+                    key = { "urgent_${it.task.id}" }
+                ) { item ->
+                    Box(modifier = Modifier.animateItemPlacement()) {
+                        DeadlineTaskItem(
+                            composite = item,
+                            isUrgent = true,
+                            onTaskClick = onTaskClick,
+                            onDeleteClick = onDeleteClick,
+                            onPinClick = onPinClick,
+                            onEditClick = onEditClick,
+                            onToggleDone = { onToggleDone(item.task) }
+                        )
+                    }
                 }
             }
 
             // Soon Section
             if (soonTasks.isNotEmpty()) {
-                item {
-                    if (urgentTasks.isNotEmpty()) Spacer(modifier = Modifier.height(8.dp))
-                    DeadlineSectionHeader(
-                        title = stringResource(R.string.deadline_soon),
-                        count = soonTasks.size,
-                        color = Color(0xFFEAB308) // Amber/Yellow
-                    )
+                item(key = "soon_header") {
+                    Box(modifier = Modifier.animateItemPlacement()) {
+                        if (urgentTasks.isNotEmpty()) Spacer(modifier = Modifier.height(8.dp))
+                        DeadlineSectionHeader(
+                            title = stringResource(R.string.deadline_soon),
+                            count = soonTasks.size,
+                            color = Color(0xFFEAB308) // Amber/Yellow
+                        )
+                    }
                 }
-                items(soonTasks) { item ->
-                    DeadlineTaskItem(
-                        composite = item,
-                        isUrgent = false,
-                        isSoon = true,
-                        onTaskClick = onTaskClick,
-                        onDeleteClick = onDeleteClick,
-                        onPinClick = onPinClick,
-                        onEditClick = onEditClick
-                    )
+                items(
+                    items = soonTasks,
+                    key = { "soon_${it.task.id}" }
+                ) { item ->
+                    Box(modifier = Modifier.animateItemPlacement()) {
+                        DeadlineTaskItem(
+                            composite = item,
+                            isUrgent = false,
+                            isSoon = true,
+                            onTaskClick = onTaskClick,
+                            onDeleteClick = onDeleteClick,
+                            onPinClick = onPinClick,
+                            onEditClick = onEditClick,
+                            onToggleDone = { onToggleDone(item.task) }
+                        )
+                    }
                 }
             }
 
             // Future Section
             if (futureTasks.isNotEmpty()) {
-                item {
-                    if (urgentTasks.isNotEmpty() || soonTasks.isNotEmpty()) Spacer(modifier = Modifier.height(8.dp))
-                    DeadlineSectionHeader(
-                        title = stringResource(R.string.deadline_future),
-                        count = futureTasks.size,
-                        color = Color(0xFF64748B) // Slate/Gray
-                    )
+                item(key = "future_header") {
+                    Box(modifier = Modifier.animateItemPlacement()) {
+                        if (urgentTasks.isNotEmpty() || soonTasks.isNotEmpty()) Spacer(modifier = Modifier.height(8.dp))
+                        DeadlineSectionHeader(
+                            title = stringResource(R.string.deadline_future),
+                            count = futureTasks.size,
+                            color = Color(0xFF64748B) // Slate/Gray
+                        )
+                    }
                 }
-                items(futureTasks) { item ->
-                    DeadlineTaskItem(
-                        composite = item,
-                        isUrgent = false,
-                        isSoon = false,
-                        onTaskClick = onTaskClick,
-                        onDeleteClick = onDeleteClick,
-                        onPinClick = onPinClick,
-                        onEditClick = onEditClick
-                    )
+                items(
+                    items = futureTasks,
+                    key = { "future_${it.task.id}" }
+                ) { item ->
+                    Box(modifier = Modifier.animateItemPlacement()) {
+                        DeadlineTaskItem(
+                            composite = item,
+                            isUrgent = false,
+                            isSoon = false,
+                            onTaskClick = onTaskClick,
+                            onDeleteClick = onDeleteClick,
+                            onPinClick = onPinClick,
+                            onEditClick = onEditClick,
+                            onToggleDone = { onToggleDone(item.task) }
+                        )
+                    }
                 }
             }
         }
@@ -196,7 +222,8 @@ fun DeadlineTaskItem(
     onTaskClick: (Task) -> Unit,
     onDeleteClick: (Task) -> Unit,
     onPinClick: (Task) -> Unit,
-    onEditClick: (Task) -> Unit
+    onEditClick: (Task) -> Unit,
+    onToggleDone: () -> Unit = {}
 ) {
     val task = composite.task
     val now = System.currentTimeMillis()
@@ -319,7 +346,17 @@ fun DeadlineTaskItem(
                                 modifier = Modifier.weight(1f)
                             )
                             
-                            Spacer(modifier = Modifier.width(16.dp)) // 稍微右移一些
+                            // 中间空白区域的复选框
+                            TaskCheckbox(
+                                isDone = task.isDone,
+                                onCheckedChange = { onToggleDone() },
+                                checkColor = when {
+                                    isUrgent -> urgentColor
+                                    isSoon -> soonColor
+                                    else -> primaryColor
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
                             
                             // Type Badge
                             Surface(

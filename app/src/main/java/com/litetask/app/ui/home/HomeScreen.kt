@@ -412,6 +412,7 @@ fun HomeScreen(
                             // 只设置 taskToEdit，LaunchedEffect 会负责加载提醒并显示对话框
                             taskToEdit = it
                         },
+                        onToggleDone = { viewModel.toggleTaskDone(it) },
                         onLoadMore = { viewModel.loadMoreHistory() },
                         onSearchClick = { onNavigateToSearch() }
                     )
@@ -435,7 +436,8 @@ fun HomeScreen(
                                 // 允许未完成任务和已过期任务置顶（在各自区域内）
                                 viewModel.updateTask(task.copy(isPinned = !task.isPinned))
                             }
-                        }
+                        },
+                        onToggleDone = { viewModel.toggleTaskDone(it) }
                     )
                 }
 

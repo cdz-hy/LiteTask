@@ -106,7 +106,7 @@ class HomeViewModel @Inject constructor(
             val expiredTasks = allTasks.filter { !it.task.isDone && it.task.isExpired }
             val completedTasks = allTasks.filter { it.task.isDone }
             
-            // 1. 未完成任务（置顶优先）
+            // 1. 未完成任务（置顶优先，不显示置顶头部）
             addAll(activeTasks.map { TimelineItem.TaskItem(it) })
             
             // 2. 已过期任务
@@ -119,7 +119,15 @@ class HomeViewModel @Inject constructor(
             if (completedTasks.isNotEmpty() || additionalHistory.isNotEmpty()) {
                 add(TimelineItem.HistoryHeader)
                 addAll(completedTasks.map { TimelineItem.TaskItem(it) })
-                addAll(additionalHistory.map { TimelineItem.TaskItem(it) })
+                
+                // 核心修复：过滤掉已经在主流（前20条）中出现的已完成任务，避免分页加载时的 ID 重复导致 UI 异常或崩溃
+                // 同时确保数据一致性：只有真正的已完成任务才会出现在历史区域
+                val completedIds = completedTasks.map { it.task.id }.toSet()
+                val distinctAdditional = additionalHistory.filter { 
+                    it.task.id !in completedIds && it.task.isDone // 双重检查：确保是已完成任务
+                }
+                
+                addAll(distinctAdditional.map { TimelineItem.TaskItem(it) })
             }
             
             // 4. 加载指示器
@@ -640,6 +648,22 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun toggleTaskDone(task: Task) {
+        viewModelScope.launch {
+            if (!task.isDone) {
+                // 未完成 -> 已完成
+                taskRepository.markTaskDone(task)
+                refreshHistoryAfterCompletion()
+            } else {
+                // 已完成 -> 未完成：使用状态跟踪更新，确保数据一致性
+                taskRepository.updateTaskWithStatusTracking(task, task.copy(isDone = false))
+                // 从额外历史列表中移除（如果存在）
+                cleanupTaskFromAdditionalHistory(task.id)
+            }
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+
     fun updateTask(task: Task) {
         viewModelScope.launch {
             if (task.isDone && task.completedAt == null) {
@@ -652,7 +676,7 @@ class HomeViewModel @Inject constructor(
                 taskRepository.updateTask(task)
                 // 如果任务从历史列表中重新激活，从额外历史列表移除
                 if (!task.isDone) {
-                    _additionalHistoryTasks.value = _additionalHistoryTasks.value.filter { it.task.id != task.id }
+                    cleanupTaskFromAdditionalHistory(task.id)
                 }
             }
             WidgetUpdateHelper.refreshAllWidgets(application)
@@ -674,7 +698,7 @@ class HomeViewModel @Inject constructor(
                 }
                 oldTask.isDone && !newTask.isDone -> {
                     // 任务重新激活，从额外历史列表移除
-                    _additionalHistoryTasks.value = _additionalHistoryTasks.value.filter { it.task.id != newTask.id }
+                    cleanupTaskFromAdditionalHistory(newTask.id)
                 }
             }
             
@@ -715,7 +739,7 @@ class HomeViewModel @Inject constructor(
                 } else null
             }
             taskRepository.updateTaskWithReminders(task, reminders)
-            _additionalHistoryTasks.value = _additionalHistoryTasks.value.filter { it.task.id != task.id }
+            cleanupTaskFromAdditionalHistory(task.id)
             WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
@@ -731,6 +755,20 @@ class HomeViewModel @Inject constructor(
     private suspend fun refreshHistoryAfterCompletion() {
         // 由于主要数据通过Flow自动更新，这里只需要重置额外的历史任务
         resetAdditionalHistoryPagination()
+        
+        // 延迟一小段时间确保数据库更新完成，避免UI闪烁
+        kotlinx.coroutines.delay(80)
+    }
+    
+    /**
+     * 从额外历史列表中移除指定任务
+     */
+    private fun cleanupTaskFromAdditionalHistory(taskId: Long) {
+        val current = _additionalHistoryTasks.value
+        val filtered = current.filter { it.task.id != taskId }
+        if (filtered.size != current.size) {
+            _additionalHistoryTasks.value = filtered
+        }
     }
 
     // ==================== 子任务操作 ====================

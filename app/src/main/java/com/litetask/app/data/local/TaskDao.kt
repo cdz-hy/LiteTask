@@ -58,10 +58,10 @@ abstract class TaskDao {
             
             UNION ALL
             
-            -- 前20条已完成任务（按完成时间倒序，不支持置顶）
+            -- 前20条已完成任务（按截止时间倒序，不支持置顶）
             SELECT *, 3 as priority FROM tasks 
             WHERE is_done = 1
-            ORDER BY completed_at DESC
+            ORDER BY deadline DESC
             LIMIT 20
         )
         ORDER BY 
@@ -73,8 +73,8 @@ abstract class TaskDao {
             -- 已过期任务排序：置顶优先 -> 过期时间倒序
             CASE WHEN priority = 2 THEN is_pinned END DESC,
             CASE WHEN priority = 2 THEN expired_at END DESC,
-            -- 已完成任务排序：完成时间倒序
-            CASE WHEN priority = 3 THEN completed_at END DESC
+            -- 已完成任务排序：截止时间倒序
+            CASE WHEN priority = 3 THEN deadline END DESC
     """)
     abstract fun getAllDisplayTasks(): Flow<List<TaskDetailComposite>>
 
