@@ -52,7 +52,7 @@ abstract class TaskDao {
             
             UNION ALL
             
-            -- 已过期任务（置顶优先，然后按过期时间倒序排序）
+            -- 已过期任务（置顶优先，然后按截止时间倒序排序）
             SELECT *, 2 as priority FROM tasks 
             WHERE is_done = 0 AND is_expired = 1
             
@@ -70,9 +70,9 @@ abstract class TaskDao {
             CASE WHEN priority = 1 THEN is_pinned END DESC,
             CASE WHEN priority = 1 THEN start_time END ASC,
             CASE WHEN priority = 1 THEN deadline END ASC,
-            -- 已过期任务排序：置顶优先 -> 过期时间倒序
+            -- 已过期任务排序：置顶优先 -> 截止时间倒序
             CASE WHEN priority = 2 THEN is_pinned END DESC,
-            CASE WHEN priority = 2 THEN expired_at END DESC,
+            CASE WHEN priority = 2 THEN deadline END DESC,
             -- 已完成任务排序：截止时间倒序
             CASE WHEN priority = 3 THEN deadline END DESC
     """)
@@ -197,7 +197,7 @@ abstract class TaskDao {
     @Query("""
         SELECT * FROM tasks 
         WHERE is_expired = 1 AND is_done = 0
-        ORDER BY expired_at DESC
+        ORDER BY deadline DESC
         LIMIT :limit OFFSET :offset
     """)
     abstract suspend fun getExpiredTasks(limit: Int, offset: Int): List<TaskDetailComposite>
