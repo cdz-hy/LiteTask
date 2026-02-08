@@ -1,114 +1,176 @@
 # LiteTask
 
-[中文](README.md) | English
+<div align="center">
 
-## Project Overview
+A lightweight task management app that simplifies schedule creation through AI voice recognition and large language model analysis.
 
-A lightweight task/schedule visualization and reminder application that simplifies schedule creation through voice recognition and AI analysis.
+[中文](README.md) | [English](README.en.md)
 
-## Core Design Philosophy
+[![Release](https://img.shields.io/github/v/release/cdz-hy/LiteTask)](https://github.com/cdz-hy/LiteTask/releases)[![License](https://img.shields.io/github/license/cdz-hy/LiteTask)](LICENSE)[![Android](https://img.shields.io/badge/Android-26%2B-brightgreen)](https://developer.android.com)
 
-### Material Design 3 Guidelines
-- Follows Google Material Design 3 specifications
-- Features large rounded corners, dynamic color theming, modal bottom sheets, and elegant micro-interactions
+</div>
 
-### Color Logic
-- Categories (Work/Life/Study) define theme colors
-- Urgency levels define highlight alerts with clear visual hierarchy
+## Screenshots
+
+<div align="center">
+
+| Main UI | Gantt Chart View | Deadline View |
+| :---: | :---: | :---: |
+| <img src="https://github.com/user-attachments/assets/5460e2da-4e0c-498d-9c39-f869d52e67b8" width="200"> | <img src="https://github.com/user-attachments/assets/14e65e12-f036-4533-a25f-73ba837c33db" width="200"> | <img src="https://github.com/user-attachments/assets/b535e79c-a435-48b3-8302-f9520bd7f061" width="200"> |
+
+
+| AI Voice Input (Flow) | Task Details | Home Widgets (Styles) |
+| :---: | :---: | :---: |
+| <img src="https://github.com/user-attachments/assets/9f27162a-867e-4665-af95-5757aa6e1a1c" width="145"> <img src="https://github.com/user-attachments/assets/490b4c97-49a0-4df1-a618-3f641518b4e2" width="145"> <img src="https://github.com/user-attachments/assets/7695337d-5d24-49b3-af42-11024a6b4040" width="145"> | <img src="https://github.com/user-attachments/assets/346ec807-4071-4329-a9fc-4e7075af4298" width="160"> | <img src="https://github.com/user-attachments/assets/8025f157-527f-4273-8f59-1399445e8bfb" width="100"><br><br><img src="https://github.com/user-attachments/assets/a45c887f-ecb7-4a71-8dad-30078a282760" width="100"><br><br><img src="https://github.com/user-attachments/assets/981309ef-f6b9-4945-bf9d-aebf465d5be3" width="100"> |
+
+</div>
 
 ## Key Features
 
-### Ultra-Fast AI Voice Input
-- **Interaction Flow**: Tap microphone -> Speak -> AI analyzes -> Generate structured card
-- **Core Capability**: Automatically extracts title, start/end time, and deadline
+### AI Intelligent Entry
+- Tap and speak or type text, AI automatically parses task information
+- Supports batch task creation and natural language recognition
+- Real-time speech recognition with editable confirmation before submission
 
-### Three Core Views
-1. **Timeline View**
-   - Daily overview
-   - Left-side colored bars distinguish categories, cards display "next action" intuitively
+### AI Subtask Decomposition
+- Breakdown complex goals into several concrete, actionable subtasks with AI assistance
+- Support for additional instructions to guide the decomposition towards specific priorities or directions
+- Ability to modify and reorder the generated subtask analysis results
 
-2. **Gantt Chart View**
-   - Time span and workload management
-   - Visualized time blocks
+### Multi-Dimensional Visualization
+- **Timeline View**: Daily task overview with color-coded categories
+- **Gantt Chart View**: Visualize time spans and track overall progress
+- **Deadline View**: Focus on urgent tasks and overcome procrastination
 
-3. **Deadline Focus View**
-   - Creates urgency to combat procrastination
+### Task Management System
+- Parent tasks define goals and time periods
+- Subtasks break down specific execution steps
+- Real-time progress feedback via progress bars
+- Support for pinning, categorization, and reminders
 
-### Task and Subtask System
-- **Parent Task (Goal)**: Carries deadline and time period
-- **Subtask (Action)**: Carries specific execution steps (Checklist)
-- **Linkage Mechanism**: Subtask completion drives parent task progress bar in real-time, forming a complete loop from "planning" to "execution"
+### Home Screen Widgets
+- Task List Widget: Quick view of upcoming to-dos
+- Gantt Chart Widget: Time schedule at a glance
+- Deadline Widget: Home screen reminders for urgent tasks
 
-## Technical Architecture
+## Download & Installation
 
-### Frontend Stack
-- Android Native (Kotlin) + Jetpack Compose
+Go to the [Releases](https://github.com/cdz-hy/LiteTask/releases) page to download the latest APK.
 
-### Data Layer
-- **Room Database**: Task (main table), SubTask (subtable), Reminder (reminder table)
-- **EncryptedSharedPreferences**: Secure API Key storage
+**System Requirements**: Android 8.0 (API 26) and above.
+
+## Technical Implementation
+
+### Architecture
+- **UI Layer**: Jetpack Compose + Material Design 3
+- **Data Layer**: Room Database + Repository Pattern
+- **Dependency Injection**: Hilt
+- **Asynchronous Handling**: Kotlin Coroutines + Flow
+
+### Core Tech Stack
+```
+Kotlin 1.9+
+Jetpack Compose - Declarative UI
+Room - Local data persistence
+Hilt - Dependency injection
+Retrofit + OkHttp - Networking
+EncryptedSharedPreferences - Secure storage
+```
 
 ### AI Integration
-- Integrates LLM API (DeepSeek) for intent recognition and JSON formatting
-- Supports multiple AI providers through adapter pattern for flexible extension
+- Supports multiple LLM providers like DeepSeek, using an adapter pattern for flexible extension
+- Parses natural language into structured task data
+- Keeps track of AI processing history
+- **Note**: AI features require you to configure your own API Key (e.g., DeepSeek) in the app's "Settings" screen.
+
+### Data Models
+```kotlin
+Task (Primary Table)
+├── id, title, type, startTime, deadline
+├── isDone, isPinned, isExpired
+└── completedAt, expiredAt
+
+SubTask (Subtask Table)
+├── taskId (Foreign Key)
+├── content, isCompleted
+└── order
+
+Reminder (Reminder Table)
+├── taskId (Foreign Key)
+├── triggerAt, label
+└── isFired
+```
 
 ## Project Structure
 
 ```
 app/src/main/java/com/litetask/app/
 ├── data/
-│   ├── ai/              # AI-related functionality
-│   ├── local/           # Local data access layer
+│   ├── ai/              # AI provider adapters
+│   ├── local/           # Room DAO & Database
 │   ├── model/           # Data models
-│   └── repository/      # Data repositories
-├── di/                  # Dependency injection modules
+│   ├── remote/          # Network API
+│   ├── repository/      # Data repositories
+│   └── speech/          # Speech recognition
+├── di/                  # Hilt dependency injection
+├── reminder/            # Reminders & notifications
 ├── ui/
-│   ├── components/      # Reusable UI components
-│   ├── home/            # Home screen
+│   ├── components/      # Reusable components
+│   ├── home/            # Home (Timeline/Gantt/Deadline)
+│   ├── search/          # Search screen
 │   ├── settings/        # Settings screen
-│   └── theme/           # Theme styles
-└── util/                # Utility classes
+│   └── theme/           # Material 3 theme
+├── util/                # Utilities
+└── widget/              # Home screen widgets
 ```
-
-## Special Features
-
-### Voice Recognition Optimization
-- Real-time speech recognition synchronized with recording
-- Multiple error handling mechanisms with user-friendly prompts
-- Support for editing and confirming recognition results
-
-### Intelligent Task Analysis
-- AI-based natural language task parsing
-- Automatic identification of task title, time, type, and other attributes
-- Support for batch task creation
-
-### Flexible Task Management
-- Multiple task types (Work, Life, Urgent, Study, etc.)
-- Pin important tasks
-- Subtask breakdown and progress tracking
-
-### Visual Time Management
-- Timeline view for intuitive task timeline display
-- Gantt view for global time arrangement control
-- Deadline view highlighting urgent tasks
 
 ## Development Environment
 
-- Android Studio Flamingo or higher
+- Android Studio Hedgehog or higher
 - Kotlin 1.9+
 - Gradle 8.0+
 - JDK 17+
+- Android SDK 26+
 
-## Third-Party Libraries
+## Building the Project
 
-- Jetpack Compose - Modern Android UI toolkit
-- Hilt - Dependency injection framework
-- Room - SQLite database abstraction layer
-- Retrofit - Network request library
-- OkHttp - HTTP client
-- Gson - JSON parsing library
-- Kotlin Coroutines - Asynchronous programming library
+```bash
+# Clone the repository
+git clone https://github.com/cdz-hy/LiteTask.git
+
+# Open the project
+# Open the root directory in Android Studio
+
+# Build and run
+# Click the Run button or use the command line
+./gradlew assembleDebug
+
+# Configure API Key
+# After installing the app, configure your DeepSeek API Key in Settings to enable AI features
+```
+
+## Main Dependencies
+
+| Library | Version | Purpose |
+|---|---|---|
+| Jetpack Compose | 1.5+ | UI Framework |
+| Room | 2.6+ | Database |
+| Hilt | 2.48+ | Dependency Injection |
+| Retrofit | 2.9+ | Network Requests |
+| OkHttp | 4.12+ | HTTP Client |
+| Kotlin Coroutines | 1.7+ | Async Programming |
+
+## Design Philosophy
+
+### Material Design 3
+- Adheres to Google Material Design 3 specifications
+- Large rounded corners, dynamic color extraction, modal sheets
+- Smooth micro-interaction animations
+
+## Contributing
+
+Issues and Pull Requests are welcome at [Issues](https://github.com/cdz-hy/LiteTask/issues).
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
