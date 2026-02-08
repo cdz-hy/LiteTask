@@ -172,19 +172,19 @@ private fun ReminderChip(
     isAddButton: Boolean = false
 ) {
     val backgroundColor = when {
-        isAddButton -> Color(0xFFF0F4F8)
-        isSelected -> Primary
-        else -> Color(0xFFF8F9FA)
+        isAddButton -> MaterialTheme.colorScheme.surfaceVariant
+        isSelected -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainer
     }
     val contentColor = when {
-        isAddButton -> Primary
-        isSelected -> Color.White
-        else -> Color(0xFF444746)
+        isAddButton -> MaterialTheme.colorScheme.primary
+        isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val borderColor = when {
-        isAddButton -> Primary.copy(alpha = 0.5f)
-        isSelected -> Primary
-        else -> Color.Transparent
+        isAddButton -> Color.Transparent
+        isSelected -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.outlineVariant
     }
     
     Box(
@@ -343,7 +343,7 @@ private fun CustomReminderDialog(
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Primary
+                            focusedBorderColor = MaterialTheme.colorScheme.primary
                         )
                     )
                     
@@ -408,6 +408,6 @@ private fun CustomReminderDialog(
                 Text(stringResource(R.string.cancel))
             }
         },
-        containerColor = Color.White
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
     )
 }

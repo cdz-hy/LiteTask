@@ -442,7 +442,7 @@ fun FilterBottomSheet(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                color = extendedColors.cardBackground,
+                color = MaterialTheme.colorScheme.surfaceContainer,
                 shadowElevation = 1.dp
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -524,7 +524,7 @@ fun FilterBottomSheet(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                color = extendedColors.cardBackground,
+                color = MaterialTheme.colorScheme.surfaceContainer,
                 shadowElevation = 1.dp
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {

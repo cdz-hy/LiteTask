@@ -146,7 +146,7 @@ fun GanttFullscreenView(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(extendedColors.cardBackground)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Column(
             modifier = Modifier.fillMaxSize()
@@ -158,7 +158,7 @@ fun GanttFullscreenView(
                 modifier = Modifier
                     .height(50.dp)
                     .fillMaxWidth()
-                    .background(extendedColors.cardBackground.copy(alpha = 0.95f))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f))
                     .border(0.5.dp, extendedColors.ganttGridLine)
             ) {
                 for (i in 0 until daysToShow) {
@@ -234,7 +234,7 @@ fun GanttFullscreenView(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(12.dp),
-            containerColor = extendedColors.cardBackground.copy(alpha = 0.95f),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
             contentColor = extendedColors.ganttWork,
             elevation = FloatingActionButtonDefaults.elevation(
                 defaultElevation = 3.dp,
@@ -262,7 +262,7 @@ fun GanttFullscreenView(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier
-                    .background(extendedColors.cardBackground.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
                     .padding(horizontal = 12.dp, vertical = 6.dp)
                     .border(0.5.dp, extendedColors.divider.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
             ) {
@@ -277,7 +277,7 @@ fun GanttFullscreenView(
                 Surface(
                     onClick = { expanded = true },
                     shape = RoundedCornerShape(12.dp),
-                    color = extendedColors.ganttWork.copy(alpha = 0.95f),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
                     shadowElevation = 3.dp
                 ) {
                     Row(
@@ -293,13 +293,13 @@ fun GanttFullscreenView(
                             },
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Icon(
                             imageVector = Icons.Default.ArrowDropDown,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onPrimary
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -307,7 +307,7 @@ fun GanttFullscreenView(
                 DropdownMenu(
                     expanded = expanded,
                     onDismissRequest = { expanded = false },
-                    modifier = Modifier.background(extendedColors.cardBackground, RoundedCornerShape(12.dp))
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
                 ) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.today_view), style = MaterialTheme.typography.bodyMedium) },

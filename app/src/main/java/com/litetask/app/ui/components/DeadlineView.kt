@@ -252,7 +252,8 @@ fun DeadlineTaskItem(
     val extendedColors = LocalExtendedColors.current
     
     // Get appropriate card background based on theme
-    val cardBackgroundColor = MaterialTheme.colorScheme.surface
+    // 觉得太亮可以改成 colorScheme.surface
+    val cardBackgroundColor = MaterialTheme.colorScheme.surfaceContainerLowest
     
     // Urgent Animation - 修改动画周期为3000毫秒（3秒）
     val infiniteTransition = rememberInfiniteTransition(label = "urgent_pulse")

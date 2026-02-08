@@ -536,7 +536,7 @@ private fun AITaskCard(task: Task) {
 
     Surface(
         shape = RoundedCornerShape(24.dp),
-        color = extendedColors.cardBackground,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth()
     ) {

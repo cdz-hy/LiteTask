@@ -216,7 +216,7 @@ fun TaskDetailSheet(
                     .height(animatedHeight)
                     .align(Alignment.BottomCenter)
                     .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)),
-                color = extendedColors.cardBackground,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
                 shadowElevation = 16.dp
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
@@ -475,21 +475,22 @@ fun TaskDetailSheet(
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .imePadding(),  // 只在底部区域处理键盘
-                        color = extendedColors.cardBackground,
-                        shadowElevation = 8.dp
+                            .imePadding(),
+                        color = MaterialTheme.colorScheme.surfaceContainer, // 使用 MD3 标准容器色
+                        tonalElevation = 1.dp, // 使用色调海拔而不是重影
+                        shadowElevation = 4.dp // 适度阴影
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .navigationBarsPadding()
                                 .padding(horizontal = 24.dp)
-                                .padding(bottom = 16.dp, top = 8.dp)
+                                .padding(bottom = 20.dp, top = 12.dp)
                         ) {
                             // Add Subtask Input
                             Surface(
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(26.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh, // 略深的输入框背景
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
@@ -502,7 +503,7 @@ fun TaskDetailSheet(
                                         placeholder = {
                                             Text(
                                                 stringResource(R.string.add_subtask),
-                                                color = extendedColors.textTertiary
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                             )
                                         },
                                         modifier = Modifier.weight(1f),
@@ -510,7 +511,8 @@ fun TaskDetailSheet(
                                             focusedContainerColor = Color.Transparent,
                                             unfocusedContainerColor = Color.Transparent,
                                             focusedIndicatorColor = Color.Transparent,
-                                            unfocusedIndicatorColor = Color.Transparent
+                                            unfocusedIndicatorColor = Color.Transparent,
+                                            cursorColor = themeColor
                                         ),
                                         singleLine = true
                                     )
@@ -526,10 +528,10 @@ fun TaskDetailSheet(
                                         Icon(
                                             Icons.Default.ArrowUpward,
                                             contentDescription = null,
-                                            tint = if (newSubTaskText.isNotBlank()) themeColor else extendedColors.textTertiary,
+                                            tint = if (newSubTaskText.isNotBlank()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                                             modifier = Modifier
                                                 .background(
-                                                    if (newSubTaskText.isNotBlank()) themeColor.copy(alpha = 0.1f) else Color.Transparent,
+                                                    if (newSubTaskText.isNotBlank()) themeColor else MaterialTheme.colorScheme.surfaceContainerHighest,
                                                     CircleShape
                                                 )
                                                 .padding(8.dp)
@@ -539,12 +541,12 @@ fun TaskDetailSheet(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
 
                             // Bottom Actions
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 // Delete Button
                                 OutlinedButton(
@@ -554,34 +556,31 @@ fun TaskDetailSheet(
                                     },
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(50.dp),
+                                        .height(52.dp),
                                     shape = RoundedCornerShape(16.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = MaterialTheme.colorScheme.error,
-                                        containerColor = Color.Transparent
+                                        contentColor = MaterialTheme.colorScheme.error
                                     ),
                                     border = androidx.compose.foundation.BorderStroke(
                                         1.dp,
-                                        MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
+                                        MaterialTheme.colorScheme.error.copy(alpha = 0.3f)
                                     )
                                 ) {
                                     Icon(
                                         Icons.Default.Delete,
                                         contentDescription = null,
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text(stringResource(R.string.delete_task))
+                                    Text(stringResource(R.string.delete_task), style = MaterialTheme.typography.labelLarge)
                                 }
 
                                 // Complete/Reopen Button
                                 Button(
                                     onClick = {
                                         val updatedTask = if (!task.isDone) {
-                                            // mark as done
                                             task.copy(isDone = true, isPinned = false, completedAt = null) 
                                         } else {
-                                            // reopen
                                             task.copy(isDone = false, completedAt = null)
                                         }
                                         onUpdateTask(updatedTask)
@@ -589,12 +588,13 @@ fun TaskDetailSheet(
                                     },
                                     modifier = Modifier
                                         .weight(1.5f)
-                                        .height(50.dp),
+                                        .height(52.dp),
                                     shape = RoundedCornerShape(16.dp),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (task.isDone) extendedColors.textSecondary else themeColor
+                                        containerColor = if (task.isDone) MaterialTheme.colorScheme.surfaceContainerHighest else themeColor,
+                                        contentColor = if (task.isDone) MaterialTheme.colorScheme.onSurfaceVariant else Color.White
                                     ),
-                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
                                 ) {
                                     Icon(
                                         if (task.isDone) Icons.Default.Refresh else Icons.Default.Check,
@@ -604,6 +604,7 @@ fun TaskDetailSheet(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = if (task.isDone) stringResource(R.string.mark_undone) else stringResource(R.string.mark_done),
+                                        style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -643,7 +644,7 @@ private fun TimeDisplayCard(
     }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = extendedColors.cardBackground),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         border = androidx.compose.foundation.BorderStroke(1.dp, extendedColors.divider),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
