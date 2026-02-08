@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -296,35 +297,89 @@ fun HomeScreen(
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
                     )
 
-                    Row(
+                    // Animated Segmented Control
+                    val options = listOf(
+                        Triple("timeline", stringResource(R.string.view_list), Icons.Default.List),
+                        Triple("gantt", stringResource(R.string.view_gantt), Icons.Default.ViewTimeline),
+                        Triple("deadline", stringResource(R.string.view_deadline), Icons.Default.Flag)
+                    )
+                    
+                    val selectedIndex = remember(currentView) {
+                        when(currentView) {
+                            "timeline" -> 0
+                            "gantt" -> 1
+                            "deadline" -> 2
+                            else -> 0
+                        }
+                    }
+
+                    BoxWithConstraints(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .background(MaterialTheme.colorScheme.surfaceContainer, CircleShape)
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
+                            .height(48.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(4.dp)
                     ) {
-                        ViewOption(
-                            text = stringResource(R.string.view_list),
-                            icon = Icons.Default.List,
-                            isSelected = currentView == "timeline",
-                            onClick = { currentView = "timeline" },
-                            modifier = Modifier.weight(1f)
+                        val segmentWidth = maxWidth / options.size
+                        // Animated offset for the indicator
+                        val indicatorOffset by animateDpAsState(
+                            targetValue = segmentWidth * selectedIndex,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            label = "indicatorOffset"
                         )
-                        ViewOption(
-                            text = stringResource(R.string.view_gantt),
-                            icon = Icons.Default.ViewTimeline,
-                            isSelected = currentView == "gantt",
-                            onClick = { currentView = "gantt" },
-                            modifier = Modifier.weight(1f)
+
+                        // Sliding Indicator
+                        Box(
+                            modifier = Modifier
+                                .offset(x = indicatorOffset)
+                                .width(segmentWidth)
+                                .fillMaxHeight()
+                                .shadow(2.dp, CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
                         )
-                        ViewOption(
-                            text = stringResource(R.string.view_deadline),
-                            icon = Icons.Default.Flag,
-                            isSelected = currentView == "deadline",
-                            onClick = { currentView = "deadline" },
-                            modifier = Modifier.weight(1f)
-                        )
+
+                        // Text/Icon Content
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            options.forEachIndexed { index, (id, text, icon) ->
+                                val isSelected = index == selectedIndex
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null // No ripple because the indicator slides
+                                        ) { 
+                                            currentView = id 
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = icon,
+                                            contentDescription = null,
+                                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = text,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                 }
@@ -768,46 +823,7 @@ private fun SpeechErrorDialog(
     )
 }
 
-@Composable
-fun ViewOption(
-    text: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val backgroundColor = if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent
-    val contentColor = if (isSelected) Primary else MaterialTheme.colorScheme.onSurfaceVariant
-    val shadowElevation = if (isSelected) 2.dp else 0.dp
 
-    Surface(
-        onClick = onClick,
-        modifier = modifier.height(48.dp),
-        shape = CircleShape,
-        color = backgroundColor,
-        shadowElevation = shadowElevation
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Medium,
-                color = contentColor
-            )
-        }
-    }
-}
 
 
 /**
@@ -897,8 +913,8 @@ private fun EnhancedFabGroup(
                     .background(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                Primary.copy(alpha = glowAlpha),
-                                Primary.copy(alpha = 0f)
+                                MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha),
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0f)
                             )
                         ),
                         shape = CircleShape
@@ -908,8 +924,8 @@ private fun EnhancedFabGroup(
             // 主按钮
             LargeFloatingActionButton(
                 onClick = onVoiceClick,
-                containerColor = Primary,
-                contentColor = Color.White,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = CircleShape,
                 elevation = FloatingActionButtonDefaults.elevation(
                     defaultElevation = 6.dp,

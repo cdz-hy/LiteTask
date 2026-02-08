@@ -92,7 +92,7 @@ fun GanttView(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(extendedColors.cardBackground, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         // 1. Legend Header with View Mode Selector
         GanttHeader(
@@ -146,8 +146,8 @@ fun GanttView(
                         modifier = Modifier
                             .height(50.dp)
                             .fillMaxWidth()
-                            .background(extendedColors.cardBackground.copy(alpha = 0.95f))
-                            .border(0.5.dp, extendedColors.ganttGridLine)
+                            .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.95f))
+                            .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         for (i in 0 until daysToShow) {
                             val dayCal = Calendar.getInstance()
@@ -168,8 +168,8 @@ fun GanttView(
                                 modifier = Modifier
                                     .width(dayWidth)
                                     .fillMaxHeight()
-                                    .background(if (isToday) extendedColors.ganttTodayBackground.copy(alpha = 0.4f) else Color.Transparent)
-                                    .border(width = 0.5.dp, color = extendedColors.ganttGridLine),
+                                    .background(if (isToday) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
+                                    .border(width = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -177,13 +177,13 @@ fun GanttView(
                                         text = dateStr,
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isToday) extendedColors.ganttWork else extendedColors.textSecondary
+                                        color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
                                         text = dayLabel,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontSize = 10.sp,
-                                        color = if (isToday) extendedColors.ganttWork else extendedColors.textTertiary
+                                        color = if (isToday) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -224,11 +224,11 @@ fun GanttView(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(16.dp),
-                containerColor = extendedColors.cardBackground.copy(alpha = 0.9f),
-                contentColor = extendedColors.ganttWork,
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 4.dp,
-                    pressedElevation = 8.dp
+                    defaultElevation = 6.dp,
+                    pressedElevation = 2.dp
                 )
             ) {
                 Icon(
@@ -262,7 +262,7 @@ fun GanttHeader(
             Surface(
                 onClick = { expanded = true },
                 shape = RoundedCornerShape(12.dp),
-                color = extendedColors.ganttWorkBackground,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.height(36.dp)
             ) {
                 Row(
@@ -298,7 +298,7 @@ fun GanttHeader(
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                modifier = Modifier.background(extendedColors.cardBackground, RoundedCornerShape(12.dp))
+                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
             ) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.today_view), style = MaterialTheme.typography.bodyMedium) },

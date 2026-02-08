@@ -16,9 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -38,13 +37,6 @@ fun TextInputDialog(
     val focusRequester = remember { FocusRequester() }
     val maxCharCount = 200
     
-    // 颜色资源 - 复用 VoiceRecorderDialog 的颜色
-    val bgTop = colorResource(R.color.voice_recorder_bg_top)
-    val bgBottom = colorResource(R.color.voice_recorder_bg_bottom)
-    val primaryAccent = colorResource(R.color.voice_recorder_primary)
-    val textPrimary = colorResource(R.color.voice_recorder_text_primary)
-    val textSecondary = colorResource(R.color.voice_recorder_text_secondary)
-    
     // 自动聚焦输入框
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -57,207 +49,204 @@ fun TextInputDialog(
             decorFitsSystemWindows = false
         )
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(bgTop, bgBottom)
-                    )
-                )
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.surfaceContainerLow // MD3 全屏背景
         ) {
-            // 1. 顶部关闭按钮
-            IconButton(
-                onClick = { if (!isAnalyzing) onDismiss() },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(
-                        top = dimensionResource(R.dimen.voice_recorder_close_button_top),
-                        end = dimensionResource(R.dimen.voice_recorder_close_button_end)
-                    )
-                    .background(colorResource(R.color.white_transparent_10), CircleShape)
-                    .size(dimensionResource(R.dimen.voice_recorder_close_button_size))
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = stringResource(R.string.close),
-                    tint = textPrimary,
-                    modifier = Modifier.size(dimensionResource(R.dimen.voice_recorder_close_icon_size))
-                )
-            }
-
-            // 2. 核心内容区域
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 32.dp)
-                    .padding(top = 80.dp), // 整体上移
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Top
-            ) {
-                // AI 图标
-                Box(
+            Box(modifier = Modifier.fillMaxSize()) {
+                // 1. 顶部关闭按钮
+                IconButton(
+                    onClick = { if (!isAnalyzing) onDismiss() },
                     modifier = Modifier
-                        .size(72.dp)
-                        .background(
-                            primaryAccent.copy(alpha = 0.1f),
-                            CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
+                        .align(Alignment.TopEnd)
+                        .padding(top = 48.dp, end = 24.dp)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)
+                        .size(40.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = primaryAccent,
-                        modifier = Modifier.size(36.dp)
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.close),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                // 2. 核心内容区域
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 32.dp)
+                        .padding(top = 80.dp), // 整体上移
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Top
+                ) {
+                    // AI 图标
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
 
-                // 标题
-                Text(
-                    text = stringResource(R.string.text_input_title),
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Medium
-                    ),
-                    color = textPrimary,
-                    textAlign = TextAlign.Center
-                )
+                    Spacer(modifier = Modifier.height(24.dp))
 
-                Spacer(modifier = Modifier.height(8.dp))
+                    // 标题
+                    Text(
+                        text = stringResource(R.string.text_input_title),
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center
+                    )
 
-                // 副标题
-                Text(
-                    text = stringResource(R.string.text_input_subtitle),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = textSecondary,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 22.sp
-                )
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                Spacer(modifier = Modifier.height(32.dp))
+                    // 副标题
+                    Text(
+                        text = stringResource(R.string.text_input_subtitle),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 22.sp
+                    )
 
-                // 文本输入框
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = inputText,
-                        onValueChange = { 
-                            if (it.length <= maxCharCount) {
-                                inputText = it
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    // 文本输入框
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = inputText,
+                            onValueChange = { 
+                                if (it.length <= maxCharCount) {
+                                    inputText = it
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp) // 增大输入框高度
+                                .focusRequester(focusRequester),
+                            enabled = !isAnalyzing,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                                lineHeight = 24.sp
+                            ),
+                            placeholder = {
+                                Text(
+                                    text = stringResource(R.string.text_input_placeholder),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                cursorColor = MaterialTheme.colorScheme.primary,
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                disabledBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.5f),
+                                disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                            ),
+                            shape = RoundedCornerShape(24.dp)
+                        )
+
+                        // 字符计数
+                        Text(
+                            text = "${inputText.length}/$maxCharCount",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 16.dp, bottom = 16.dp)
+                        )
+                    }
+                }
+
+                // 3. 底部分析按钮
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(
+                            bottom = 48.dp,
+                            start = 32.dp,
+                            end = 32.dp
+                        )
+                        .fillMaxWidth()
+                ) {
+                    Button(
+                        onClick = { 
+                            if (inputText.isNotBlank() && !isAnalyzing) {
+                                onAnalyze(inputText.trim())
                             }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(220.dp) // 增大输入框高度
-                            .focusRequester(focusRequester),
-                        enabled = !isAnalyzing,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            color = textPrimary,
-                            lineHeight = 24.sp
+                            .height(56.dp)
+                            .graphicsLayer {
+                                shadowElevation = 4.dp.toPx()
+                                shape = CircleShape
+                                spotShadowColor = Color.Black // 默认阴影
+                                ambientShadowColor = Color.Black
+                            },
+                        enabled = inputText.isNotBlank() && !isAnalyzing,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                            disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f)
                         ),
-                        placeholder = {
-                            Text(
-                                text = stringResource(R.string.text_input_placeholder),
-                                color = textSecondary.copy(alpha = 0.4f)
-                            )
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = primaryAccent,
-                            unfocusedBorderColor = colorResource(R.color.white_transparent_20),
-                            cursorColor = primaryAccent,
-                            focusedContainerColor = colorResource(R.color.white_transparent_5),
-                            unfocusedContainerColor = colorResource(R.color.white_transparent_5),
-                            disabledBorderColor = colorResource(R.color.white_transparent_20),
-                            disabledContainerColor = colorResource(R.color.white_transparent_5),
-                            disabledTextColor = textPrimary
-                        ),
-                        shape = RoundedCornerShape(24.dp)
-                    )
-
-                    // 字符计数
-                    Text(
-                        text = "${inputText.length}/$maxCharCount",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = textSecondary,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = 16.dp, bottom = 16.dp)
-                    )
-                }
-            }
-
-
-            // 3. 底部分析按钮
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(
-                        bottom = 48.dp,
-                        start = 32.dp,
-                        end = 32.dp
-                    )
-                    .fillMaxWidth()
-            ) {
-                Button(
-                    onClick = { 
-                        if (inputText.isNotBlank() && !isAnalyzing) {
-                            onAnalyze(inputText.trim())
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp)
-                        .graphicsLayer {
-                            shadowElevation = 8.dp.toPx()
-                            shape = CircleShape
-                            spotShadowColor = primaryAccent
-                            ambientShadowColor = primaryAccent
-                        },
-                    enabled = inputText.isNotBlank() && !isAnalyzing,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = primaryAccent,
-                        contentColor = colorResource(R.color.voice_recorder_button_bg),
-                        disabledContainerColor = primaryAccent.copy(alpha = 0.5f),
-                        disabledContentColor = colorResource(R.color.voice_recorder_button_bg).copy(alpha = 0.7f)
-                    ),
-                    shape = CircleShape
-                ) {
-                    AnimatedContent(
-                        targetState = isAnalyzing,
-                        transitionSpec = {
-                            fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
-                        },
-                        label = "ButtonContent"
-                    ) { analyzing ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            if (analyzing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = colorResource(R.color.voice_recorder_button_bg),
-                                    strokeWidth = 2.dp
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = stringResource(R.string.text_input_analyzing),
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = stringResource(R.string.text_input_analyze),
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                        shape = CircleShape,
+                        elevation = ButtonDefaults.buttonElevation(
+                            defaultElevation = 6.dp,
+                            pressedElevation = 2.dp
+                        )
+                    ) {
+                        AnimatedContent(
+                            targetState = isAnalyzing,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
+                            },
+                            label = "ButtonContent"
+                        ) { analyzing ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                if (analyzing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.text_input_analyzing),
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.text_input_analyze),
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }

@@ -218,34 +218,36 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
             try {
                 val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
                 
-                val systemPrompt = """
-# Role: 任务拆解专家
-# Context: Now = $currentDate
-# Goal: 将复杂任务拆解为具体可执行的子任务步骤
+                val userInstruction = if (additionalContext.isNotBlank()) {
+                    "用户补充说明 (必须优先遵循): $additionalContext"
+                } else {
+                    "用户未提供额外说明，请根据任务标题和描述自由发挥。"
+                }
 
-# Task Info
-- 任务标题: ${task.title}
-- 任务描述: ${task.description ?: "无"}
-- 任务类型: ${task.type.name}
-- 开始时间: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(task.startTime))}
-- 截止时间: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(task.deadline))}
+                val systemPrompt = """
+# Role: LiteTask 智能日程规划师
+# Context: Now = $currentDate
+# Goal: 将复杂任务拆解为 3-6 个具体、可执行的子任务步骤，并以 JSON 数组格式返回。
+
+# Task Details
+- 标题: ${task.title}
+- 描述: ${task.description?.ifBlank { "无" } ?: "无"}
+- 类型: ${task.type.name}
+- 时间: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(task.startTime))} 至 ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(task.deadline))}
+
+# User Instruction
+$userInstruction
 
 # Rules
-1. **拆解原则**: 每个子任务应该是具体、可执行、可验证的行动步骤
-2. **时间考虑**: 考虑任务的时间跨度，合理安排子任务的先后顺序
-3. **实用性**: 子任务必须与主任务紧密相关，对完成主任务有实际帮助
-4. **意义性**: 子任务需要结合任务具体内容，合适合理，避免空洞抽象
-5. **数量控制**: 
-   - 复杂任务: 生成 3-8 个子任务
-   - 简单任务: 如果任务本身简单（如"买菜"、"开会"等），返回空列表
-6. **格式要求**: 每行一个子任务，使用简洁明确的动词开头
-7. **关联性**: 每个子任务必须与主任务内容紧密相关，不能脱离主任务
+1. **执行性**: 每个子任务必须是可直接执行的动作（"动词 + 名词"结构），如"撰写大纲"、"购买材料"。
+2. **相关性**: 子任务必须服务于主任务的完成，如果用户提供了补充说明，请严格按照说明的方向进行拆解。
+3. **逻辑性**: 按时间先后顺序排列步骤。
+4. **简洁性**: 每个步骤不超过 15 个字。
+5. **完整性**: 步骤应覆盖任务的关键节点。
 
-# Additional Context
-${if (additionalContext.isNotBlank()) additionalContext else "用户未提供额外说明"}
-
-# Output
-直接输出子任务列表，每行一个，无需编号或格式化：
+# Output Format
+仅返回一个纯 JSON 字符串数组，不要包含 Markdown 标记或其他文本。
+示例: ["第一步内容", "第二步内容", "第三步内容"]
                 """.trimIndent()
                 
                 val requestBody = JSONObject().apply {
@@ -255,15 +257,17 @@ ${if (additionalContext.isNotBlank()) additionalContext else "用户未提供额
                             put("role", "system")
                             put("content", systemPrompt)
                         })
-                        put(JSONObject().apply {
-                            put("role", "user")
-                            put("content", "请为这个任务生成合适的子任务步骤，如果任务本身简单无需拆解则返回空列表")
-                        })
                     })
                     put("temperature", 0.7)
                     put("max_tokens", 800)
+                    // 强制 JSON 模式（如果模型支持）
+                    put("response_format", JSONObject().apply { put("type", "json_object") }) 
                 }
                 
+                // DeepSeek V3 可能还不完全支持 response_format json_object，所以我们在 Prompt 里也强调了 JSON
+                // 为了兼容性，我们暂时移除 response_format 参数，完全依赖 Prompt 约束
+                requestBody.remove("response_format") 
+
                 val request = Request.Builder()
                     .url(baseUrl)
                     .addHeader("Authorization", "Bearer $apiKey")
@@ -291,20 +295,30 @@ ${if (additionalContext.isNotBlank()) additionalContext else "用户未提供额
                     .getJSONObject(0)
                     .getJSONObject("message")
                     .getString("content")
+                    .trim()
                 
-                // 解析子任务列表
-                val subTasks = content.split("\n")
-                    .map { it.trim() }
-                    .filter { it.isNotBlank() && !it.startsWith("#") && !it.startsWith("-") }
-                    .map { 
-                        // 移除可能的编号前缀
-                        it.replace(Regex("^\\d+\\.\\s*"), "")
-                          .replace(Regex("^[•·]\\s*"), "")
-                          .trim()
+                // 解析 JSON 数组
+                val subTasks = try {
+                    // 尝试清理 Markdown 代码块
+                    val cleanContent = content
+                        .replace("```json", "")
+                        .replace("```", "")
+                        .trim()
+                    
+                    val jsonArray = JSONArray(cleanContent)
+                    val list = mutableListOf<String>()
+                    for (i in 0 until jsonArray.length()) {
+                        list.add(jsonArray.getString(i))
                     }
-                    .filter { it.isNotBlank() }
-                    .takeIf { it.isNotEmpty() } ?: emptyList() // 如果列表为空，返回空列表而不是创建任务
-                
+                    list
+                } catch (e: Exception) {
+                    // 如果 JSON 解析失败，尝试回退到换行符分割（容错处理）
+                    content.split("\n")
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() && !it.startsWith("[") && !it.startsWith("]") }
+                        .map { it.replace(Regex("^\\d+\\.\\s*"), "").replace(Regex("^[•·-]\\s*"), "") }
+                }
+
                 Result.success(subTasks)
                 
             } catch (e: org.json.JSONException) {

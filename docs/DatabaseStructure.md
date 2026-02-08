@@ -7,8 +7,8 @@ LiteTask 使用 Room 持久化库作为本地数据库解决方案，采用 SQLi
 | 项目 | 说明 |
 |------|------|
 | 数据库名称 | LiteTask |
-| 版本 | 1 |
-| 实体数量 | 3 |
+| 版本 | 3 |
+| 实体数量 | 4 |
 | 主要功能 | 任务管理、子任务跟踪、提醒设置 |
 
 ## 实体表结构详解
@@ -28,12 +28,18 @@ LiteTask 使用 Room 持久化库作为本地数据库解决方案，采用 SQLi
 | is_pinned | isPinned | INTEGER | 是 | 是 | 0 (false) | 是否置顶 |
 | type | type | TEXT | 是 | 否 | "WORK" | 任务类型 |
 | original_voice_text | originalVoiceText | TEXT | 否 | 否 | NULL | 原始语音文本 |
+| is_expired | isExpired | INTEGER | 是 | 是 | 0 (false) | 是否已过期 |
+| expired_at | expiredAt | INTEGER | 否 | 否 | NULL | 过期时间戳 |
+| created_at | createdAt | INTEGER | 是 | 是 | 当前时间戳 | 创建时间戳 |
+| completed_at | completedAt | INTEGER | 否 | 否 | NULL | 完成时间戳 |
 
 #### 索引说明
 
 1. `deadline` 索引：用于首页列表按截止时间排序查询
 2. `is_done` 索引：用于筛选已完成和未完成任务
 3. `is_pinned` 索引：用于筛选置顶任务
+4. `is_expired` 索引：用于筛选已过期任务
+5. `created_at` 索引：用于按创建顺序排序
 
 #### 设计理念
 
@@ -87,6 +93,29 @@ LiteTask 使用 Room 持久化库作为本地数据库解决方案，采用 SQLi
 - **灵活配置**：支持在截止前不同时间点提醒（如提前一天、一小时等）
 - **状态追踪**：[isFired](file:///e:/LiteTask/app/src/main/java/com/litetask/app/data/model/Reminder.kt#L35-L35)字段记录提醒是否已触发，避免重复通知
 
+### 4. ai_history 表（AI 分析历史表）
+
+记录用户通过 AI 进行任务解析或子任务拆解的历史记录。
+
+| 字段名 | Room属性名 | 数据类型 | 非空约束 | 索引 | 默认值 | 说明 |
+|--------|------------|----------|----------|------|--------|------|
+| id | id | INTEGER | PRIMARY KEY AUTOINCREMENT | 否 | 0 | 主键，自动生成 |
+| content | content | TEXT | 是 | 否 | 无 | 原始提示文本/输入内容 |
+| source_type | sourceType | TEXT | 是 | 否 | 无 | 来源类型（VOICE, TEXT, SUBTASK） |
+| timestamp | timestamp | INTEGER | 是 | 是 | 当前时间戳 | 记录生成时间 |
+| parsed_count | parsedCount | INTEGER | 是 | 否 | 0 | 解析成功生成的任务/子任务数量 |
+| is_success | isSuccess | INTEGER | 是 | 否 | 1 (true) | AI 解析是否成功 |
+
+#### 索引说明
+
+1. `timestamp` 索引：用于按时间倒序展示历史记录
+
+#### 设计理念
+
+- **灵感溯源**：保留用户输入原文本，方便回顾灵感
+- **多维度统计**：区分语音、直接输入和子任务拆解
+- **性能优化**：通过时间戳索引和分页加载保证大数据量下的流畅性
+
 ## 实体关系图
 
 ```mermaid
@@ -104,6 +133,10 @@ erDiagram
         INTEGER is_pinned
         TEXT type
         TEXT original_voice_text
+        INTEGER is_expired
+        INTEGER expired_at
+        INTEGER created_at
+        INTEGER completed_at
     }
     
     sub_tasks {
@@ -120,6 +153,15 @@ erDiagram
         INTEGER trigger_at
         TEXT label
         INTEGER is_fired
+    }
+
+    ai_history {
+        INTEGER id PK
+        TEXT content
+        TEXT source_type
+        INTEGER timestamp
+        INTEGER parsed_count
+        INTEGER is_success
     }
 ```
 
@@ -174,7 +216,8 @@ ORDER BY deadline ASC
 
 ## 版本演进策略
 
-当前为版本1，后续可通过以下方式进行升级：
-1. 使用Room的迁移机制处理数据库结构变更
-2. 通过增加新表或字段扩展现有功能
-3. 优化索引和查询逻辑提升性能
+当前为版本3，演进记录如下：
+1. **版本1**：初始设计，包含主任务、子任务和提醒。
+2. **版本2**：增强任务生命周期管理，新增 `is_expired`, `created_at`, `completed_at` 等时间维度字段及索引。
+3. **版本3**：新增 AI 溯源体系，添加 `ai_history` 表记录 AI 交互历史。
+```

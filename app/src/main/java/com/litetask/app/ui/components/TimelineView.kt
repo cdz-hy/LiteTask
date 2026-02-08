@@ -335,16 +335,33 @@ fun HtmlStyleTaskCard(
         else -> getTaskSurfaceColor(task.type)
     }
 
+
+    // 原本任务卡片配色
+//    val containerColor = when {
+//        isPinned && !isDone && !isExpired -> surfaceColor
+//        isPinned && !isDone && isExpired -> extendedColors.cardBackground
+//        else -> extendedColors.cardBackground
+//    }
+//
+//    val elevation = when {
+//        isPinned && !isDone && !isExpired -> 2.dp
+//        isPinned && !isDone && isExpired -> 1.5.dp
+//        else -> 0.5.dp
+//    }
+
     val containerColor = when {
-        isPinned && !isDone && !isExpired -> surfaceColor
-        isPinned && !isDone && isExpired -> extendedColors.cardBackground
-        else -> extendedColors.cardBackground
+        // 如果觉得未完成任务卡片太亮了，后期可以改成surfaceContainerMedium
+        isPinned && !isDone && !isExpired -> MaterialTheme.colorScheme.surfaceContainerLowest// 置顶未完成：使用最低容器色（最亮/纯白）
+        isPinned && !isDone && isExpired -> MaterialTheme.colorScheme.surfaceContainerHigh
+        !isDone && !isExpired -> MaterialTheme.colorScheme.surfaceContainerLowest // 普通未完成：使用最低容器色（最亮/纯白）
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
 
     val elevation = when {
-        isPinned && !isDone && !isExpired -> 2.dp
-        isPinned && !isDone && isExpired -> 1.5.dp
-        else -> 0.5.dp
+        isPinned && !isDone && !isExpired -> 3.dp // 置顶任务更高的阴影
+        isPinned && !isDone && isExpired -> 2.dp
+        !isDone && !isExpired -> 0.5.dp // 普通任务保持轻微阴影
+        else -> 0.dp
     }
 
     val borderStroke = when {

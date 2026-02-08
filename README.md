@@ -1,114 +1,177 @@
-# LiteTask (轻任务)
+# LiteTask
 
-中文 | [English](README.en.md)
+<div align="center">
 
-## 项目简介
+一款轻量化的任务管理应用，基于语音识别和大模型分析简化日程创建流程
 
-一款轻量化的任务/日程可视化提醒程序，基于语音识别与大模型分析简化日程创建流程；轻任务 (LiteTask) ；
+[中文](README.md) | [English](README.en.md)
 
-## 核心设计理念
+[![Release](https://img.shields.io/github/v/release/cdz-hy/LiteTask)](https://github.com/cdz-hy/LiteTask/releases)[![License](https://img.shields.io/github/license/cdz-hy/LiteTask)](LICENSE)[![Android](https://img.shields.io/badge/Android-26%2B-brightgreen)](https://developer.android.com)
 
-### Material Design 3 规范
-- 遵循 Google Material Design 3 规范
-- 采用大圆角、动态取色、模态浮层（Bottom Sheet）和优雅的微交互动效
+</div>
 
-### 色彩逻辑
-- 以分类（Work/Life/Study）定义主题色
-- 以紧迫度（Urgent）定义高亮警示，视觉层级分明
+## 应用截图
 
-## 核心功能亮点
+<div align="center">
 
-### 极速 AI 语音录入
-- **交互流程**：点击麦克风 -> 说话 -> AI 分析 -> 生成结构化卡片
-- **核心能力**：自动提取标题、起止时间、截止日期
+| 主界面 | 甘特图视图 | 截止日视图 |
+| :---: | :---: | :---: |
+| <img src="https://github.com/user-attachments/assets/5460e2da-4e0c-498d-9c39-f869d52e67b8" width="200"> | <img src="https://github.com/user-attachments/assets/14e65e12-f036-4533-a25f-73ba837c33db" width="200"> | <img src="https://github.com/user-attachments/assets/b535e79c-a435-48b3-8302-f9520bd7f061" width="200"> |
 
-### 三大核心视图
-1. **列表视图 (Timeline)**
-   - 日常概览
-   - 左侧彩色竖条区分分类，卡片内直观展示"下一步行动"
 
-2. **甘特图视图 (Gantt Chart)**
-   - 时间跨度与忙闲管理
-   - 可视化的时间条块
+| AI 语音录入 (流程) | 任务详情 | 桌面小组件 (样式) |
+| :---: | :---: | :---: |
+| <img src="https://github.com/user-attachments/assets/9f27162a-867e-4665-af95-5757aa6e1a1c" width="145"> <img src="https://github.com/user-attachments/assets/490b4c97-49a0-4df1-a618-3f641518b4e2" width="145"> <img src="https://github.com/user-attachments/assets/7695337d-5d24-49b3-af42-11024a6b4040" width="145"> | <img src="https://github.com/user-attachments/assets/346ec807-4071-4329-a9fc-4e7075af4298" width="160"> | <img src="https://github.com/user-attachments/assets/8025f157-527f-4273-8f59-1399445e8bfb" width="100"><br><br><img src="https://github.com/user-attachments/assets/a45c887f-ecb7-4a71-8dad-30078a282760" width="100"><br><br><img src="https://github.com/user-attachments/assets/981309ef-f6b9-4945-bf9d-aebf465d5be3" width="100"> |
 
-3. **截止日视图 (Deadline Focus)**
-   - 营造紧迫感，治疗拖延症
+</div>
 
-### 任务与子任务体系
-- **父任务 (Goal)**：承载 DDL 和时间段
-- **子任务 (Action)**：承载具体的执行步骤（Checklist）
-- **联动机制**：子任务的勾选实时驱动父任务的进度条增长，形成从"规划"到"落地"的完整闭环
+## 核心特性
 
-## 技术架构
+### AI 智能录入
+- 点击说话或输入文本，AI 自动解析任务信息
+- 支持批量任务创建和自然语言识别
+- 实时语音识别，可编辑确认后提交
 
-### 前端技术栈
-- Android Native (Kotlin) + Jetpack Compose
+### AI 子任务拆解
+- 针对复杂目标，可借助 AI 将其分解为数条具体、可执行的子任务
+- 支持输入补充说明，按照特定重点或方向进行拆解
+- 可对子任务分析结果进行修改，重排序等
 
-### 数据层
-- **Room Database**：Task (主表), SubTask (子表), Reminder (提醒表)
-- **EncryptedSharedPreferences**：安全存储 API Key
+### 多维度可视化
+- **时间线视图**：日常任务概览，左侧色条区分类别
+- **甘特图视图**：时间跨度可视化，把控整体进度
+- **截止日视图**：聚焦紧急任务，治疗拖延症
+
+### 任务管理体系
+- 父任务承载目标和时间段
+- 子任务分解具体执行步骤
+- 进度条实时反馈完成情况
+- 支持任务置顶、分类、提醒
+
+### 桌面小组件
+- 任务列表小组件：快速查看待办事项
+- 甘特图小组件：时间安排一目了然
+- 截止日小组件：紧急任务桌面提醒
+
+## 下载安装
+
+前往 [Releases](https://github.com/cdz-hy/LiteTask/releases) 页面下载最新版本 APK
+
+**系统要求**：Android 8.0 (API 26) 及以上
+
+## 技术实现
+
+### 架构设计
+- **UI 层**：Jetpack Compose + Material Design 3
+- **数据层**：Room Database + Repository 模式
+- **依赖注入**：Hilt
+- **异步处理**：Kotlin Coroutines + Flow
+
+### 核心技术栈
+```
+Kotlin 1.9+
+Jetpack Compose - 声明式 UI
+Room - 本地数据持久化
+Hilt - 依赖注入
+Retrofit + OkHttp - 网络请求
+EncryptedSharedPreferences - 安全存储
+```
 
 ### AI 集成
-- 集成 LLM API (DeepSeek) 进行意图识别与 JSON 格式化
-- 支持多种 AI 提供商，通过适配器模式实现灵活扩展
+- 支持 DeepSeek 等多种 LLM 提供商，采用适配器模式实现灵活扩展
+- 自然语言解析为结构化任务数据
+- 记录 AI 处理历史
+- **注意**：AI功能需要在应用「设置」界面中配置您自己的 API Key（如 DeepSeek）。
+
+### 数据模型
+```kotlin
+Task (任务主表)
+├── id, title, type, startTime, deadline
+├── isDone, isPinned, isExpired
+└── completedAt, expiredAt
+
+SubTask (子任务表)
+├── taskId (外键)
+├── content, isCompleted
+└── order
+
+Reminder (提醒表)
+├── taskId (外键)
+├── triggerAt, label
+└── isFired
+```
 
 ## 项目结构
 
 ```
 app/src/main/java/com/litetask/app/
 ├── data/
-│   ├── ai/              # AI 相关功能
-│   ├── local/           # 本地数据访问层
+│   ├── ai/              # AI 提供商适配
+│   ├── local/           # Room DAO & Database
 │   ├── model/           # 数据模型
-│   └── repository/      # 数据仓库
-├── di/                  # 依赖注入模块
+│   ├── remote/          # 网络 API
+│   ├── repository/      # 数据仓库
+│   └── speech/          # 语音识别
+├── di/                  # Hilt 依赖注入
+├── reminder/            # 提醒与通知
 ├── ui/
-│   ├── components/      # 可复用 UI 组件
-│   ├── home/            # 主页界面
+│   ├── components/      # 可复用组件
+│   ├── home/            # 主页 (Timeline/Gantt/Deadline)
+│   ├── search/          # 搜索界面
 │   ├── settings/        # 设置界面
-│   └── theme/           # 主题样式
-└── util/                # 工具类
+│   └── theme/           # Material 3 主题
+├── util/                # 工具类
+└── widget/              # 桌面小组件
 ```
-
-## 特色功能
-
-### 语音识别优化
-- 实时语音识别与录音同步进行
-- 多种错误处理机制，提供友好的用户提示
-- 支持识别结果编辑和确认
-
-### 智能任务分析
-- 基于 AI 的自然语言任务解析
-- 自动识别任务标题、时间、类型等属性
-- 支持批量任务创建
-
-### 灵活的任务管理
-- 多种任务类型（工作、生活、紧急、学习等）
-- 置顶重要任务
-- 子任务分解与进度追踪
-
-### 可视化时间管理
-- Timeline 视图直观展示任务时间线
-- Gantt 视图全局把控时间安排
-- Deadline 视图突出紧迫任务
 
 ## 开发环境
 
-- Android Studio Flamingo 或更高版本
+- Android Studio Hedgehog 或更高版本
 - Kotlin 1.9+
 - Gradle 8.0+
 - JDK 17+
+- Android SDK 26+
 
-## 第三方库
+## 构建项目
 
-- Jetpack Compose - 现代 Android UI 工具包
-- Hilt - 依赖注入框架
-- Room - SQLite 数据库抽象层
-- Retrofit - 网络请求库
-- OkHttp - HTTP 客户端
-- Gson - JSON 解析库
-- Kotlin Coroutines - 异步编程库
+```bash
+# 克隆仓库
+git clone https://github.com/cdz-hy/LiteTask.git
+
+# 打开项目
+# 使用 Android Studio 打开项目根目录
+
+# 构建运行
+# 点击 Run 按钮或使用命令行
+./gradlew assembleDebug
+
+# 配置 API Key
+#  安装应用后在设置界面配置 DeepSeek API Key 等以启用 AI 功能
+
+```
+
+## 主要依赖
+
+| 库 | 版本 | 用途 |
+|---|---|---|
+| Jetpack Compose | 1.5+ | UI 框架 |
+| Room | 2.6+ | 数据库 |
+| Hilt | 2.48+ | 依赖注入 |
+| Retrofit | 2.9+ | 网络请求 |
+| OkHttp | 4.12+ | HTTP 客户端 |
+| Kotlin Coroutines | 1.7+ | 异步编程 |
+
+## 设计理念
+
+### Material Design 3
+- 遵循 Google Material Design 3 规范
+- 大圆角、动态取色、模态浮层
+- 流畅的微交互动效
+
+## 贡献指南
+
+欢迎提交 [Issues](https://github.com/cdz-hy/LiteTask/issues) 和 Pull Request
 
 ## 许可证
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解更多详情
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
