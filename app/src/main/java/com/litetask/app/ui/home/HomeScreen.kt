@@ -991,13 +991,26 @@ private fun checkMissingPermissions(
         }
     }
 
-    // 悬浮窗权限
-    if (!PermissionHelper.hasOverlayPermission(context)) {
+    // 后台弹出界面权限 (Android 10+)
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        if (!PermissionHelper.hasBackgroundActivityPermission(context)) {
+            missing.add(
+                MissingPermission(
+                    name = "后台弹出界面",
+                    description = "在后台弹出提醒界面",
+                    settingsIntent = PermissionHelper.getBackgroundActivitySettingsIntent(context)
+                )
+            )
+        }
+    }
+
+    // 锁屏显示权限（只在未授权时提示）
+    if (!PermissionHelper.hasLockScreenPermission(context)) {
         missing.add(
             MissingPermission(
-                name = "悬浮窗权限",
-                description = "显示悬浮提醒弹窗",
-                settingsIntent = PermissionHelper.getOverlaySettingsIntent(context)
+                name = "锁屏显示",
+                description = "在锁屏界面显示提醒",
+                settingsIntent = PermissionHelper.getLockScreenSettingsIntent(context)
             )
         )
     }

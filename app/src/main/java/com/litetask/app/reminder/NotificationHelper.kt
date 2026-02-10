@@ -118,7 +118,20 @@ object NotificationHelper {
         val channelId = if (info.isDeadline) CHANNEL_URGENT else CHANNEL_NORMAL
         val color = getColor(taskType, info.isDeadline)
 
-        val intent = Intent(context, ReminderActivity::class.java).apply {
+        // 点击通知跳转到 MainActivity 并打开任务详情
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_TASK_ID, taskId)
+            putExtra(EXTRA_FROM_NOTIFICATION, true)
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            context, taskId.toInt(), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        // 全屏意图仍然使用 ReminderActivity（用于锁屏/息屏时自动弹出）
+        val fullScreenIntent = Intent(context, ReminderActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_TASK_ID, taskId)
             putExtra(EXTRA_FROM_NOTIFICATION, true)
@@ -127,9 +140,10 @@ object NotificationHelper {
             putExtra("task_type", taskType.name)
             putExtra("is_deadline", info.isDeadline)
         }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context, taskId.toInt(), intent,
+        
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            context, (taskId + 100000).toInt(), // 使用不同的 request code 避免冲突
+            fullScreenIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -139,10 +153,10 @@ object NotificationHelper {
             .setContentText(info.displayText)
             .setSubText(getTypeLabel(taskType))
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM) // 改为音视频/闹钟类别
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .setFullScreenIntent(pendingIntent, true) // 核心：全屏意图
+            .setContentIntent(pendingIntent) // 点击通知 → MainActivity
+            .setFullScreenIntent(fullScreenPendingIntent, true) // 全屏意图 → ReminderActivity
             .setColor(color)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

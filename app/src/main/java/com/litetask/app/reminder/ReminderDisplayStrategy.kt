@@ -12,6 +12,8 @@ import com.litetask.app.data.model.TaskType
  * 提醒显示策略管理器
  * 
  * 根据设备状态（屏幕、锁屏）和权限情况，智能选择最佳的提醒显示方式
+ * 
+ * 统一策略：无论息屏还是亮屏，都使用 ReminderActivity 全屏显示
  */
 object ReminderDisplayStrategy {
     
@@ -23,14 +25,12 @@ object ReminderDisplayStrategy {
     data class DeviceState(
         val isScreenOn: Boolean,        // 屏幕是否亮着
         val isLocked: Boolean,          // 是否锁屏
-        val hasNotificationPermission: Boolean,  // 是否有通知权限
-        val hasOverlayPermission: Boolean        // 是否有悬浮窗权限
+        val hasNotificationPermission: Boolean  // 是否有通知权限
     ) {
         override fun toString(): String {
             return "DeviceState(screen=${if(isScreenOn) "ON" else "OFF"}, " +
                    "lock=${if(isLocked) "LOCKED" else "UNLOCKED"}, " +
-                   "notification=${if(hasNotificationPermission) "✓" else "✗"}, " +
-                   "overlay=${if(hasOverlayPermission) "✓" else "✗"})"
+                   "notification=${if(hasNotificationPermission) "✓" else "✗"})"
         }
     }
     
@@ -38,10 +38,7 @@ object ReminderDisplayStrategy {
      * 显示策略
      */
     enum class DisplayMethod {
-        NOTIFICATION_ONLY,           // 仅系统通知
-        ACTIVITY_ONLY,              // 仅全屏 Activity
-        NOTIFICATION_AND_ACTIVITY,  // 通知 + Activity（双保险）
-        FLOATING_WINDOW,            // 悬浮窗（已废弃，保留备用）
+        NOTIFICATION_AND_ACTIVITY,  // 通知 + Activity（统一使用）
         NONE                        // 无法显示（权限不足）
     }
     
@@ -65,75 +62,60 @@ object ReminderDisplayStrategy {
         val isScreenOn = powerManager.isInteractive
         val isLocked = keyguardManager.isKeyguardLocked
         val hasNotificationPermission = PermissionHelper.hasNotificationPermission(context)
-        val hasOverlayPermission = hasOverlayPermission(context)
         
-        return DeviceState(isScreenOn, isLocked, hasNotificationPermission, hasOverlayPermission)
+        return DeviceState(isScreenOn, isLocked, hasNotificationPermission)
     }
     
     /**
      * 决定显示策略
      * 
-     * 决策逻辑：
-     * 1. 优先使用系统通知（最可靠）
-     * 2. 息屏/锁屏时使用 Activity 全屏显示（确保用户看到）
-     * 3. 正常使用时只显示通知（不打断用户）
-     */
-    /**
-     * 决定显示策略
-     * 
-     * 核心策略：优先使用强侵入性的“悬浮窗”，弱权限下回退到“系统通知”。
-     * 无论何种方式，在息屏/锁屏状态下都必须触发亮屏。
+     * 统一策略：
+     * 1. 无论息屏还是亮屏，统一使用 Activity 全屏显示
+     * 2. 同时发送系统通知作为补充
+     * 3. 根据屏幕和锁屏状态调整 Activity 行为
      */
     fun decideDisplayMethod(context: Context): DisplayDecision {
         val state = getDeviceState(context)
         Log.i(TAG, "Device state: $state")
-
-        // 分支 A: 有悬浮窗权限 (优先强提醒)
-        if (state.hasOverlayPermission) {
-            return if (!state.isScreenOn || state.isLocked) {
-                // 息屏或锁屏 -> 唤醒屏幕 + 悬浮窗 (锁屏之上)
-                DisplayDecision(
-                    method = DisplayMethod.FLOATING_WINDOW,
-                    reason = "有悬浮窗权限 + 息屏/锁屏 -> 强唤醒显示",
-                    shouldWakeScreen = true,
-                    shouldShowOnLockScreen = true
-                )
-            } else {
-                // 亮屏解锁 -> 直接悬浮窗
-                DisplayDecision(
-                    method = DisplayMethod.FLOATING_WINDOW,
-                    reason = "有悬浮窗权限 + 亮屏 -> 直接悬浮",
-                    shouldWakeScreen = false,
-                    shouldShowOnLockScreen = false
-                )
-            }
+        
+        // 场景1: 无通知权限 - 无法显示任何提醒
+        if (!state.hasNotificationPermission) {
+            Log.w(TAG, "No notification permission, cannot show reminder")
+            return DisplayDecision(
+                method = DisplayMethod.NONE,
+                reason = "缺少通知权限",
+                shouldWakeScreen = false,
+                shouldShowOnLockScreen = false
+            )
         }
-
-        // 分支 B: 无悬浮窗权限 -> 降级为系统通知
-        if (state.hasNotificationPermission) {
-            return if (!state.isScreenOn || state.isLocked) {
-                // 息屏或锁屏 -> 唤醒屏幕 + 系统通知
-                DisplayDecision(
-                    method = DisplayMethod.NOTIFICATION_ONLY, // 使用 NOTIFICATION_ONLY 但配合 shouldWakeScreen
-                    reason = "无悬浮窗但有通知权限 + 息屏/锁屏 -> 唤醒并通知",
-                    shouldWakeScreen = true,
-                    shouldShowOnLockScreen = true // 通知自带锁屏显示能力
-                )
-            } else {
-                // 亮屏 -> 普通系统通知
-                DisplayDecision(
-                    method = DisplayMethod.NOTIFICATION_ONLY,
-                    reason = "无悬浮窗但有通知权限 + 亮屏 -> 普通通知",
-                    shouldWakeScreen = false,
-                    shouldShowOnLockScreen = false
-                )
-            }
+        
+        // 场景2: 息屏状态 - 需要唤醒并全屏显示
+        if (!state.isScreenOn) {
+            Log.i(TAG, "Screen OFF → Use Notification + Activity (wake screen)")
+            return DisplayDecision(
+                method = DisplayMethod.NOTIFICATION_AND_ACTIVITY,
+                reason = "息屏状态，需要唤醒屏幕并全屏显示",
+                shouldWakeScreen = true,
+                shouldShowOnLockScreen = state.isLocked
+            )
         }
-
-        // 无法提醒
+        
+        // 场景3: 锁屏状态（屏幕亮着）- 在锁屏上显示
+        if (state.isLocked) {
+            Log.i(TAG, "Screen ON + LOCKED → Use Notification + Activity (on lock screen)")
+            return DisplayDecision(
+                method = DisplayMethod.NOTIFICATION_AND_ACTIVITY,
+                reason = "锁屏状态，在锁屏界面上显示",
+                shouldWakeScreen = false,
+                shouldShowOnLockScreen = true
+            )
+        }
+        
+        // 场景4: 正常使用（屏幕亮 + 未锁屏）- 也使用全屏 Activity
+        Log.i(TAG, "Screen ON + UNLOCKED → Use Notification + Activity (full screen)")
         return DisplayDecision(
-            method = DisplayMethod.NONE,
-            reason = "权限全无 (无悬浮窗且无通知权限)",
+            method = DisplayMethod.NOTIFICATION_AND_ACTIVITY,
+            reason = "亮屏未锁状态，全屏显示提醒",
             shouldWakeScreen = false,
             shouldShowOnLockScreen = false
         )
@@ -151,91 +133,33 @@ object ReminderDisplayStrategy {
         isDeadline: Boolean
     ) {
         val decision = decideDisplayMethod(context)
-        Log.i(TAG, "★ Decision: ${decision.method} (${decision.reason})")
+        Log.i(TAG, "★ Display decision: ${decision.method} - ${decision.reason}")
         
-        // 1. 如果需要唤醒屏幕，先执行唤醒 (针对所有有效策略)
-        if (decision.shouldWakeScreen) {
-             wakeUpScreen(context)
-        }
-
         when (decision.method) {
-            DisplayMethod.FLOATING_WINDOW -> {
-                // 修正策略：即便有悬浮窗权限，也优先使用 Activity。
-                // 因为 Service 悬浮窗在国产 ROM (MIUI/ColorOS) 上需要额外的“后台弹出”和“锁屏显示”权限，
-                // 而 Activity 配合 fullScreenIntent 是官方标准，穿透力更强，兼容性更好。
-                
-                // 1. 发送全屏通知 (系统级拉起)
+            DisplayMethod.NONE -> {
+                Log.e(TAG, "Cannot display reminder: ${decision.reason}")
+            }
+            
+            DisplayMethod.NOTIFICATION_AND_ACTIVITY -> {
+                // 统一策略：通知 + Activity
+                // 1. 先发送通知（带全屏意图）
                 NotificationHelper.showReminderNotification(
                     context, taskId, taskTitle, reminderText, taskType
                 )
                 
-                // 2. 双重保险：延迟手动启动 Activity
-                // 给系统全屏意图一点时间生效。如果 500ms 后 Activity 还没起来（比如被系统拦截），
-                // 这里的 start 将利用悬浮窗权限强制把 Activity 推到前台。
-                // 由于设置了 FLAG_ACTIVITY_CLEAR_TOP，即使重复启动也不会产生多重界面。
+                // 2. 延迟启动 Activity（补充机制）
+                // 某些系统可能不会自动触发全屏意图，手动启动确保显示
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     try {
                         ReminderActivity.start(
                             context, taskId, taskTitle, reminderText, taskType, isDeadline
                         )
-                        Log.i(TAG, "✓ Manual Activity launch triggered (backup)")
+                        Log.i(TAG, "✓ Activity started")
                     } catch (e: Exception) {
-                        Log.e(TAG, "Manual Activity start failed: ${e.message}")
+                        Log.e(TAG, "Failed to start Activity: ${e.message}")
                     }
                 }, 500)
             }
-            
-            DisplayMethod.NOTIFICATION_ONLY -> {
-                // 仅系统通知 (携带高优先级)
-                NotificationHelper.showReminderNotification(
-                    context, taskId, taskTitle, reminderText, taskType
-                )
-            }
-            
-            DisplayMethod.NOTIFICATION_AND_ACTIVITY, DisplayMethod.ACTIVITY_ONLY -> {
-                // 标准全屏通知流程
-                NotificationHelper.showReminderNotification(
-                    context, taskId, taskTitle, reminderText, taskType
-                )
-                
-                // 辅助启动
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    try {
-                        ReminderActivity.start(
-                            context, taskId, taskTitle, reminderText, taskType, isDeadline
-                        )
-                    } catch (e: Exception) { }
-                }, 500)
-            }
-            
-            DisplayMethod.NONE -> {
-                Log.e(TAG, "Unable to remind: ${decision.reason}")
-            }
-        }
-    }
-
-    private fun wakeUpScreen(context: Context) {
-        try {
-            val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-            val wakeLock = pm.newWakeLock(
-                PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
-                "LiteTask:ScreenWakeUp"
-            )
-            wakeLock.acquire(3000) // 点亮 3 秒足以唤醒屏幕组件
-            Log.i(TAG, "Screen wake-up triggered")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to wake screen: ${e.message}")
-        }
-    }
-    
-    /**
-     * 检查悬浮窗权限
-     */
-    private fun hasOverlayPermission(context: Context): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(context)
-        } else {
-            true
         }
     }
     

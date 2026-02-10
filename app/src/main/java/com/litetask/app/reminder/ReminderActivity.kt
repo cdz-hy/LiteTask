@@ -1,13 +1,8 @@
 package com.litetask.app.reminder
 
-import android.animation.ObjectAnimator
-import android.animation.PropertyValuesHolder
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -19,28 +14,48 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
-import android.view.View
 import android.view.WindowManager
-import android.view.animation.AccelerateDecelerateInterpolator
-import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import com.litetask.app.MainActivity
 import com.litetask.app.R
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.ui.theme.LiteTaskTheme
+import com.litetask.app.ui.theme.LocalExtendedColors
 
 /**
  * 强提醒活动页面（闹钟级提醒）
  * 
- * 专门用于在息屏、锁屏状态下强制弹出显示
- * 使用 Activity 替代 Service 悬浮窗，以获得更好的锁屏展现兼容性
+ * 使用 Jetpack Compose 重构，支持 MD3 动态取色和深色模式
  */
 class ReminderActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "ReminderActivity"
+        private const val AUTO_DISMISS_DELAY = 60_000L // 1分钟自动关闭
         private const val EXTRA_TASK_ID = "task_id"
         private const val EXTRA_TASK_TITLE = "task_title"
         private const val EXTRA_REMINDER_TEXT = "reminder_text"
@@ -68,7 +83,6 @@ class ReminderActivity : ComponentActivity() {
     }
 
     private var mediaPlayer: MediaPlayer? = null
-    private var pulseAnimator: ObjectAnimator? = null
     private val handler = Handler(Looper.getMainLooper())
     
     private var taskId: Long = -1
@@ -76,6 +90,9 @@ class ReminderActivity : ComponentActivity() {
     private var reminderText: String = ""
     private var taskType: TaskType = TaskType.WORK
     private var isDeadline: Boolean = false
+    
+    // 标记用户是否已处理提醒
+    private var userHandled = false
 
     private var soundEnabled = true
     private var vibrationEnabled = true
@@ -85,6 +102,9 @@ class ReminderActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // 沉浸式状态栏
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         
         // 读取用户配置
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -97,16 +117,209 @@ class ReminderActivity : ComponentActivity() {
         // 解析数据
         parseIntent()
         
-        // 设置布局
-        setContentView(R.layout.floating_reminder)
-        
-        // 初始化 UI
-        initUI()
-        
         // 开始生效（响铃、震动）
         startAlertEffects()
         
-        Log.i(TAG, "★ ReminderActivity onCreate: $taskTitle (sound=$soundEnabled, vib=$vibrationEnabled)")
+        // 设置 1 分钟后自动关闭
+        handler.postDelayed({
+            dismissWithTimeout()
+        }, AUTO_DISMISS_DELAY)
+        
+        Log.i(TAG, "ReminderActivity onCreate: $taskTitle (sound=$soundEnabled, vib=$vibrationEnabled)")
+
+        setContent {
+            LiteTaskTheme {
+                // 全屏半透明背景容器
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.6f)), // 模拟 dimAmount
+                    contentAlignment = Alignment.Center
+                ) {
+                    ReminderCard(
+                        taskTitle = taskTitle,
+                        reminderText = reminderText,
+                        taskType = taskType,
+                        isDeadline = isDeadline,
+                        onDismiss = {
+                            userHandled = true
+                            finish()
+                        },
+                        onAction = {
+                            userHandled = true
+                            openApp()
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun ReminderCard(
+        taskTitle: String,
+        reminderText: String,
+        taskType: TaskType,
+        isDeadline: Boolean,
+        onDismiss: () -> Unit,
+        onAction: () -> Unit
+    ) {
+        val extendedColors = LocalExtendedColors.current
+        
+        // 根据任务类型动态获取颜色
+        val (primaryColor, containerColor) = when {
+            isDeadline -> extendedColors.deadlineUrgent to extendedColors.deadlineUrgentSurface
+            taskType == TaskType.WORK -> extendedColors.workTask to extendedColors.workTaskSurface
+            taskType == TaskType.LIFE -> extendedColors.lifeTask to extendedColors.lifeTaskSurface
+            taskType == TaskType.STUDY -> extendedColors.studyTask to extendedColors.studyTaskSurface
+            else -> extendedColors.urgentTask to extendedColors.urgentTaskSurface
+        }
+
+        // 呼吸动画
+        val infiniteTransition = rememberInfiniteTransition(label = "Pulse")
+        val scale by infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1000),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "IconScale"
+        )
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(bottom = 24.dp)
+            ) {
+                // 顶部色条
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .background(primaryColor)
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // 图标区域
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .scale(scale)
+                        .clip(CircleShape)
+                        .background(containerColor),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(
+                            id = if (isDeadline) R.drawable.ic_warning else R.drawable.ic_alarm
+                        ),
+                        contentDescription = null,
+                        colorFilter = ColorFilter.tint(primaryColor),
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 标题和类型
+                Text(
+                    text = taskTitle,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "${getTypeLabel(taskType)} · ${if (isDeadline) "即将截止" else "即将开始"}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 时间胶囊
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    ) {
+                        // 使用 compose icon
+                        Icon(
+                            painter = painterResource(R.drawable.ic_clock),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = reminderText,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isDeadline) extendedColors.deadlineUrgent else primaryColor
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(40.dp))
+
+                // 按钮组
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "我知道了",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Button(
+                        onClick = onAction,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = primaryColor
+                        ),
+                        elevation = ButtonDefaults.buttonElevation(
+                            defaultElevation = 2.dp,
+                            pressedElevation = 0.dp
+                        )
+                    ) {
+                        Text(
+                            text = "去完成",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                }
+            }
+        }
     }
 
     private fun setupLockScreenShow() {
@@ -125,9 +338,8 @@ class ReminderActivity : ComponentActivity() {
             )
         }
         
-        // 设置窗口为全屏、透明背景（如果主题没设好的话保护一下）
         window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
-        window.statusBarColor = Color.TRANSPARENT
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
     }
 
     private fun parseIntent() {
@@ -137,106 +349,6 @@ class ReminderActivity : ComponentActivity() {
         val typeStr = intent.getStringExtra(EXTRA_TASK_TYPE) ?: "WORK"
         taskType = try { TaskType.valueOf(typeStr) } catch (e: Exception) { TaskType.WORK }
         isDeadline = intent.getBooleanExtra(EXTRA_IS_DEADLINE, false)
-    }
-
-    private fun initUI() {
-        val isDark = isDarkMode()
-        val primaryColor = getPrimaryColor(taskType, isDeadline)
-        val containerColor = getContainerColor(taskType, isDeadline, isDark)
-        val surfaceColor = if (isDark) 0xFF1C1B1F.toInt() else 0xFFFFFFFF.toInt()
-        val onSurface = if (isDark) 0xFFE6E1E5.toInt() else 0xFF1F1F1F.toInt()
-        val onSurfaceVariant = if (isDark) 0xFFCAC4D0.toInt() else 0xFF757575.toInt()
-
-        // 模糊层处理
-        setupBlurEffect(findViewById(R.id.blurLayer))
-
-        // 卡片基础颜色
-        findViewById<LinearLayout>(R.id.cardContainer)?.let {
-            (it.background?.mutate() as? GradientDrawable)?.setColor(surfaceColor)
-        }
-
-        findViewById<View>(R.id.accentBar)?.let {
-            (it.background?.mutate() as? GradientDrawable)?.setColor(primaryColor)
-        }
-
-        findViewById<FrameLayout>(R.id.iconBox)?.let {
-            (it.background?.mutate() as? GradientDrawable)?.setColor(containerColor)
-            startPulseAnimation(it)
-        }
-
-        findViewById<ImageView>(R.id.icon)?.setColorFilter(primaryColor)
-
-        findViewById<TextView>(R.id.title)?.apply {
-            text = taskTitle
-            setTextColor(onSurface)
-        }
-
-        findViewById<TextView>(R.id.subtitle)?.apply {
-            text = "${getTypeLabel(taskType)} · ${if (isDeadline) "即将截止" else "即将开始"}"
-            setTextColor(onSurfaceVariant)
-        }
-
-        findViewById<LinearLayout>(R.id.timeBadge)?.let {
-            (it.background?.mutate() as? GradientDrawable)?.setColor(
-                if (isDark) 0xFF2D2D2D.toInt() else 0xFFF5F5F5.toInt()
-            )
-        }
-        findViewById<ImageView>(R.id.timeIcon)?.setColorFilter(onSurfaceVariant)
-        findViewById<TextView>(R.id.timeText)?.apply {
-            text = reminderText
-            setTextColor(primaryColor)
-        }
-
-        findViewById<TextView>(R.id.dismissBtn)?.apply {
-            setTextColor(onSurface)
-            setOnClickListener { finish() }
-        }
-
-        findViewById<TextView>(R.id.actionBtn)?.apply {
-            (background?.mutate() as? GradientDrawable)?.setColor(primaryColor)
-            setOnClickListener { openApp() }
-        }
-        
-        // 如果是截止提醒，对特定细节进行“紧急化”处理
-        if (isDeadline) {
-            findViewById<ImageView>(R.id.icon)?.setImageResource(R.drawable.ic_warning) // 截止时使用警告图标
-            findViewById<TextView>(R.id.timeText)?.setTextColor(0xFFB3261E.toInt()) // 截止时时间文字显着变红
-        } else {
-            findViewById<ImageView>(R.id.icon)?.setImageResource(R.drawable.ic_alarm)
-        }
-    }
-
-    private fun setupBlurEffect(blurLayer: View) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            try {
-                val renderEffectClass = Class.forName("android.view.RenderEffect")
-                val createBlurEffectMethod = renderEffectClass.getMethod(
-                    "createBlurEffect",
-                    Float::class.java, Float::class.java,
-                    android.graphics.Shader.TileMode::class.java,
-                    android.graphics.Shader.TileMode::class.java
-                )
-                val tileModeClamp = android.graphics.Shader.TileMode::class.java.getField("CLAMP").get(null)
-                val blurEffect = createBlurEffectMethod.invoke(null, 12f, 12f, tileModeClamp, tileModeClamp)
-                val setRenderEffectMethod = View::class.java.getMethod("setRenderEffect", renderEffectClass)
-                setRenderEffectMethod.invoke(blurLayer, blurEffect)
-            } catch (e: Exception) {
-                blurLayer.setBackgroundColor(0x4D000000)
-            }
-        } else {
-            blurLayer.setBackgroundColor(0x4D000000)
-        }
-    }
-
-    private fun startPulseAnimation(view: View) {
-        val scaleX = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.05f, 1f)
-        val scaleY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.05f, 1f)
-        pulseAnimator = ObjectAnimator.ofPropertyValuesHolder(view, scaleX, scaleY).apply {
-            duration = 1500
-            repeatCount = ObjectAnimator.INFINITE
-            interpolator = AccelerateDecelerateInterpolator()
-            start()
-        }
     }
 
     private fun startAlertEffects() {
@@ -267,7 +379,6 @@ class ReminderActivity : ComponentActivity() {
     }
 
     private fun startVibrating() {
-        // 创建震动 Runnable 并循环执行
         val vibrateRunnable = object : Runnable {
             override fun run() {
                 vibrateOnce()
@@ -304,18 +415,27 @@ class ReminderActivity : ComponentActivity() {
         startActivity(intent)
         finish()
     }
+    
+    private fun dismissWithTimeout() {
+        if (!userHandled && taskId != -1L) {
+            Log.i(TAG, "Timeout without user action, sending system notification")
+            NotificationHelper.showReminderNotification(
+                this,
+                taskId,
+                taskTitle,
+                "$reminderText（未查看）",
+                taskType
+            )
+        }
+        finish()
+    }
 
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacksAndMessages(null)
-        pulseAnimator?.cancel()
         mediaPlayer?.let {
             try { it.stop(); it.release() } catch (e: Exception) { }
         }
-    }
-
-    private fun isDarkMode(): Boolean {
-        return (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
     }
 
     private fun getTypeLabel(type: TaskType) = when (type) {
@@ -323,54 +443,5 @@ class ReminderActivity : ComponentActivity() {
         TaskType.WORK -> "工作任务"
         TaskType.STUDY -> "学习任务"
         TaskType.LIFE -> "生活任务"
-    }
-
-    /**
-     * 获取任务类型主色 (符合 Theme.kt 定义)
-     */
-    private fun getPrimaryColor(type: TaskType, isDeadline: Boolean): Int {
-        val isDark = isDarkMode()
-        return if (isDark) {
-            when (type) {
-                TaskType.WORK -> 0xFFA8C7FA.toInt()
-                TaskType.LIFE -> 0xFF81C995.toInt()
-                TaskType.STUDY -> 0xFFCFBCFF.toInt()
-                TaskType.URGENT -> 0xFFF2B8B5.toInt()
-            }
-        } else {
-            // 亮色模式
-            if (isDeadline) 0xFFB3261E.toInt() // 截止提醒在亮色下强制使用更显著的警示红
-            else when (type) {
-                TaskType.WORK -> 0xFF0B57D0.toInt()
-                TaskType.LIFE -> 0xFF146C2E.toInt()
-                TaskType.STUDY -> 0xFF65558F.toInt()
-                TaskType.URGENT -> 0xFFB3261E.toInt()
-            }
-        }
-    }
-
-    /**
-     * 获取图标容器背景颜色 (符合 Theme.kt 定义的 Surface 色)
-     */
-    private fun getContainerColor(type: TaskType, isDeadline: Boolean, isDark: Boolean): Int {
-        return if (isDark) {
-            // 暗色模式：使用较低明度的颜色容器
-            if (isDeadline) 0xFF421F1F.toInt() // 截止提醒使用深暗红
-            else when (type) {
-                TaskType.WORK -> 0xFF1E3A5F.toInt()
-                TaskType.LIFE -> 0xFF1E3B2F.toInt()
-                TaskType.STUDY -> 0xFF2D2640.toInt()
-                TaskType.URGENT -> 0xFF421F1F.toInt()
-            }
-        } else {
-            // 亮色模式：使用浅色容器
-            if (isDeadline) 0xFFFCE8E6.toInt() // 截止提醒使用浅警示红
-            else when (type) {
-                TaskType.WORK -> 0xFFEFF6FF.toInt()
-                TaskType.LIFE -> 0xFFECFDF5.toInt()
-                TaskType.STUDY -> 0xFFF5F3FF.toInt()
-                TaskType.URGENT -> 0xFFFCE8E6.toInt()
-            }
-        }
     }
 }

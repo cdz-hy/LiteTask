@@ -57,6 +57,8 @@ class LiteTaskApplication : Application() {
      * 
      * 小米 MIUI 等国产 ROM 在用户手动杀掉后台时会清除 App 注册的所有闹钟，
      * 所以每次 App 启动时都需要重新注册。
+     * 
+     * 同时清理已过期但未触发的提醒（例如关机期间错过的）
      */
     private fun restoreReminders() {
         applicationScope.launch {
@@ -67,7 +69,21 @@ class LiteTaskApplication : Application() {
                 
                 val now = System.currentTimeMillis()
                 
-                // 查询所有未触发且触发时间在未来的提醒
+                // 1. 清理过期的提醒
+                val expiredReminders = taskDao.getExpiredUnfiredReminders(now)
+                if (expiredReminders.isNotEmpty()) {
+                    Log.i(TAG, "Cleaning up ${expiredReminders.size} expired reminders")
+                    expiredReminders.forEach { reminder ->
+                        try {
+                            scheduler.cancelReminder(reminder)
+                            taskDao.updateReminderFired(reminder.id, true)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error cleaning expired reminder ${reminder.id}: ${e.message}")
+                        }
+                    }
+                }
+                
+                // 2. 恢复未来的提醒
                 val pendingReminders = taskDao.getFutureReminders(now)
                 
                 if (pendingReminders.isEmpty()) {
