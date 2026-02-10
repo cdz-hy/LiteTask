@@ -303,6 +303,14 @@ class FloatingReminderService : Service() {
             setOnClickListener { openApp(taskId) }
         }
 
+        // 如果是截止提醒，对特定细节进行“紧急化”处理
+        if (isDeadline) {
+            view.findViewById<ImageView>(R.id.icon)?.setImageResource(R.drawable.ic_warning) // 截止时使用警告图标
+            view.findViewById<TextView>(R.id.timeText)?.setTextColor(0xFFB3261E.toInt()) // 截止时时间文字显着变红
+        } else {
+            view.findViewById<ImageView>(R.id.icon)?.setImageResource(R.drawable.ic_alarm)
+        }
+
         return view
     }
 
@@ -392,41 +400,49 @@ class FloatingReminderService : Service() {
     }
 
     private fun openApp(taskId: Long) {
-        userHandled = true // 用户已处理
-        startActivity(Intent(this, MainActivity::class.java).apply {
+        userHandled = true
+        cleanup() // 停止铃声震动
+        
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(NotificationHelper.EXTRA_TASK_ID, taskId)
             putExtra(NotificationHelper.EXTRA_FROM_NOTIFICATION, true)
-        })
-        dismiss()
+        }
+        startActivity(launchIntent)
+        
+        stopSelf()
     }
 
     /** 用户点击按钮关闭（已处理） */
     private fun dismissByUser() {
         userHandled = true
         Log.i(TAG, "★ Dismissed by user")
-        dismiss()
+        cleanup() // 立即清理资源
+        stopSelf()
     }
 
     /** 超时自动关闭（未处理，需要发送系统通知） */
     private fun dismissWithTimeout() {
         if (!userHandled && currentTaskId != -1L) {
-            Log.i(TAG, "★ Timeout without user action, sending system notification")
-            // 发送系统通知作为补充提醒
-            NotificationHelper.showReminderNotification(
-                this,
-                currentTaskId,
-                currentTaskTitle,
-                "$currentReminderText（未查看）",
-                currentTaskType
-            )
+            Log.i(TAG, "★ Timeout without user action, posting fallback notification")
+            
+            // 检查是否有通知权限，如果有，降级为系统通知
+            if (PermissionHelper.hasNotificationPermission(this)) {
+                NotificationHelper.showReminderNotification(
+                    this,
+                    currentTaskId,
+                    currentTaskTitle,
+                    "$currentReminderText (未读)", 
+                    currentTaskType
+                )
+            }
         }
-        dismiss()
+        cleanup()
+        stopSelf()
     }
 
     private fun dismiss() {
-        cleanup()
-        stopSelf()
+        dismissByUser()
     }
 
     private fun cleanup() {
@@ -461,27 +477,45 @@ class FloatingReminderService : Service() {
         TaskType.LIFE -> "生活任务"
     }
 
-    private fun getPrimaryColor(type: TaskType, isDeadline: Boolean) = when (type) {
-        TaskType.URGENT -> if (isDeadline) 0xFFB3261E.toInt() else 0xFFDC362E.toInt()
-        TaskType.WORK -> if (isDeadline) 0xFF0B57D0.toInt() else 0xFF1A73E8.toInt()
-        TaskType.STUDY -> if (isDeadline) 0xFF7C3AED.toInt() else 0xFF9333EA.toInt()
-        TaskType.LIFE -> if (isDeadline) 0xFF047857.toInt() else 0xFF059669.toInt()
+    private fun getPrimaryColor(type: TaskType, isDeadline: Boolean): Int {
+        val isDark = isDarkMode()
+        return if (isDark) {
+            when (type) {
+                TaskType.WORK -> 0xFFA8C7FA.toInt()
+                TaskType.LIFE -> 0xFF81C995.toInt()
+                TaskType.STUDY -> 0xFFCFBCFF.toInt()
+                TaskType.URGENT -> 0xFFF2B8B5.toInt()
+            }
+        } else {
+            // 亮色模式
+            if (isDeadline) 0xFFB3261E.toInt() // 截止提醒在亮色下强制使用更显著的警示红
+            else when (type) {
+                TaskType.WORK -> 0xFF0B57D0.toInt()
+                TaskType.LIFE -> 0xFF146C2E.toInt()
+                TaskType.STUDY -> 0xFF65558F.toInt()
+                TaskType.URGENT -> 0xFFB3261E.toInt()
+            }
+        }
     }
 
     private fun getContainerColor(type: TaskType, isDeadline: Boolean, isDark: Boolean): Int {
         return if (isDark) {
-            when (type) {
-                TaskType.URGENT -> if (isDeadline) 0xFF93000A.toInt() else 0xFF601410.toInt()
-                TaskType.WORK -> if (isDeadline) 0xFF004A77.toInt() else 0xFF1E3A5F.toInt()
-                TaskType.STUDY -> if (isDeadline) 0xFF4A148C.toInt() else 0xFF3D1A6D.toInt()
-                TaskType.LIFE -> if (isDeadline) 0xFF004D40.toInt() else 0xFF1B4332.toInt()
+            // 暗色模式：使用较低明度的颜色容器
+            if (isDeadline) 0xFF421F1F.toInt() // 截止提醒使用深暗红
+            else when (type) {
+                TaskType.WORK -> 0xFF1E3A5F.toInt()
+                TaskType.LIFE -> 0xFF1E3B2F.toInt()
+                TaskType.STUDY -> 0xFF2D2640.toInt()
+                TaskType.URGENT -> 0xFF421F1F.toInt()
             }
         } else {
-            when (type) {
-                TaskType.URGENT -> if (isDeadline) 0xFFFFDAD6.toInt() else 0xFFFFF0F0.toInt()
-                TaskType.WORK -> if (isDeadline) 0xFFD3E3FD.toInt() else 0xFFEFF6FF.toInt()
-                TaskType.STUDY -> if (isDeadline) 0xFFE9DDFF.toInt() else 0xFFF3E8FF.toInt()
-                TaskType.LIFE -> if (isDeadline) 0xFFBCF0DA.toInt() else 0xFFD1FAE5.toInt()
+            // 亮色模式：使用浅色容器
+            if (isDeadline) 0xFFFCE8E6.toInt() // 截止提醒使用浅警示红
+            else when (type) {
+                TaskType.WORK -> 0xFFEFF6FF.toInt()
+                TaskType.LIFE -> 0xFFECFDF5.toInt()
+                TaskType.STUDY -> 0xFFF5F3FF.toInt()
+                TaskType.URGENT -> 0xFFFCE8E6.toInt()
             }
         }
     }
