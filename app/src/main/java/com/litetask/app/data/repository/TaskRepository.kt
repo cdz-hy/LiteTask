@@ -85,15 +85,17 @@ class TaskRepositoryImpl @Inject constructor(
         taskDao.reactivateExpiredTask(taskId, newDeadline)
     
     // 搜索
+    // 搜索
     fun searchTasks(
         query: String,
         types: List<TaskType>,
+        categoryIds: List<Long>,
         startDate: Long?,
         endDate: Long?
     ) = taskDao.searchTasks(
         query = query,
         types = types.map { it.name },
-        typesEmpty = types.isEmpty(),
+        categoryIds = categoryIds,
         startDate = startDate,
         endDate = endDate
     )

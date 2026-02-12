@@ -21,7 +21,8 @@ interface AIRepository {
 @Singleton
 class AIRepositoryImpl @Inject constructor(
     private val preferenceManager: com.litetask.app.data.local.PreferenceManager,
-    private val aiProviderFactory: com.litetask.app.data.ai.AIProviderFactory
+    private val aiProviderFactory: com.litetask.app.data.ai.AIProviderFactory,
+    private val categoryRepository: CategoryRepository
 ) : AIRepository {
 
     override suspend fun parseTasksFromText(apiKey: String, text: String): Result<List<Task>> {
@@ -39,13 +40,16 @@ class AIRepositoryImpl @Inject constructor(
         // 获取用户配置的 AI 提供商
         val providerId = preferenceManager.getAiProvider()
         
+        // 获取所有可用分类
+        val categories = categoryRepository.getAllCategoriesSync()
+        
         return withContext(Dispatchers.IO) {
             try {
                 // 使用工厂获取对应的 AI 提供商
                 val provider = aiProviderFactory.getProvider(providerId)
                 
                 // 调用提供商的解析方法
-                provider.parseTasksFromText(finalKey, text)
+                provider.parseTasksFromText(finalKey, text, categories)
             } catch (e: Exception) {
                 Result.failure(Exception("AI 解析失败: ${e.message}", e))
             }

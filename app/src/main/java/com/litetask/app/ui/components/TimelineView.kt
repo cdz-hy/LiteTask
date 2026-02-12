@@ -42,6 +42,8 @@ import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.home.TimelineItem
 import com.litetask.app.ui.theme.LocalExtendedColors
+import com.litetask.app.ui.util.ColorUtils
+import com.litetask.app.data.model.Category
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -49,8 +51,12 @@ import java.util.*
 import kotlin.math.roundToInt
 
 /** 获取任务类型主色 */
+/** 获取任务类型主色 */
 @Composable
-private fun getTaskPrimaryColor(type: TaskType): Color {
+private fun getTaskPrimaryColor(type: TaskType, category: Category? = null): Color {
+    if (category != null) {
+        return ColorUtils.parseColor(category.colorHex)
+    }
     val extendedColors = LocalExtendedColors.current
     return when (type) {
         TaskType.WORK -> extendedColors.workTask
@@ -62,7 +68,11 @@ private fun getTaskPrimaryColor(type: TaskType): Color {
 
 /** 获取任务类型表面色 */
 @Composable
-private fun getTaskSurfaceColor(type: TaskType): Color {
+private fun getTaskSurfaceColor(type: TaskType, category: Category? = null): Color {
+    if (category != null) {
+        val primary = ColorUtils.parseColor(category.colorHex)
+        return ColorUtils.getSurfaceColor(primary)
+    }
     val extendedColors = LocalExtendedColors.current
     return when (type) {
         TaskType.WORK -> extendedColors.workTaskSurface
@@ -316,6 +326,7 @@ fun HtmlStyleTaskCard(
 ) {
     val task = composite.task
     val subTasks = composite.subTasks
+    val category = composite.category
     val extendedColors = LocalExtendedColors.current
 
     val isDone = task.isDone
@@ -323,16 +334,19 @@ fun HtmlStyleTaskCard(
     val isExpired = task.isExpired
 
     // 颜色状态计算
+    val basePrimaryColor = getTaskPrimaryColor(task.type, category)
+    val baseSurfaceColor = getTaskSurfaceColor(task.type, category)
+
     val primaryColor = when {
         isDone -> extendedColors.textTertiary
-        isExpired -> getTaskPrimaryColor(task.type).copy(alpha = 0.5f)
-        else -> getTaskPrimaryColor(task.type)
+        isExpired -> basePrimaryColor.copy(alpha = 0.5f)
+        else -> basePrimaryColor
     }
     
     val surfaceColor = when {
         isDone -> extendedColors.cardBackground
-        isExpired -> getTaskSurfaceColor(task.type).copy(alpha = 0.3f)
-        else -> getTaskSurfaceColor(task.type)
+        isExpired -> baseSurfaceColor.copy(alpha = 0.3f)
+        else -> baseSurfaceColor
     }
 
 
@@ -448,7 +462,7 @@ fun HtmlStyleTaskCard(
                         val checkboxColor = if (isDone) {
                             extendedColors.textTertiary
                         } else {
-                            getTaskPrimaryColor(task.type)
+                            basePrimaryColor
                         }
                         
                         TaskCheckbox(
@@ -475,7 +489,7 @@ fun HtmlStyleTaskCard(
                                 shape = RoundedCornerShape(6.dp)
                             ) {
                                 Text(
-                                    text = getTaskTypeName(task.type),
+                                    text = category?.name ?: getTaskTypeName(task.type),
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,

@@ -9,13 +9,14 @@ import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.AIHistory
+import com.litetask.app.data.model.Category
 import com.litetask.app.data.model.TaskTypeConverter
-
-@Database(entities = [Task::class, SubTask::class, Reminder::class, AIHistory::class], version = 3, exportSchema = false)
+@Database(entities = [Task::class, SubTask::class, Reminder::class, AIHistory::class, Category::class], version = 4, exportSchema = false)
 @TypeConverters(TaskTypeConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun aiHistoryDao(): AIHistoryDao
+    abstract fun categoryDao(): CategoryDao
     
     companion object {
         // 数据库名称必须与 DatabaseModule 中的一致
@@ -79,6 +80,48 @@ abstract class AppDatabase : RoomDatabase() {
                 database.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_history_timestamp` ON `ai_history` (`timestamp`)")
             }
         }
+
+        /**
+         * 数据库迁移：从版本3到版本4
+         * 引入 Category 表，迁移 TaskType
+         */
+        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 1. 创建 categories 表
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `categories` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+                        `name` TEXT NOT NULL, 
+                        `color_hex` TEXT NOT NULL, 
+                        `icon_name` TEXT NOT NULL DEFAULT 'default',
+                        `is_default` INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+
+                // 2. 插入默认分类
+                // WORK: #0B57D0 (蓝色)
+                database.execSQL("INSERT INTO categories (id, name, color_hex, is_default) VALUES (1, '工作', '#0B57D0', 1)")
+                // LIFE: #146C2E (绿色)
+                database.execSQL("INSERT INTO categories (id, name, color_hex, is_default) VALUES (2, '生活', '#146C2E', 1)")
+                // STUDY: #65558F (紫色)
+                database.execSQL("INSERT INTO categories (id, name, color_hex, is_default) VALUES (3, '学习', '#65558F', 1)")
+                // URGENT: #B3261E (红色)
+                database.execSQL("INSERT INTO categories (id, name, color_hex, is_default) VALUES (4, '紧急', '#B3261E', 1)")
+
+                // 3. 为 tasks 表添加 category_id 列，默认为 1 (工作)
+                // 注意：这里必须指定 DEFAULT 值，否则现有数据会报错
+                database.execSQL("ALTER TABLE tasks ADD COLUMN category_id INTEGER NOT NULL DEFAULT 1")
+                
+                // 4. 根据旧的 type 字段更新 category_id
+                database.execSQL("UPDATE tasks SET category_id = 1 WHERE type = 'WORK'")
+                database.execSQL("UPDATE tasks SET category_id = 2 WHERE type = 'LIFE'")
+                database.execSQL("UPDATE tasks SET category_id = 3 WHERE type = 'STUDY'")
+                database.execSQL("UPDATE tasks SET category_id = 4 WHERE type = 'URGENT'")
+                
+                // 5. 为 category_id 创建索引
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_tasks_category_id` ON `tasks` (`category_id`)")
+            }
+        }
         
         /**
          * 获取数据库单例
@@ -92,7 +135,7 @@ abstract class AppDatabase : RoomDatabase() {
                         AppDatabase::class.java,
                         DATABASE_NAME
                     )
-                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3)  // 添加迁移
+                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)  // 添加迁移
                         .fallbackToDestructiveMigration()
                         .build()
                     INSTANCE = instance

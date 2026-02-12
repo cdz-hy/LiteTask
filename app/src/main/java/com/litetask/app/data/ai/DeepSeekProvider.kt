@@ -2,6 +2,7 @@ package com.litetask.app.data.ai
 
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.data.model.Category
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -29,11 +30,20 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
     
     private val baseUrl = "https://api.deepseek.com/v1/chat/completions"
     
-    override suspend fun parseTasksFromText(apiKey: String, text: String): Result<List<Task>> {
+    override suspend fun parseTasksFromText(apiKey: String, text: String, categories: List<Category>): Result<List<Task>> {
         return withContext(Dispatchers.IO) {
             try {
                 val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
                 
+                // 动态构建分类列表字符串
+                val categoryPrompt = if (categories.isNotEmpty()) {
+                    categories.joinToString(" | ") { it.name }
+                } else {
+                    "工作 | 生活 | 学习 | 紧急"
+                }
+
+                val defaultCategoryName = categories.firstOrNull { it.isDefault }?.name ?: (categories.firstOrNull()?.name ?: "工作")
+
                 val systemPrompt = """
 # Role: LiteTask 智能日程规划师
 # Context: Now = $currentDate
@@ -45,7 +55,8 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
    - 默认/单点时间: 视为 endTime (截止)，startTime 设为 Now。
    - 明确起止: 仅在明确"从X到Y"时设定具体区间。
    - 无时间: endTime = Now + 24h。
-3. **分类**: WORK | LIFE | STUDY | URGENT
+3. **分类**: 请严格从以下类别中选择 (默认: $defaultCategoryName):
+   $categoryPrompt
 4. **描述生成**: `description` 必须基于用户原始输入生成真实有意义的简要描述:
    - 提取并扩展用户提到的具体细节（地点、人物、数量、方式等）
    - 若用户输入简短，合理推断任务的目的或上下文
@@ -58,7 +69,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
 
 # Output
 仅返回纯 JSON 数组，无 Markdown。
-[{"title":"精炼标题<20字","startTime":"yyyy-MM-dd HH:mm","endTime":"yyyy-MM-dd HH:mm","type":"分类","description":"基于输入的真实任务描述"}]
+[{"title":"精炼标题<20字","startTime":"yyyy-MM-dd HH:mm","endTime":"yyyy-MM-dd HH:mm","type":"分类名称","description":"基于输入的真实任务描述"}]
                 """.trimIndent()
                 
                 val requestBody = JSONObject().apply {
@@ -105,8 +116,8 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                     .getJSONObject("message")
                     .getString("content")
                 
-                val tasks = parseJsonToTasks(content, text)
-                Result.success(tasks)
+                val tasks = parseJsonToTasks(content, text, categories)
+                Result.success(tasks) // Return result
                 
             } catch (e: org.json.JSONException) {
                 Result.failure(Exception("JSON 解析失败: ${e.message}", e))
@@ -155,7 +166,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
         }
     }
     
-    private fun parseJsonToTasks(jsonString: String, originalVoiceText: String): List<Task> {
+    private fun parseJsonToTasks(jsonString: String, originalVoiceText: String, categories: List<Category>): List<Task> {
         val tasks = mutableListOf<Task>()
         try {
             // 清理可能存在的 Markdown 代码块标记
@@ -178,10 +189,21 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                 val startTime = dateFormat.parse(startStr)?.time ?: System.currentTimeMillis()
                 val endTime = dateFormat.parse(endStr)?.time ?: (startTime + 3600000)
                 
-                val type = try {
-                    TaskType.valueOf(typeStr.uppercase())
-                } catch (e: Exception) {
-                    TaskType.WORK
+                // Match Category by Name
+                // 从 AI 返回的 typeStr 查找对应的 Category
+                val matchedCategory = categories.find { 
+                    it.name.equals(typeStr, ignoreCase = true) 
+                } ?: categories.firstOrNull { it.isDefault } // 默认使用第一个默认分类
+                
+                val categoryId = matchedCategory?.id ?: 1L
+                
+                // 为了兼容旧的 Enum，尝试映射（仅用于调试或旧逻辑，未来可废弃）
+                val legacyType = when (typeStr.uppercase()) {
+                    "WORK", "工作" -> TaskType.WORK
+                    "LIFE", "生活" -> TaskType.LIFE
+                    "STUDY", "学习" -> TaskType.STUDY
+                    "URGENT", "紧急" -> TaskType.URGENT
+                    else -> TaskType.WORK
                 }
                 
                 tasks.add(
@@ -190,7 +212,8 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                         description = description.takeIf { it.isNotBlank() } ?: "",
                         startTime = startTime,
                         deadline = endTime,
-                        type = type,
+                        type = legacyType, // Deprecated
+                        categoryId = categoryId, // New Dynamic ID
                         originalVoiceText = originalVoiceText  // 保存原始语音文本
                     )
                 )

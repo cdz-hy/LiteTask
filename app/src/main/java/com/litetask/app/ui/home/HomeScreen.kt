@@ -88,6 +88,7 @@ fun HomeScreen(
     val timelineItems by viewModel.timelineItems.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val categories by viewModel.categories.collectAsState()
     var currentView by androidx.compose.runtime.saveable.rememberSaveable { 
         mutableStateOf(if (initialView == "timeline") viewModel.getDefaultHomeView() else initialView) 
     }
@@ -517,7 +518,8 @@ fun HomeScreen(
                     onConfirmWithReminders = { task, reminderConfigs ->
                         viewModel.addTaskWithReminders(task, reminderConfigs)
                         showAddTaskDialog = false
-                    }
+                    },
+                    availableCategories = categories
                 )
             }
             
@@ -562,6 +564,7 @@ fun HomeScreen(
                 AddTaskDialog(
                     initialTask = taskToEdit,
                     initialReminders = editTaskReminders,
+                    availableCategories = categories,
                     onDismiss = {
                         showEditDialog = false
                         taskToEdit = null
@@ -601,6 +604,7 @@ fun HomeScreen(
                     task = composite.task,
                     subTasks = composite.subTasks,
                     reminders = composite.reminders, // 直接使用复合数据中的提醒
+                    category = composite.category,
                     onDismiss = { selectedTaskId = null },
                     onDelete = {
                         viewModel.deleteTask(it)

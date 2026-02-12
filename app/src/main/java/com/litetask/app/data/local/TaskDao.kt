@@ -136,17 +136,38 @@ abstract class TaskDao {
             st.content LIKE '%' || :query || '%'
         )
         AND (:typesEmpty = 1 OR t.type IN (:types))
+        AND (:categoriesEmpty = 1 OR t.category_id IN (:categoryIds))
         AND (:startDate IS NULL OR t.start_time >= :startDate)
         AND (:endDate IS NULL OR t.deadline <= :endDate)
         ORDER BY t.is_done ASC, t.deadline ASC
     """)
-    abstract fun searchTasks(
+    abstract fun searchTasksInternal(
         query: String,
         types: List<String>,
         typesEmpty: Boolean,
+        categoryIds: List<Long>,
+        categoriesEmpty: Boolean,
         startDate: Long?,
         endDate: Long?
     ): Flow<List<TaskDetailComposite>>
+
+    fun searchTasks(
+        query: String,
+        types: List<String>,
+        categoryIds: List<Long>,
+        startDate: Long?,
+        endDate: Long?
+    ): Flow<List<TaskDetailComposite>> {
+        return searchTasksInternal(
+            query,
+            types,
+            types.isEmpty(),
+            categoryIds,
+            categoryIds.isEmpty(),
+            startDate,
+            endDate
+        )
+    }
     
     // --- 兼容性保留 ---
     

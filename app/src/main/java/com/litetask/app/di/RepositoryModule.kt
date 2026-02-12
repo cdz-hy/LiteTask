@@ -4,6 +4,8 @@ import com.litetask.app.data.local.TaskDao
 import com.litetask.app.data.repository.AIRepository
 import com.litetask.app.data.repository.AIRepositoryImpl
 import com.litetask.app.data.repository.TaskRepositoryImpl
+import com.litetask.app.data.repository.CategoryRepository
+import com.litetask.app.data.repository.CategoryRepositoryImpl
 import com.litetask.app.reminder.ReminderScheduler
 import dagger.Module
 import dagger.Provides
@@ -29,4 +31,10 @@ object RepositoryModule {
     fun provideAIRepository(
         aiRepositoryImpl: AIRepositoryImpl
     ): AIRepository = aiRepositoryImpl
+
+    @Provides
+    @Singleton
+    fun provideCategoryRepository(
+        categoryRepositoryImpl: CategoryRepositoryImpl
+    ): CategoryRepository = categoryRepositoryImpl
 }

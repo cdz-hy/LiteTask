@@ -12,7 +12,8 @@ import androidx.room.Index
         Index(value = ["is_done"]),    // 过滤索引：区分"进行中"和"归档"
         Index(value = ["is_pinned"]),  // 置顶索引
         Index(value = ["is_expired"]), // 过期状态索引
-        Index(value = ["created_at"])  // 创建时间索引
+        Index(value = ["created_at"]), // 创建时间索引
+        Index(value = ["category_id"]) // 分类索引
     ]
 )
 data class Task(
@@ -48,9 +49,14 @@ data class Task(
     @ColumnInfo(name = "is_pinned")
     val isPinned: Boolean = false,
 
-    // 任务类型 (用于 UI 显示不同的图标/颜色，如 Work=蓝, Life=绿)
+    // 任务类型 (已废弃，保留用于兼容迁移，实际逻辑使用 category_id)
+    @Deprecated("Use categoryId instead")
     @ColumnInfo(name = "type")
-    val type: TaskType = TaskType.WORK, // 枚举：WORK, LIFE, URGENT
+    val type: TaskType = TaskType.WORK, 
+    
+    // --- 3.1 分类 (动态扩展) ---
+    @ColumnInfo(name = "category_id")
+    val categoryId: Long = 1, // 默认为 1 (Work)
 
     // --- 4. 新增状态字段 ---
     

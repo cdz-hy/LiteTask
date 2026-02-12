@@ -11,15 +11,19 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.litetask.app.data.model.Category
+import com.litetask.app.data.repository.CategoryRepository
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val application: Application,
     private val preferenceManager: PreferenceManager,
     private val aiProviderFactory: AIProviderFactory,
-    private val speechProviderFactory: SpeechProviderFactory
+    private val speechProviderFactory: SpeechProviderFactory,
+    private val categoryRepository: CategoryRepository
 ) : ViewModel() {
 
     // ========== 通用状态 ==========
@@ -186,4 +190,26 @@ class SettingsViewModel @Inject constructor(
      * 设置默认首页视图
      */
     fun setDefaultHomeView(view: String) = preferenceManager.setDefaultHomeView(view)
+    
+    // ========== 分类管理 ==========
+    
+    val categories: Flow<List<Category>> = categoryRepository.getAllCategories()
+    
+    fun addCategory(category: Category) {
+        viewModelScope.launch {
+            categoryRepository.insertCategory(category)
+        }
+    }
+    
+    fun updateCategory(category: Category) {
+        viewModelScope.launch {
+            categoryRepository.updateCategory(category)
+        }
+    }
+    
+    fun deleteCategory(category: Category) {
+        viewModelScope.launch {
+            categoryRepository.deleteCategory(category)
+        }
+    }
 }

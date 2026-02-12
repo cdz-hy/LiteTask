@@ -35,6 +35,10 @@ import com.litetask.app.data.model.ReminderType
 import com.litetask.app.data.model.ReminderTimeUnit
 import com.litetask.app.data.model.ReminderBaseTime
 import com.litetask.app.ui.theme.LocalExtendedColors
+import com.litetask.app.data.model.Category
+import com.litetask.app.ui.util.ColorUtils
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import java.util.Calendar
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -45,6 +49,7 @@ import java.util.Date
 fun AddTaskDialog(
     initialTask: Task? = null,
     initialReminders: List<Reminder> = emptyList(),
+    availableCategories: List<Category> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (Task) -> Unit,
     onConfirmWithReminders: ((Task, List<ReminderConfig>) -> Unit)? = null
@@ -52,7 +57,16 @@ fun AddTaskDialog(
     val extendedColors = LocalExtendedColors.current
     var title by remember { mutableStateOf(initialTask?.title ?: "") }
     var description by remember { mutableStateOf(initialTask?.description ?: "") }
-    var selectedType by remember { mutableStateOf(initialTask?.type ?: TaskType.STUDY) }
+    
+    // 初始化选中的分类ID
+    var selectedCategoryId by remember { 
+        mutableStateOf(
+            initialTask?.categoryId ?: 
+            availableCategories.find { it.isDefault }?.id ?: 
+            availableCategories.firstOrNull()?.id ?: 
+            1L 
+        ) 
+    }
     var isPinned by remember { mutableStateOf(initialTask?.isPinned ?: false) }
     
     // 时间初始化
@@ -209,7 +223,7 @@ fun AddTaskDialog(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Task Type Selection
+                    // Category Selection
                     Text(
                         text = stringResource(R.string.task_type),
                         style = MaterialTheme.typography.titleSmall,
@@ -218,18 +232,21 @@ fun AddTaskDialog(
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
                     
-                    Row(
+                    LazyRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        TaskType.values().take(4).forEach { type ->
-                            val isSelected = selectedType == type
+                        items(availableCategories) { category ->
+                            val isSelected = selectedCategoryId == category.id
+                            val categoryColor = ColorUtils.parseColor(category.colorHex)
+                            val contentColor = ColorUtils.getSurfaceColor(categoryColor)
+                            
                             FilterChip(
                                 selected = isSelected,
-                                onClick = { selectedType = type },
+                                onClick = { selectedCategoryId = category.id },
                                 label = { 
                                     Text(
-                                        getTaskTypeName(type),
+                                        category.name,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                     ) 
                                 },
@@ -237,9 +254,17 @@ fun AddTaskDialog(
                                     { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
                                 } else null,
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary
+                                    selectedContainerColor = categoryColor,
+                                    selectedLabelColor = contentColor,
+                                    selectedLeadingIconColor = contentColor,
+                                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                                    labelColor = extendedColors.textPrimary
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    selected = isSelected,
+                                    enabled = true,
+                                    borderColor = if (isSelected) Color.Transparent else extendedColors.divider,
+                                    borderWidth = 1.dp
                                 )
                             )
                         }
@@ -464,7 +489,8 @@ fun AddTaskDialog(
                                     id = initialTask?.id ?: 0,
                                     title = title,
                                     description = description.ifBlank { null },
-                                    type = selectedType,
+                                    categoryId = selectedCategoryId,
+                                    type = TaskType.WORK, // Deprecated, placeholder
                                     startTime = startTimeMillis,
                                     deadline = deadlineMillis,
                                     isPinned = effectiveIsPinned,

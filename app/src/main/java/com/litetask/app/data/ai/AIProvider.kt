@@ -1,6 +1,7 @@
 package com.litetask.app.data.ai
 
 import com.litetask.app.data.model.Task
+import com.litetask.app.data.model.Category
 
 /**
  * AI 提供商接口
@@ -11,9 +12,10 @@ interface AIProvider {
      * 从文本中解析任务
      * @param apiKey API 密钥
      * @param text 用户输入的文本
+     * @param categories 可用的分类列表
      * @return 解析出的任务列表
      */
-    suspend fun parseTasksFromText(apiKey: String, text: String): Result<List<Task>>
+    suspend fun parseTasksFromText(apiKey: String, text: String, categories: List<Category>): Result<List<Task>>
 
     /**
      * 测试 API 连通性

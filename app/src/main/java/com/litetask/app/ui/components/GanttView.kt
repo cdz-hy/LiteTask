@@ -747,7 +747,8 @@ fun GanttViewPreview() {
                 com.litetask.app.data.model.SubTask(taskId = 1, content = "Sub 1", isCompleted = true),
                 com.litetask.app.data.model.SubTask(taskId = 1, content = "Sub 2", isCompleted = false)
             ),
-            reminders = emptyList()
+            reminders = emptyList(),
+            category = null
         ),
         TaskDetailComposite(
             task = Task(
@@ -758,7 +759,8 @@ fun GanttViewPreview() {
                 deadline = now + 18000000
             ),
             subTasks = emptyList(),
-            reminders = emptyList()
+            reminders = emptyList(),
+            category = null
         ),
         TaskDetailComposite(
             task = Task(
@@ -770,7 +772,8 @@ fun GanttViewPreview() {
                 isDone = true
             ),
             subTasks = emptyList(),
-            reminders = emptyList()
+            reminders = emptyList(),
+            category = null
         )
     )
     GanttView(

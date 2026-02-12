@@ -9,6 +9,8 @@ import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.repository.TaskRepositoryImpl
 import com.litetask.app.data.repository.AIRepository
+import com.litetask.app.data.model.Category
+import com.litetask.app.data.repository.CategoryRepository
 import com.litetask.app.widget.WidgetUpdateHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +34,7 @@ class HomeViewModel @Inject constructor(
     private val application: Application,
     private val taskRepository: TaskRepositoryImpl,
     private val aiRepository: AIRepository,
+    private val categoryRepository: CategoryRepository,
     private val aiHistoryRepository: com.litetask.app.data.repository.AIHistoryRepository,
     private val speechHelper: com.litetask.app.util.SpeechRecognizerHelper,
     private val preferenceManager: com.litetask.app.data.local.PreferenceManager
@@ -89,6 +92,10 @@ class HomeViewModel @Inject constructor(
     /** UI 状态（录音、AI分析等） */
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    /** 所有分类列表 */
+    val categories: StateFlow<List<Category>> = categoryRepository.getAllCategories()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**
      * 合并后的 Timeline 列表

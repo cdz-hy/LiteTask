@@ -10,17 +10,26 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -45,6 +54,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,7 +67,16 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.litetask.app.data.model.Category
+import com.litetask.app.ui.util.ColorUtils
 import androidx.compose.material3.Switch
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -114,6 +133,9 @@ fun SettingsScreen(
     var speechProviderExpanded by remember { mutableStateOf(false) }
     val speechCredentials = remember { mutableStateMapOf<String, String>() }
     val speechConnectionState by viewModel.speechConnectionState.collectAsState()
+    
+    // ========== 分类管理状态 ==========
+    var showCategoryDialog by remember { mutableStateOf(false) }
     
     val speechProviders = viewModel.getSupportedSpeechProviders()
     val speechCredentialFields = remember(selectedSpeechProvider) {
@@ -369,6 +391,11 @@ fun SettingsScreen(
                 }
             }
             
+            // ========== 分类设置卡片 ==========
+            CategorySettingsCard(
+                onManageCategories = { showCategoryDialog = true }
+            )
+            
             // ========== 提醒设置卡片 ==========
             ReminderSettingsCard(context)
             
@@ -377,6 +404,13 @@ fun SettingsScreen(
             
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    if (showCategoryDialog) {
+        CategoryManagementDialog(
+            viewModel = viewModel,
+            onDismiss = { showCategoryDialog = false }
+        )
     }
 }
 
@@ -396,7 +430,7 @@ private fun UserPreferencesCard(
     val fabOptions = listOf(
         Triple("voice", "语音添加", Icons.Default.Mic),
         Triple("text", "文字输入", Icons.Default.Edit),
-        Triple("manual", "手动添加", Icons.Rounded.Add)
+        Triple("manual", "手动添加", Icons.Default.Add)
     )
     
     val viewOptions = listOf(
@@ -955,6 +989,257 @@ private fun ConnectionStateIndicator(state: SettingsViewModel.ConnectionState) {
                     )
                 }
                 else -> {}
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategorySettingsCard(onManageCategories: () -> Unit) {
+    SettingsCard(
+        title = "分类管理",
+        icon = Icons.Default.Category
+    ) {
+        Text(
+            text = "自定义任务分类名称和颜色",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        Button(
+            onClick = onManageCategories,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text("管理分类")
+        }
+    }
+}
+
+@Composable
+private fun CategoryManagementDialog(
+    viewModel: SettingsViewModel,
+    onDismiss: () -> Unit
+) {
+    val categories by viewModel.categories.collectAsState(initial = emptyList())
+    var editingCategory by remember { mutableStateOf<Category?>(null) }
+    var isAddingNew by remember { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .fillMaxHeight(0.8f),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+                
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "分类管理",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Content
+                if (isAddingNew || editingCategory != null) {
+                    // Editor
+                    CategoryEditor(
+                        category = editingCategory,
+                        onSave = { name, colorHex ->
+                            if (isAddingNew) {
+                                viewModel.addCategory(Category(name = name, colorHex = colorHex, isDefault = false))
+                            } else {
+                                editingCategory?.let {
+                                    viewModel.updateCategory(it.copy(name = name, colorHex = colorHex))
+                                }
+                            }
+                            isAddingNew = false
+                            editingCategory = null
+                        },
+                        onCancel = {
+                            isAddingNew = false
+                            editingCategory = null
+                        }
+                    )
+                } else {
+                    // List
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(categories) { category ->
+                            CategoryRow(
+                                category = category,
+                                onEdit = { editingCategory = category },
+                                onDelete = { viewModel.deleteCategory(category) }
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Button(
+                        onClick = { isAddingNew = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("添加新分类")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryRow(
+    category: Category,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val color = ColorUtils.parseColor(category.colorHex)
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Color Circle
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .background(color, CircleShape)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = category.name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+            if (category.isDefault) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "(默认)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
+        }
+        
+        Row {
+            IconButton(onClick = onEdit) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+            }
+            if (!category.isDefault) { // Default category cannot be deleted
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryEditor(
+    category: Category?,
+    onSave: (String, String) -> Unit,
+    onCancel: () -> Unit
+) {
+    var name by remember { mutableStateOf(category?.name ?: "") }
+    var selectedColor by remember { mutableStateOf(category?.colorHex ?: "#FF6200EE") }
+    
+    val presetColors = listOf(
+        "#FF6200EE", "#FF03DAC5", "#FFB00020", "#ffffeb3b", "#ff4caf50", "#ff2196f3", // Standard
+        // LiteTask Colors
+        "#FFDDCD", "#E6E6FA", "#D3E3FC", "#FFE0B2", "#E1BEE7", "#C8E6C9"
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = if (category == null) "添加分类" else "编辑分类",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("分类名称") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text("选择颜色", style = MaterialTheme.typography.labelMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // Color Palette
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(presetColors) { colorHex ->
+                val color = ColorUtils.parseColor(colorHex)
+                val isSelected = selectedColor.equals(colorHex, ignoreCase = true)
+                
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(color, CircleShape)
+                        .clickable { selectedColor = colorHex }
+                        .then(if (isSelected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape) else Modifier),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = ColorUtils.getSurfaceColor(color))
+                    }
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = onCancel,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("取消")
+            }
+            Button(
+                onClick = { onSave(name, selectedColor) },
+                enabled = name.isNotBlank(),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("保存")
             }
         }
     }
