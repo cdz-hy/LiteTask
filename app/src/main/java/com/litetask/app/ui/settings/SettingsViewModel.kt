@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import com.litetask.app.data.model.Category
 import com.litetask.app.data.repository.CategoryRepository
@@ -70,6 +71,9 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
+    
+    // ========== 提醒方式配置 ==========
+    // (Existing reminder logic below...)
     
     // ========== 语音识别配置 ==========
     
@@ -143,6 +147,56 @@ class SettingsViewModel @Inject constructor(
                 _speechConnectionState.value = ConnectionState.Success
             }.onFailure {
                 _speechConnectionState.value = ConnectionState.Error(it.message ?: application.getString(R.string.error_connection_failed))
+            }
+        }
+    }
+
+    // ========== 高德地图配置 ==========
+    
+    private val _amapConnectionState = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
+    val amapConnectionState: StateFlow<ConnectionState> = _amapConnectionState.asStateFlow()
+
+    fun getAMapKey(): String? = preferenceManager.getAMapKey()
+    fun saveAMapKey(key: String) = preferenceManager.saveAMapKey(key)
+
+    fun resetAMapConnectionState() {
+        _amapConnectionState.value = ConnectionState.Idle
+    }
+
+    fun testAMapConnection(key: String) {
+        if (key.isBlank()) {
+            _amapConnectionState.value = ConnectionState.Error("请输入高德地图 Key")
+            return
+        }
+
+        viewModelScope.launch {
+            _amapConnectionState.value = ConnectionState.Testing
+            try {
+                val encodedAddress = java.net.URLEncoder.encode("北京", "UTF-8")
+                val urlString = "https://restapi.amap.com/v3/geocode/geo?address=$encodedAddress&output=JSON&key=$key"
+                
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val url = java.net.URL(urlString)
+                    val connection = url.openConnection() as java.net.HttpURLConnection
+                    connection.requestMethod = "GET"
+                    connection.connectTimeout = 5000
+                    connection.readTimeout = 5000
+
+                    if (connection.responseCode == 200) {
+                        val response = connection.inputStream.bufferedReader().use { it.readText() }
+                        val json = org.json.JSONObject(response)
+                        if (json.optString("status") == "1") {
+                            _amapConnectionState.value = ConnectionState.Success
+                        } else {
+                            val info = json.optString("info")
+                            _amapConnectionState.value = ConnectionState.Error(info.ifBlank { "验证失败" })
+                        }
+                    } else {
+                        _amapConnectionState.value = ConnectionState.Error("HTTP Error: ${connection.responseCode}")
+                    }
+                }
+            } catch (e: Exception) {
+                _amapConnectionState.value = ConnectionState.Error(e.message ?: "连接异常")
             }
         }
     }

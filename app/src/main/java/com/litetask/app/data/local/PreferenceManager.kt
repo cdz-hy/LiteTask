@@ -32,6 +32,9 @@ class PreferenceManager @Inject constructor(
         private const val KEY_DEFAULT_HOME_VIEW = "default_home_view"
         const val DEFAULT_FAB_ACTION = "voice"  // voice, text, manual
         const val DEFAULT_HOME_VIEW = "timeline"  // timeline, gantt, deadline
+        
+        // 高德地图相关
+        private const val KEY_AMAP_KEY = "amap_key"
     }
 
     // ========== AI 配置 ==========
@@ -177,11 +180,21 @@ class PreferenceManager @Inject constructor(
     fun getDefaultHomeView(): String {
         return prefs.getString(KEY_DEFAULT_HOME_VIEW, DEFAULT_HOME_VIEW) ?: DEFAULT_HOME_VIEW
     }
-    
+
     /**
      * 设置默认首页视图
      */
     fun setDefaultHomeView(view: String) {
         prefs.edit().putString(KEY_DEFAULT_HOME_VIEW, view).apply()
+    }
+    
+    // ========== 高德地图配置 ==========
+    
+    fun getAMapKey(): String? {
+        return prefs.getString(KEY_AMAP_KEY, null)
+    }
+
+    fun saveAMapKey(key: String) {
+        prefs.edit().putString(KEY_AMAP_KEY, key).apply()
     }
 }

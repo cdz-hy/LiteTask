@@ -85,6 +85,7 @@ fun HomeScreen(
 ) {
     // ViewModel 数据流
     val todayTasks by viewModel.tasks.collectAsState()
+    val amapKey by viewModel.amapKey.collectAsState() // Collect AMap Key
     val timelineItems by viewModel.timelineItems.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -519,7 +520,14 @@ fun HomeScreen(
                         viewModel.addTaskWithReminders(task, reminderConfigs)
                         showAddTaskDialog = false
                     },
-                    availableCategories = categories
+                    onConfirmWithComponents = { task, reminderConfigs, components ->
+                        viewModel.addTaskWithComponents(task, reminderConfigs, components)
+                        showAddTaskDialog = false
+                    },
+
+                    availableCategories = categories,
+                    amapKey = amapKey,
+                    onGeocode = { address -> viewModel.geocodeLocation(address) }
                 )
             }
             
@@ -546,41 +554,61 @@ fun HomeScreen(
                 }
             }
             
-            // 编辑任务时需要加载已有提醒
+            // 编辑任务时需要加载已有提醒和组件
             var editTaskReminders by remember { mutableStateOf<List<com.litetask.app.data.model.Reminder>>(emptyList()) }
-            var isLoadingReminders by remember { mutableStateOf(false) }
+            var editTaskComponents by remember { mutableStateOf<List<com.litetask.app.data.model.TaskComponent>>(emptyList()) }
+            var isLoadingTaskData by remember { mutableStateOf(false) }
             
-            // 当 taskToEdit 变化时，先加载提醒，加载完成后再显示对话框
+            // 当 taskToEdit 变化时，先加载提醒和组件，加载完成后再显示对话框
             LaunchedEffect(taskToEdit) {
                 if (taskToEdit != null && !showEditDialog) {
-                    isLoadingReminders = true
-                    editTaskReminders = viewModel.getRemindersForTaskSync(taskToEdit!!.id)
-                    isLoadingReminders = false
+                    isLoadingTaskData = true
+                    // 并行加载提醒和组件
+                    val remindersDeferred = viewModel.getRemindersForTaskSync(taskToEdit!!.id)
+                    val componentsDeferred = viewModel.getComponentsForTaskSync(taskToEdit!!.id)
+                    
+                    editTaskReminders = remindersDeferred
+                    editTaskComponents = componentsDeferred
+                    
+                    isLoadingTaskData = false
                     showEditDialog = true
                 }
             }
 
-            if (showEditDialog && !isLoadingReminders) {
+            if (showEditDialog && !isLoadingTaskData) {
                 AddTaskDialog(
                     initialTask = taskToEdit,
                     initialReminders = editTaskReminders,
+                    initialComponents = editTaskComponents,
                     availableCategories = categories,
+                    amapKey = amapKey,
+                    onGeocode = { address -> viewModel.geocodeLocation(address) },
                     onDismiss = {
                         showEditDialog = false
                         taskToEdit = null
                         editTaskReminders = emptyList()
+                        editTaskComponents = emptyList()
                     },
                     onConfirm = { task ->
                         viewModel.updateTask(task)
                         showEditDialog = false
                         taskToEdit = null
                         editTaskReminders = emptyList()
+                        editTaskComponents = emptyList()
                     },
                     onConfirmWithReminders = { task, reminderConfigs ->
                         viewModel.updateTaskWithReminders(task, reminderConfigs)
                         showEditDialog = false
                         taskToEdit = null
                         editTaskReminders = emptyList()
+                        editTaskComponents = emptyList()
+                    },
+                    onConfirmWithComponents = { task, reminderConfigs, components ->
+                        viewModel.updateTaskWithComponents(task, reminderConfigs, components)
+                        showEditDialog = false
+                        taskToEdit = null
+                        editTaskReminders = emptyList()
+                        editTaskComponents = emptyList()
                     }
                 )
             }
@@ -604,7 +632,10 @@ fun HomeScreen(
                     task = composite.task,
                     subTasks = composite.subTasks,
                     reminders = composite.reminders, // 直接使用复合数据中的提醒
+                    components = composite.components.map { it.toTaskComponent() },
+
                     category = composite.category,
+                    amapKey = amapKey,
                     onDismiss = { selectedTaskId = null },
                     onDelete = {
                         viewModel.deleteTask(it)
@@ -626,7 +657,10 @@ fun HomeScreen(
                     onGenerateSubTasksWithContext = { task ->
                         viewModel.showSubTaskInputDialog(task)
                     },
-                    isGeneratingSubTasks = uiState.isAnalyzing
+                    isGeneratingSubTasks = uiState.isAnalyzing,
+                    onDeleteComponent = { component ->
+                        viewModel.deleteComponent(component)
+                    }
                 )
             }
 

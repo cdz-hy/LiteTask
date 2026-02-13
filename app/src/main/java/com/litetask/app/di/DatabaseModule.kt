@@ -36,4 +36,9 @@ object DatabaseModule {
     fun provideCategoryDao(database: AppDatabase): CategoryDao {
         return database.categoryDao()
     }
+
+    @Provides
+    fun provideTaskComponentDao(database: AppDatabase): com.litetask.app.data.local.TaskComponentDao {
+        return database.taskComponentDao()
+    }
 }

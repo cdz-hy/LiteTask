@@ -135,6 +135,9 @@ dependencies {
     // Reorderable list for drag and drop
     implementation("org.burnoutcrew.composereorderable:reorderable:0.9.6")
 
+    // Coil
+    implementation(libs.coil.compose)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

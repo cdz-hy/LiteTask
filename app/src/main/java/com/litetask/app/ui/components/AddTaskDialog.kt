@@ -49,10 +49,14 @@ import java.util.Date
 fun AddTaskDialog(
     initialTask: Task? = null,
     initialReminders: List<Reminder> = emptyList(),
+    initialComponents: List<com.litetask.app.data.model.TaskComponent> = emptyList(),
     availableCategories: List<Category> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (Task) -> Unit,
-    onConfirmWithReminders: ((Task, List<ReminderConfig>) -> Unit)? = null
+    onConfirmWithReminders: ((Task, List<ReminderConfig>) -> Unit)? = null,
+    onConfirmWithComponents: ((Task, List<ReminderConfig>, List<com.litetask.app.data.model.TaskComponent>) -> Unit)? = null,
+    amapKey: String? = null,
+    onGeocode: (suspend (String) -> com.litetask.app.data.model.AMapRouteData?)? = null
 ) {
     val extendedColors = LocalExtendedColors.current
     var title by remember { mutableStateOf(initialTask?.title ?: "") }
@@ -69,6 +73,9 @@ fun AddTaskDialog(
     }
     var isPinned by remember { mutableStateOf(initialTask?.isPinned ?: false) }
     
+    // 组件状态
+    var components by remember { mutableStateOf(initialComponents) }
+
     // 时间初始化
     val initialStart = initialTask?.startTime ?: System.currentTimeMillis()
     val initialDead = initialTask?.deadline ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
@@ -94,7 +101,7 @@ fun AddTaskDialog(
     val isTaskDone = initialTask?.isDone ?: false
     var showAdvanced by remember { 
         mutableStateOf(
-            if (isTaskDone) false else (initialTask?.isPinned == true || initialReminders.isNotEmpty())
+            if (isTaskDone) false else (initialTask?.isPinned == true || initialReminders.isNotEmpty() || initialComponents.isNotEmpty())
         ) 
     }
 
@@ -379,6 +386,29 @@ fun AddTaskDialog(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
+                    // 组件列表区域 (显示在折叠选项之前，方便查看)
+                    if (components.isNotEmpty()) {
+                        Text(
+                            text = "任务组件",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = extendedColors.textPrimary,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        
+                            
+                        // 显示已添加的组件
+                        TaskComponentList(
+                            components = components,
+                            onRemove = { componentToRemove ->
+                                components = components.filter { it.id != componentToRemove.id }
+                            },
+                            amapKey = amapKey
+                        )
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
                     // Advanced Options Toggle
                     TextButton(
                         onClick = { showAdvanced = !showAdvanced },
@@ -399,7 +429,40 @@ fun AddTaskDialog(
                         exit = shrinkVertically() + fadeOut()
                     ) {
                         Column {
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            // 组件添加栏
+                            Text(
+                                text = "添加扩展组件",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF1F1F1F),
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+                            TaskComponentAddBar(
+                                onAddAMap = { data ->
+                                    val newId = -(System.currentTimeMillis()) // 临时 ID，负数表示未保存
+                                    val component = com.litetask.app.data.model.TaskComponent.AMapComponent(
+                                        id = newId,
+                                        taskId = initialTask?.id ?: 0,
+                                        data = data
+                                    )
+                                    components = components + component
+                                },
+                                onAddFile = { data ->
+                                    val newId = -(System.currentTimeMillis())
+                                    val component = com.litetask.app.data.model.TaskComponent.FileComponent(
+                                        id = newId,
+                                        taskId = initialTask?.id ?: 0,
+                                        data = data
+                                    )
+                                    components = components + component
+                                },
+                                amapKey = amapKey,
+                                onGeocode = onGeocode
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
                             
                             // 提醒设置
                             ReminderSelector(
@@ -503,8 +566,10 @@ fun AddTaskDialog(
                                     originalVoiceText = initialTask?.originalVoiceText
                                 )
                                 
-                                // 如果提供了带提醒的回调，使用它
-                                if (onConfirmWithReminders != null) {
+                                // 优先使用新的带组件回调
+                                if (onConfirmWithComponents != null) {
+                                    onConfirmWithComponents(newTask, selectedReminders, components)
+                                } else if (onConfirmWithReminders != null) {
                                     onConfirmWithReminders(newTask, selectedReminders)
                                 } else {
                                     onConfirm(newTask)

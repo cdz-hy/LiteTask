@@ -11,12 +11,14 @@ import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.AIHistory
 import com.litetask.app.data.model.Category
 import com.litetask.app.data.model.TaskTypeConverter
-@Database(entities = [Task::class, SubTask::class, Reminder::class, AIHistory::class, Category::class], version = 4, exportSchema = false)
+import com.litetask.app.data.model.TaskComponentEntity
+@Database(entities = [Task::class, SubTask::class, Reminder::class, AIHistory::class, Category::class, TaskComponentEntity::class], version = 5, exportSchema = false)
 @TypeConverters(TaskTypeConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun aiHistoryDao(): AIHistoryDao
     abstract fun categoryDao(): CategoryDao
+    abstract fun taskComponentDao(): TaskComponentDao
     
     companion object {
         // 数据库名称必须与 DatabaseModule 中的一致
@@ -124,6 +126,26 @@ abstract class AppDatabase : RoomDatabase() {
         }
         
         /**
+         * 数据库迁移：从版本4到版本5
+         * 添加任务组件表 (TaskComponent)
+         */
+        val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `task_components` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+                        `task_id` INTEGER NOT NULL, 
+                        `component_type` TEXT NOT NULL, 
+                        `data_payload` TEXT NOT NULL, 
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`task_id`) REFERENCES `tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_task_components_task_id` ON `task_components` (`task_id`)")
+            }
+        }
+        
+        /**
          * 获取数据库单例
          * 用于在 BroadcastReceiver 等无法使用 Hilt 注入的地方获取数据库实例
          */
@@ -135,7 +157,7 @@ abstract class AppDatabase : RoomDatabase() {
                         AppDatabase::class.java,
                         DATABASE_NAME
                     )
-                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)  // 添加迁移
+                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)  // 添加迁移
                         .fallbackToDestructiveMigration()
                         .build()
                     INSTANCE = instance

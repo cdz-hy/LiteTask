@@ -19,6 +19,7 @@ private const val TAG = "TaskRepository"
 class TaskRepositoryImpl @Inject constructor(
     private val taskDao: TaskDao,
     private val categoryDao: CategoryDao,
+    private val taskComponentDao: com.litetask.app.data.local.TaskComponentDao,
     private val reminderScheduler: ReminderScheduler
 ) {
     // 拆分流
@@ -57,13 +58,31 @@ class TaskRepositoryImpl @Inject constructor(
     suspend fun deleteSubTask(subTask: SubTask) = taskDao.deleteSubTask(subTask)
 
     suspend fun updateTaskWithSubTasks(task: Task, subTasks: List<SubTask>) {
-        taskDao.updateTask(task)
-        taskDao.deleteSubTasksByTaskId(task.id)
-        if (subTasks.isNotEmpty()) {
-            val newSubTasks = subTasks.map { it.copy(taskId = task.id, id = 0) } 
-            taskDao.insertSubTasks(newSubTasks)
-        }
+        taskDao.updateTaskWithSubTasks(task, subTasks)
     }
+
+    suspend fun insertTaskWithRemindersAndReturnId(task: Task, reminders: List<com.litetask.app.data.model.Reminder>): Long {
+        val taskId = taskDao.insertTask(task)
+        if (reminders.isNotEmpty()) {
+            val remindersWithId = reminders.map { it.copy(taskId = taskId) }
+            taskDao.insertReminders(remindersWithId)
+            
+            // 调度提醒
+            val category = categoryDao.getCategoryById(task.categoryId)
+            remindersWithId.forEach { reminder ->
+                reminderScheduler.scheduleReminderWithTaskInfo(
+                    reminder,
+                    task.title,
+                    task.type.name,
+                    category?.name,
+                    category?.colorHex
+                )
+            }
+        }
+        return taskId
+    }
+
+
     
     suspend fun insertTasks(tasks: List<Task>) = taskDao.insertTasks(tasks)
     
@@ -115,6 +134,11 @@ class TaskRepositoryImpl @Inject constructor(
     suspend fun deleteReminder(reminder: Reminder) = taskDao.deleteReminder(reminder)
     suspend fun updateReminderFired(reminderId: Long, fired: Boolean) = taskDao.updateReminderFired(reminderId, fired)
     suspend fun getPendingReminders(currentTime: Long) = taskDao.getPendingReminders(currentTime)
+    
+    // --- 组件相关操作 ---
+    fun getComponentsByTaskId(taskId: Long) = taskComponentDao.getComponentsByTaskId(taskId)
+    suspend fun insertComponent(component: com.litetask.app.data.model.TaskComponentEntity) = taskComponentDao.insertComponent(component)
+    suspend fun deleteComponent(component: com.litetask.app.data.model.TaskComponentEntity) = taskComponentDao.deleteComponent(component)
     
     /**
      * 更新任务及其提醒

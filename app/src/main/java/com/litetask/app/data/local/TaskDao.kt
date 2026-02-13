@@ -127,6 +127,13 @@ abstract class TaskDao {
 
     @Query("DELETE FROM sub_tasks WHERE task_id = :taskId")
     abstract suspend fun deleteSubTasksByTaskId(taskId: Long)
+
+    @Transaction
+    open suspend fun updateTaskWithSubTasks(task: Task, subTasks: List<SubTask>) {
+        updateTask(task)
+        deleteSubTasksByTaskId(task.id)
+        insertSubTasks(subTasks.map { it.copy(taskId = task.id, id = 0) })
+    }
     
     // --- 搜索功能 ---
     @Transaction

@@ -46,6 +46,7 @@ import com.litetask.app.ui.util.ColorUtils
 import com.litetask.app.data.model.Category
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.litetask.app.data.model.ComponentType
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
@@ -597,6 +598,48 @@ fun HtmlStyleTaskCard(
                                 color = primaryColor
                             )
                         }
+                    }
+
+                    // Task Components Icons
+                    if (composite.components.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            Modifier.fillMaxWidth(), 
+                            verticalAlignment = Alignment.CenterVertically, 
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            composite.components.forEach { component ->
+                                val (icon, label) = when (component.type) {
+                                    ComponentType.AMAP_ROUTE -> Icons.Default.Place to "Route"
+                                    ComponentType.FILE_ATTACHMENT -> Icons.Default.AttachFile to "File"
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .background(
+                                            color = extendedColors.textSecondary.copy(alpha = 0.05f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = label,
+                                        tint = extendedColors.textSecondary.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = extendedColors.textSecondary.copy(alpha = 0.7f),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
 
                         // 下一步行动
                         val nextAction = subTasks.firstOrNull { !it.isCompleted }
@@ -648,7 +691,7 @@ fun HtmlStyleTaskCard(
                 isExpired && !isDone && isPinned -> {
                     Box(
                         modifier = Modifier
-                            .matchParentSize()
+                            .fillMaxSize()
                             .background(
                                 primaryColor.copy(alpha = 0.08f),
                                 RoundedCornerShape(24.dp)
@@ -659,14 +702,13 @@ fun HtmlStyleTaskCard(
                 isExpired && !isDone -> {
                     Box(
                         modifier = Modifier
-                            .matchParentSize()
+                            .fillMaxSize()
                             .background(
                                 Color.Gray.copy(alpha = 0.2f),
                                 RoundedCornerShape(24.dp)
                             )
                     )
                 }
-            }
         }
     }
 }

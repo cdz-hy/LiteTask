@@ -120,6 +120,7 @@ fun TaskDetailSheet(
     task: Task,
     subTasks: List<SubTask>,
     reminders: List<Reminder> = emptyList(),
+    components: List<com.litetask.app.data.model.TaskComponent> = emptyList(),
     category: Category? = null,
     onDismiss: () -> Unit,
     onDelete: (Task) -> Unit,
@@ -129,7 +130,9 @@ fun TaskDetailSheet(
     onDeleteSubTask: (SubTask) -> Unit,
     onGenerateSubTasks: () -> Unit = {},
     onGenerateSubTasksWithContext: (Task) -> Unit = {},
-    isGeneratingSubTasks: Boolean = false
+    isGeneratingSubTasks: Boolean = false,
+    onDeleteComponent: (com.litetask.app.data.model.TaskComponent) -> Unit = {},
+    amapKey: String? = null
 ) {
     val context = LocalContext.current
     val extendedColors = LocalExtendedColors.current
@@ -395,6 +398,16 @@ fun TaskDetailSheet(
                                         )
                                     }
                                 }
+                            }
+
+                            // 3.5 Components
+                            if (components.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                com.litetask.app.ui.components.TaskComponentList(
+                                    components = components,
+                                    onRemove = { onDeleteComponent(it) },
+                                    amapKey = amapKey
+                                )
                             }
 
                             Spacer(modifier = Modifier.height(24.dp))

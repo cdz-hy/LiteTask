@@ -10,6 +10,8 @@ import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.repository.TaskRepositoryImpl
 import com.litetask.app.data.repository.AIRepository
 import com.litetask.app.data.model.Category
+import com.litetask.app.data.model.TaskComponent
+import com.litetask.app.data.model.toEntity
 import com.litetask.app.data.repository.CategoryRepository
 import com.litetask.app.widget.WidgetUpdateHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -141,6 +143,62 @@ class HomeViewModel @Inject constructor(
             if (isLoading) add(TimelineItem.Loading)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // ==================== 高德地图配置 ====================
+    
+    private val _amapKey = MutableStateFlow(preferenceManager.getAMapKey())
+    val amapKey: StateFlow<String?> = _amapKey.asStateFlow()
+
+    fun updateAMapKey(key: String) {
+        preferenceManager.saveAMapKey(key)
+        _amapKey.value = key
+    }
+    
+    /**
+     * 简单地理编码实现 (IO线程)
+     */
+    suspend fun geocodeLocation(address: String): com.litetask.app.data.model.AMapRouteData? = withContext(Dispatchers.IO) {
+        val key = _amapKey.value
+        if (key.isNullOrBlank()) return@withContext null
+        
+        try {
+            val encodedAddress = java.net.URLEncoder.encode(address, "UTF-8")
+            val urlString = "https://restapi.amap.com/v3/geocode/geo?address=$encodedAddress&output=JSON&key=$key"
+            val url = java.net.URL(urlString)
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            
+            if (connection.responseCode == 200) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = org.json.JSONObject(response)
+                if (json.optString("status") == "1") {
+                    val geocodes = json.optJSONArray("geocodes")
+                    if (geocodes != null && geocodes.length() > 0) {
+                        val first = geocodes.getJSONObject(0)
+                        val locationStr = first.optString("location") // "lng,lat"
+                        val parts = locationStr.split(",")
+                        if (parts.size == 2) {
+                            val lng = parts[0].toDoubleOrNull() ?: 0.0
+                            val lat = parts[1].toDoubleOrNull() ?: 0.0
+                            
+                            return@withContext com.litetask.app.data.model.AMapRouteData(
+                                startName = "我的位置",
+                                endName = address, // 使用输入地址作为名称
+                                endAddress = first.optString("formatted_address"),
+                                endLng = lng,
+                                endLat = lat
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext null
+    }
 
     // ==================== 日期筛选（用于日历视图） ====================
     
@@ -641,6 +699,46 @@ class HomeViewModel @Inject constructor(
         }
     }
     
+    /** 添加任务（带组件和提醒） */
+    fun addTaskWithComponents(
+        task: Task, 
+        reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>,
+        components: List<com.litetask.app.data.model.TaskComponent>
+    ) {
+        viewModelScope.launch {
+            // 1. 插入任务并获取 ID (Repository 需要修改以返回新 ID，目前暂不支持，先用 work-around)
+            // 由于 Room 的 insertTask 返回 Row ID，我们需要 Repository 返回它
+            // 临时方案：先插入任务，再查询最新插入的任务 ID (存在并发风险，单人使用尚可)
+            
+            // 更稳健的方案：修改 TaskRepository.insertTaskWithReminders 返回 taskId
+            // 这里假设我们稍后会修改 Repository，先写逻辑
+            
+            // 计算提醒
+            val reminders = reminderConfigs.mapNotNull { config ->
+                val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
+                if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
+                    com.litetask.app.data.model.Reminder(taskId = 0, triggerAt = triggerAt, label = config.generateLabel())
+                } else null
+            }
+            
+            // 插入任务和提醒
+            val newTaskId = taskRepository.insertTaskWithRemindersAndReturnId(task, reminders)
+            
+            // 2. 插入组件
+            components.forEach { component ->
+                val entity = when (component) {
+                    is com.litetask.app.data.model.TaskComponent.AMapComponent -> 
+                        component.toEntity(newTaskId)
+                    is com.litetask.app.data.model.TaskComponent.FileComponent -> 
+                        component.toEntity(newTaskId)
+                }
+                taskRepository.insertComponent(entity)
+            }
+            
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+    
     /** 添加任务并设置提醒 */
     fun addTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
         viewModelScope.launch {
@@ -731,10 +829,22 @@ class HomeViewModel @Inject constructor(
     
     /** 更新任务并更新提醒 */
     fun updateTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
+        updateTaskWithComponents(task, reminderConfigs, emptyList()) // 兼容旧方法，但不建议混用
+    }
+
+    /** 更新任务（带组件和提醒） */
+    fun updateTaskWithComponents(
+        task: Task, 
+        reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>,
+        components: List<com.litetask.app.data.model.TaskComponent>
+    ) {
         viewModelScope.launch {
             // 对于已完成任务，只更新任务信息，不处理提醒（已完成任务不需要提醒）
             if (task.isDone) {
                 taskRepository.updateTask(task)
+                // 更新组件 (即使已完成也允许编辑组件)
+                updateComponentsForTask(task.id, components)
+                
                 WidgetUpdateHelper.refreshAllWidgets(application)
                 return@launch
             }
@@ -746,8 +856,32 @@ class HomeViewModel @Inject constructor(
                 } else null
             }
             taskRepository.updateTaskWithReminders(task, reminders)
+            
+            // 更新组件
+            updateComponentsForTask(task.id, components)
+            
             cleanupTaskFromAdditionalHistory(task.id)
             WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+    
+    private suspend fun updateComponentsForTask(taskId: Long, newComponents: List<com.litetask.app.data.model.TaskComponent>) {
+        // 1. 获取现有组件
+        val oldComponents = taskRepository.getComponentsByTaskId(taskId).first()
+        
+        // 2. 删除所有现有组件 (简单粗暴，但有效。优化方案是做 Diff)
+        // 注意：实际应用中可能需要更精细的更新策略以保留某些状态，但在目前设计中组件是值对象
+        oldComponents.forEach { taskRepository.deleteComponent(it) }
+        
+        // 3. 插入新组件
+        newComponents.forEach { component ->
+             val entity = when (component) {
+                is com.litetask.app.data.model.TaskComponent.AMapComponent -> 
+                    component.toEntity(taskId)
+                is com.litetask.app.data.model.TaskComponent.FileComponent -> 
+                    component.toEntity(taskId)
+            }
+            taskRepository.insertComponent(entity)
         }
     }
 
@@ -1056,15 +1190,25 @@ class HomeViewModel @Inject constructor(
         )
     }
     
-    /**
-     * 取消子任务生成结果
-     */
     fun dismissSubTaskResult() {
         _uiState.value = _uiState.value.copy(
             showSubTaskResult = false,
             generatedSubTasks = emptyList(),
             currentTask = null
         )
+    }
+
+    suspend fun getComponentsForTaskSync(taskId: Long): List<com.litetask.app.data.model.TaskComponent> {
+        return taskRepository.getComponentsByTaskId(taskId).map { list -> list.map { it.toTaskComponent() } }.first()
+    }
+
+    /**
+     * 删除任务组件
+     */
+    fun deleteComponent(component: com.litetask.app.data.model.TaskComponent) {
+        viewModelScope.launch {
+            taskRepository.deleteComponent(component.toEntity(component.taskId))
+        }
     }
 }
 

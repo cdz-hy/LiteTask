@@ -23,9 +23,10 @@ object RepositoryModule {
     fun provideTaskRepository(
         taskDao: TaskDao,
         categoryDao: CategoryDao,
+        taskComponentDao: com.litetask.app.data.local.TaskComponentDao,
         reminderScheduler: ReminderScheduler
     ): TaskRepositoryImpl {
-        return TaskRepositoryImpl(taskDao, categoryDao, reminderScheduler)
+        return TaskRepositoryImpl(taskDao, categoryDao, taskComponentDao, reminderScheduler)
     }
 
     @Provides

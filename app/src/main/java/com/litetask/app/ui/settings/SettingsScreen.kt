@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.SmartToy
@@ -146,6 +147,10 @@ fun SettingsScreen(
     val speechCredentials = remember { mutableStateMapOf<String, String>() }
     val speechConnectionState by viewModel.speechConnectionState.collectAsState()
     
+    // ========== 高德地图配置状态 ==========
+    var amapKey by remember { mutableStateOf("") }
+    val amapConnectionState by viewModel.amapConnectionState.collectAsState()
+    
     // ========== 分类管理状态 ==========
     var showCategoryDialog by remember { mutableStateOf(false) }
     
@@ -159,6 +164,7 @@ fun SettingsScreen(
         apiKey = viewModel.getApiKey() ?: ""
         selectedAiProvider = viewModel.getAiProvider()
         selectedSpeechProvider = viewModel.getSpeechProvider()
+        amapKey = viewModel.getAMapKey() ?: ""
         
         // 加载语音识别凭证
         val savedCredentials = viewModel.getSpeechCredentials(selectedSpeechProvider)
@@ -181,6 +187,13 @@ fun SettingsScreen(
     LaunchedEffect(apiKey, selectedAiProvider) {
         if (aiConnectionState !is SettingsViewModel.ConnectionState.Idle) {
             viewModel.resetConnectionState()
+        }
+    }
+
+    // 当 AMap Key 改变时，重置测试状态
+    LaunchedEffect(amapKey) {
+        if (amapConnectionState !is SettingsViewModel.ConnectionState.Idle) {
+            viewModel.resetAMapConnectionState()
         }
     }
 
@@ -269,7 +282,7 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = stringResource(R.string.key_stored_locally),
+                        text = "密钥仅保存在本地设备",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -370,7 +383,7 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = stringResource(R.string.key_stored_locally),
+                        text = "密钥仅保存在本地设备",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -400,6 +413,79 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(stringResource(R.string.speech_save_settings))
+                }
+            }
+            
+            // ========== 高德地图配置卡片 ==========
+            SettingsCard(
+                title = "地图与定位配置",
+                icon = Icons.Default.Map
+            ) {
+                Text(
+                    text = "用于开启任务路线规划与地图预览功能",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                OutlinedTextField(
+                    value = amapKey,
+                    onValueChange = { amapKey = it },
+                    label = { Text("高德地图 Web 服务 Key") },
+                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("在此输入您的 AMap Web Key") },
+                    singleLine = true,
+                    isError = amapConnectionState is SettingsViewModel.ConnectionState.Error
+                )
+
+                // 测试状态显示
+                ConnectionStateIndicator(state = amapConnectionState)
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "密钥仅保存在本地设备",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Row {
+                        TextButton(
+                            onClick = { viewModel.testAMapConnection(amapKey) },
+                            enabled = amapKey.isNotBlank() && amapConnectionState !is SettingsViewModel.ConnectionState.Testing
+                        ) {
+                            Text("测试连接")
+                        }
+                        
+                        TextButton(
+                            onClick = { 
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://console.amap.com/dev/key/app"))
+                                context.startActivity(intent)
+                            }
+                        ) {
+                            Text("获取 Key")
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = { 
+                        viewModel.saveAMapKey(amapKey)
+                        Toast.makeText(context, "地图设置已保存", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("保存地图设置")
                 }
             }
             
