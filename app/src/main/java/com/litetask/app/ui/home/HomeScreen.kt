@@ -527,7 +527,9 @@ fun HomeScreen(
 
                     availableCategories = categories,
                     amapKey = amapKey,
-                    onGeocode = { address -> viewModel.geocodeLocation(address) }
+                    onGeocode = { address -> viewModel.geocodeLocation(address) },
+                    onSearchLocations = { keyword -> viewModel.searchLocations(keyword) },
+                    onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) }
                 )
             }
             
@@ -583,6 +585,8 @@ fun HomeScreen(
                     availableCategories = categories,
                     amapKey = amapKey,
                     onGeocode = { address -> viewModel.geocodeLocation(address) },
+                    onSearchLocations = { keyword -> viewModel.searchLocations(keyword) },
+                    onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) },
                     onDismiss = {
                         showEditDialog = false
                         taskToEdit = null
@@ -636,6 +640,7 @@ fun HomeScreen(
 
                     category = composite.category,
                     amapKey = amapKey,
+                    onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) },
                     onDismiss = { selectedTaskId = null },
                     onDelete = {
                         viewModel.deleteTask(it)

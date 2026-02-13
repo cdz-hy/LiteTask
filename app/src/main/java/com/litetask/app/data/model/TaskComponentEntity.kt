@@ -91,6 +91,7 @@ data class AMapRouteData(
     @SerializedName("end_address") val endAddress: String?,
     @SerializedName("end_lat") val endLat: Double,
     @SerializedName("end_lng") val endLng: Double,
+    @SerializedName("adcode") val adcode: String? = null,
     @SerializedName("strategy") val strategy: Int = 0 // 0: 速度优先, 2: 距离优先
 )
 

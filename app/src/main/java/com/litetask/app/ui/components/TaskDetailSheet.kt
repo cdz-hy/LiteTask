@@ -132,7 +132,8 @@ fun TaskDetailSheet(
     onGenerateSubTasksWithContext: (Task) -> Unit = {},
     isGeneratingSubTasks: Boolean = false,
     onDeleteComponent: (com.litetask.app.data.model.TaskComponent) -> Unit = {},
-    amapKey: String? = null
+    amapKey: String? = null,
+    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null
 ) {
     val context = LocalContext.current
     val extendedColors = LocalExtendedColors.current
@@ -406,7 +407,8 @@ fun TaskDetailSheet(
                                 com.litetask.app.ui.components.TaskComponentList(
                                     components = components,
                                     onRemove = { onDeleteComponent(it) },
-                                    amapKey = amapKey
+                                    amapKey = amapKey,
+                                    onGetWeather = onGetWeather
                                 )
                             }
 

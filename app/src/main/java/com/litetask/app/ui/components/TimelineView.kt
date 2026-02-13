@@ -9,6 +9,8 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -600,13 +602,14 @@ fun HtmlStyleTaskCard(
                         }
                     }
 
-                    // Task Components Icons
+                    // Task Components Tags
                     if (composite.components.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            Modifier.fillMaxWidth(), 
-                            verticalAlignment = Alignment.CenterVertically, 
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             composite.components.forEach { component ->
                                 val (icon, label) = when (component.type) {
@@ -617,23 +620,26 @@ fun HtmlStyleTaskCard(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
                                         .background(
-                                            color = extendedColors.textSecondary.copy(alpha = 0.05f),
-                                            shape = RoundedCornerShape(4.dp)
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(
+                                                alpha = if (isExpired) 0.3f else 0.5f
+                                            ),
+                                            shape = RoundedCornerShape(6.dp)
                                         )
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Icon(
                                         imageVector = icon,
                                         contentDescription = label,
-                                        tint = extendedColors.textSecondary.copy(alpha = 0.7f),
+                                        tint = extendedColors.textSecondary.copy(alpha = 0.8f),
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = label,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = extendedColors.textSecondary.copy(alpha = 0.7f),
-                                        fontSize = 10.sp
+                                        color = extendedColors.textSecondary.copy(alpha = 0.9f),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
                             }

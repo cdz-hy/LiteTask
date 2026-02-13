@@ -39,7 +39,8 @@ class HomeViewModel @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val aiHistoryRepository: com.litetask.app.data.repository.AIHistoryRepository,
     private val speechHelper: com.litetask.app.util.SpeechRecognizerHelper,
-    private val preferenceManager: com.litetask.app.data.local.PreferenceManager
+    private val preferenceManager: com.litetask.app.data.local.PreferenceManager,
+    private val aMapRepository: com.litetask.app.data.repository.AMapRepository
 ) : ViewModel() {
 
     // ==================== 数据加载配置 ====================
@@ -146,58 +147,32 @@ class HomeViewModel @Inject constructor(
 
     // ==================== 高德地图配置 ====================
     
-    private val _amapKey = MutableStateFlow(preferenceManager.getAMapKey())
-    val amapKey: StateFlow<String?> = _amapKey.asStateFlow()
+    val amapKey: StateFlow<String?> = preferenceManager.amapKeyFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), preferenceManager.getAMapKey())
 
     fun updateAMapKey(key: String) {
         preferenceManager.saveAMapKey(key)
-        _amapKey.value = key
     }
     
     /**
      * 简单地理编码实现 (IO线程)
      */
-    suspend fun geocodeLocation(address: String): com.litetask.app.data.model.AMapRouteData? = withContext(Dispatchers.IO) {
-        val key = _amapKey.value
-        if (key.isNullOrBlank()) return@withContext null
-        
-        try {
-            val encodedAddress = java.net.URLEncoder.encode(address, "UTF-8")
-            val urlString = "https://restapi.amap.com/v3/geocode/geo?address=$encodedAddress&output=JSON&key=$key"
-            val url = java.net.URL(urlString)
-            val connection = url.openConnection() as java.net.HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
-            
-            if (connection.responseCode == 200) {
-                val response = connection.inputStream.bufferedReader().use { it.readText() }
-                val json = org.json.JSONObject(response)
-                if (json.optString("status") == "1") {
-                    val geocodes = json.optJSONArray("geocodes")
-                    if (geocodes != null && geocodes.length() > 0) {
-                        val first = geocodes.getJSONObject(0)
-                        val locationStr = first.optString("location") // "lng,lat"
-                        val parts = locationStr.split(",")
-                        if (parts.size == 2) {
-                            val lng = parts[0].toDoubleOrNull() ?: 0.0
-                            val lat = parts[1].toDoubleOrNull() ?: 0.0
-                            
-                            return@withContext com.litetask.app.data.model.AMapRouteData(
-                                startName = "我的位置",
-                                endName = address, // 使用输入地址作为名称
-                                endAddress = first.optString("formatted_address"),
-                                endLng = lng,
-                                endLat = lat
-                            )
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return@withContext null
+    suspend fun geocodeLocation(address: String): com.litetask.app.data.model.AMapRouteData? {
+        return aMapRepository.geocodeLocation(address)
+    }
+
+    /**
+     * 搜索地点建议 (IO线程)
+     */
+    suspend fun searchLocations(keyword: String): List<com.litetask.app.data.model.AMapRouteData> {
+        return aMapRepository.searchLocations(keyword)
+    }
+    
+    /**
+     * 获取实况天气 (IO线程)
+     */
+    suspend fun getWeatherForAdcode(adcode: String): Pair<String, String>? {
+        return aMapRepository.fetchWeather(adcode)
     }
 
     // ==================== 日期筛选（用于日历视图） ====================

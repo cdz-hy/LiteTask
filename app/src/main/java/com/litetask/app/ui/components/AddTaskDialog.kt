@@ -56,7 +56,9 @@ fun AddTaskDialog(
     onConfirmWithReminders: ((Task, List<ReminderConfig>) -> Unit)? = null,
     onConfirmWithComponents: ((Task, List<ReminderConfig>, List<com.litetask.app.data.model.TaskComponent>) -> Unit)? = null,
     amapKey: String? = null,
-    onGeocode: (suspend (String) -> com.litetask.app.data.model.AMapRouteData?)? = null
+    onGeocode: (suspend (String) -> com.litetask.app.data.model.AMapRouteData?)? = null,
+    onSearchLocations: (suspend (String) -> List<com.litetask.app.data.model.AMapRouteData>)? = null,
+    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null
 ) {
     val extendedColors = LocalExtendedColors.current
     var title by remember { mutableStateOf(initialTask?.title ?: "") }
@@ -398,13 +400,14 @@ fun AddTaskDialog(
                         
                             
                         // 显示已添加的组件
-                        TaskComponentList(
-                            components = components,
-                            onRemove = { componentToRemove ->
-                                components = components.filter { it.id != componentToRemove.id }
-                            },
-                            amapKey = amapKey
-                        )
+                            TaskComponentList(
+                                components = components,
+                                onRemove = { component ->
+                                    components = components.filter { it != component }
+                                },
+                                amapKey = amapKey,
+                                onGetWeather = onGetWeather
+                            )
                         
                         Spacer(modifier = Modifier.height(16.dp))
                     }
@@ -459,7 +462,8 @@ fun AddTaskDialog(
                                     components = components + component
                                 },
                                 amapKey = amapKey,
-                                onGeocode = onGeocode
+                                onGeocode = onGeocode,
+                                onSearchLocations = onSearchLocations
                             )
                             
                             Spacer(modifier = Modifier.height(16.dp))

@@ -2,6 +2,10 @@ package com.litetask.app.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.onStart
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -11,6 +15,20 @@ class PreferenceManager @Inject constructor(
     @ApplicationContext context: Context
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences("litetask_prefs", Context.MODE_PRIVATE)
+
+    /**
+     * 获取高德地图 Key 的 Flow
+     */
+    val amapKeyFlow: Flow<String?> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
+            if (key == KEY_AMAP_KEY) {
+                trySend(sharedPreferences.getString(KEY_AMAP_KEY, null))
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(prefs.getString(KEY_AMAP_KEY, null))
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
 
     companion object {
         // AI 相关

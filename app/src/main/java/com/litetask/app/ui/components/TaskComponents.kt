@@ -12,7 +12,13 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material3.*
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,6 +29,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.launch
 import com.litetask.app.data.model.AMapRouteData
 import com.litetask.app.data.model.FileAttachmentData
@@ -38,6 +47,7 @@ fun TaskComponentAddBar(
     onAddFile: (FileAttachmentData) -> Unit,
     amapKey: String? = null,
     onGeocode: (suspend (String) -> AMapRouteData?)? = null,
+    onSearchLocations: (suspend (String) -> List<AMapRouteData>)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -113,7 +123,8 @@ fun TaskComponentAddBar(
                 onAddAMap(data)
                 showAMapDialog = false
             },
-            onGeocode = onGeocode
+            onGeocode = onGeocode,
+            onSearchLocations = onSearchLocations
         )
     }
 }
@@ -126,29 +137,87 @@ fun TaskComponentAddBar(
 fun AddAMapRouteDialog(
     onDismiss: () -> Unit,
     onConfirm: (AMapRouteData) -> Unit,
-    onGeocode: (suspend (String) -> AMapRouteData?)? = null
+    onGeocode: (suspend (String) -> AMapRouteData?)? = null,
+    onSearchLocations: (suspend (String) -> List<AMapRouteData>)? = null
 ) {
     var destination by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf("") }
+    var searchResults by remember { mutableStateOf<List<AMapRouteData>>(emptyList()) }
+    var showDropdown by remember { mutableStateOf(false) }
+    
     val scope = rememberCoroutineScope()
+    
+    // 防抖动搜索
+    LaunchedEffect(destination) {
+        if (destination.length > 1 && onSearchLocations != null) {
+            // 简单的防抖：等待500ms
+            kotlinx.coroutines.delay(500)
+            // 只有当destination没有再次变化才执行
+            scope.launch {
+                val results = onSearchLocations(destination)
+                if (results.isNotEmpty()) {
+                    searchResults = results
+                    showDropdown = true
+                }
+            }
+        } else {
+            showDropdown = false
+        }
+    }
+    
+    var textFieldSize by remember { mutableStateOf(IntSize.Zero) }
     
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("添加路线导航") },
         text = {
             Column {
-                OutlinedTextField(
-                    value = destination,
-                    onValueChange = { 
-                        destination = it
-                        errorMsg = ""
-                    },
-                    label = { Text("目的地 (例如: 北京市)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    isError = errorMsg.isNotEmpty(),
-                    supportingText = if (errorMsg.isNotEmpty()) { { Text(errorMsg) } } else null
-                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = destination,
+                        onValueChange = { 
+                            destination = it
+                            errorMsg = ""
+                        },
+                        label = { Text("目的地 (例如: 北京市)") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onSizeChanged { textFieldSize = it },
+                        isError = errorMsg.isNotEmpty(),
+                        supportingText = if (errorMsg.isNotEmpty()) { { Text(errorMsg) } } else null,
+                        singleLine = true
+                    )
+                    
+                    // 下拉建议列表
+                    DropdownMenu(
+                        expanded = showDropdown,
+                        onDismissRequest = { showDropdown = false },
+                        offset = androidx.compose.ui.unit.DpOffset(0.dp, 0.dp),
+                        modifier = Modifier
+                            .width(with(LocalDensity.current) { textFieldSize.width.toDp() })
+                            .heightIn(max = 200.dp),
+                        properties = androidx.compose.ui.window.PopupProperties(focusable = false)
+                    ) {
+                        searchResults.forEach { result ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(result.endName, fontWeight = FontWeight.Bold)
+                                        Text(result.endAddress ?: "", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                    }
+                                },
+                                onClick = {
+                                    destination = result.endName
+                                    showDropdown = false
+                                    // 直接带入完整数据
+                                    onConfirm(result)
+                                }
+                            )
+                        }
+                    }
+                }
+
                 if (isLoading) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                 }
@@ -202,7 +271,6 @@ fun AddAMapRouteDialog(
         }
     )
 }
-
 /**
  * 组件列表展示
  */
@@ -211,6 +279,7 @@ fun TaskComponentList(
     components: List<TaskComponent>,
     onRemove: (TaskComponent) -> Unit,
     amapKey: String? = null,
+    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null,
     modifier: Modifier = Modifier
 ) {
     if (components.isEmpty()) return
@@ -220,9 +289,12 @@ fun TaskComponentList(
     Column(modifier = modifier) {
         components.forEach { component ->
             when (component) {
-                is TaskComponent.AMapComponent -> AMapComponentCard(component.data, amapKey) { 
-                    componentToDelete = component 
-                }
+                is TaskComponent.AMapComponent -> AMapComponentCard(
+                    data = component.data, 
+                    apiKey = amapKey,
+                    onGetWeather = onGetWeather,
+                    onRemove = { componentToDelete = component }
+                )
                 is TaskComponent.FileComponent -> FileComponentCard(component.data) { 
                     componentToDelete = component 
                 }
@@ -275,18 +347,33 @@ fun TaskComponentList(
 fun AMapComponentCard(
     data: AMapRouteData,
     apiKey: String? = null,
+    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null,
     onRemove: () -> Unit
 ) {
     val context = LocalContext.current
-    // 高德静态地图 URL
+    var weatherStr by remember { mutableStateOf<String?>(null) }
+    var temperature by remember { mutableStateOf<String?>(null) }
+    
+    // 获取天气信息
+    LaunchedEffect(data.adcode, apiKey) {
+        if (!apiKey.isNullOrBlank() && !data.adcode.isNullOrBlank() && onGetWeather != null) {
+            val result = onGetWeather(data.adcode)
+            if (result != null) {
+                weatherStr = result.first
+                temperature = result.second
+            }
+        }
+    }
+
+    // 高德静态地图 URL (增加 zoom 到 15 以显示更详细)
     val staticMapUrl = if (!apiKey.isNullOrBlank()) {
-        "https://restapi.amap.com/v3/staticmap?location=${data.endLng},${data.endLat}&zoom=14&size=600*300&markers=mid,0xFF0000,A:${data.endLng},${data.endLat}&key=$apiKey"
+        "https://restapi.amap.com/v3/staticmap?location=${data.endLng},${data.endLat}&zoom=15&size=600*300&markers=mid,0xFF0000,A:${data.endLng},${data.endLat}&key=$apiKey"
     } else null
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(100.dp)
+            .height(110.dp) // 稍微增加高度
             .clickable {
                 // 唤起高德地图 App
                 val uri = android.net.Uri.parse("androidamap://navi?sourceApplication=LiteTask&lat=${data.endLat}&lon=${data.endLng}&dev=0&style=2")
@@ -305,13 +392,12 @@ fun AMapComponentCard(
             // 地图缩略图
             Box(
                 modifier = Modifier
-                    .width(120.dp)
+                    .width(130.dp)
                     .fillMaxHeight()
                     .background(Color.LightGray),
                 contentAlignment = Alignment.Center
             ) {
                 if (staticMapUrl != null) {
-                    androidx.compose.ui.layout.ContentScale
                     AsyncImage(
                         model = staticMapUrl,
                         contentDescription = "Map",
@@ -327,23 +413,70 @@ fun AMapComponentCard(
                 modifier = Modifier
                     .weight(1f)
                     .padding(12.dp),
-                verticalArrangement = Arrangement.Center
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = "导航至：${data.endName}",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "点击一键导航",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Column {
+                    Text(
+                        text = data.endName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    
+                    if (!data.endAddress.isNullOrBlank()) {
+                        Text(
+                            text = data.endAddress ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                ) {
+                    // 天气信息
+                    if (weatherStr != null && temperature != null) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "$weatherStr $temperature°C",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    } else {
+                        // 占位或不显示
+                        Spacer(modifier = Modifier.width(1.dp))
+                    }
+                    
+                    Text(
+                        text = "点击导航",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
-            IconButton(onClick = onRemove) {
+            IconButton(
+                onClick = onRemove, 
+                modifier = Modifier.padding(top = 4.dp, end = 4.dp).size(24.dp)
+            ) {
                 Icon(Icons.Default.Close, "删除组件", modifier = Modifier.size(16.dp))
             }
         }
@@ -360,39 +493,113 @@ fun FileComponentCard(
 ) {
     val context = LocalContext.current
     
-    AssistChip(
-        onClick = {
-            try {
-                val uri = android.net.Uri.parse(data.fileUri)
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, data.mimeType)
-                    flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+    val isImage = data.mimeType.startsWith("image/")
+    
+    if (isImage) {
+        // 图片类型：显示缩略图卡片
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .clickable {
+                    try {
+                        val uri = android.net.Uri.parse(data.fileUri)
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, data.mimeType)
+                            flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        }
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(context, "无法打开此图片", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                },
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                // 图片预览
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .background(Color.LightGray)
+                ) {
+                    AsyncImage(
+                        model = data.fileUri,
+                        contentDescription = "Image Preview",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
-                context.startActivity(intent)
-            } catch (e: Exception) {
-                android.widget.Toast.makeText(context, "无法打开此文件", android.widget.Toast.LENGTH_SHORT).show()
+                
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = data.fileName,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = formatFileSize(data.fileSize),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+
+                IconButton(onClick = onRemove) {
+                    Icon(Icons.Default.Close, "删除", modifier = Modifier.size(18.dp))
+                }
             }
-        },
-        label = { 
-            Text(
-                text = "${data.fileName} (${formatFileSize(data.fileSize)})",
-                maxLines = 1
-            ) 
-        },
-        leadingIcon = { 
-            Icon(Icons.Default.AttachFile, null, Modifier.size(16.dp)) 
-        },
-        trailingIcon = {
-            IconButton(onClick = onRemove, modifier = Modifier.size(16.dp)) {
-                Icon(Icons.Default.Close, "删除", modifier = Modifier.size(12.dp))
-            }
-        },
-        colors = AssistChipDefaults.assistChipColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-            labelColor = MaterialTheme.colorScheme.onSecondaryContainer
-        ),
-        modifier = Modifier.fillMaxWidth()
-    )
+        }
+    } else {
+        // 非图片类型：使用带图标的 Chip 样式
+        // 根据文件类型选择图标
+        val icon = when {
+            data.mimeType == "application/pdf" -> Icons.Default.PictureAsPdf
+            data.mimeType.contains("word") || data.fileName.endsWith(".doc") || data.fileName.endsWith(".docx") -> Icons.Default.Description
+            data.mimeType.contains("text") || data.fileName.endsWith(".txt") -> Icons.Default.Description
+            else -> Icons.Default.InsertDriveFile
+        }
+        
+        AssistChip(
+            onClick = {
+                try {
+                    val uri = android.net.Uri.parse(data.fileUri)
+                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, data.mimeType)
+                        flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    }
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(context, "无法打开此文件", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            },
+            label = { 
+                Text(
+                    text = "${data.fileName} (${formatFileSize(data.fileSize)})",
+                    maxLines = 1
+                ) 
+            },
+            leadingIcon = { 
+                Icon(icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary) 
+            },
+            trailingIcon = {
+                IconButton(onClick = onRemove, modifier = Modifier.size(20.dp)) {
+                    Icon(Icons.Default.Close, "删除", modifier = Modifier.size(14.dp))
+                }
+            },
+            colors = AssistChipDefaults.assistChipColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        )
+    }
 }
 
 fun formatFileSize(size: Long): String {
