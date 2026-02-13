@@ -35,23 +35,35 @@
 ### AI 子任务拆解
 - 针对复杂目标，可借助 AI 将其分解为数条具体、可执行的子任务
 - 支持输入补充说明，按照特定重点或方向进行拆解
-- 可对子任务分析结果进行修改，重排序等
+- 可对子任务分析结果进行修改、重排序等
 
 ### 多维度可视化
 - **时间线视图**：日常任务概览，左侧色条区分类别
 - **甘特图视图**：时间跨度可视化，把控整体进度
-- **截止日视图**：聚焦紧急任务，治疗拖延症
+- **截止日视图**：聚焦紧急任务，按紧急度分组排列
 
 ### 任务管理体系
-- 父任务承载目标和时间段
-- 子任务分解具体执行步骤
+- 父任务承载目标和时间段，子任务分解具体执行步骤
 - 进度条实时反馈完成情况
 - 支持任务置顶、分类、提醒
+
+### 自定义分类与颜色
+- 预置工作、生活、学习、紧急四大分类
+- 支持自定义分类名称、颜色（HEX）
+
+### 任务强提醒
+- 支持自定义提醒时间：任务开始时、截止前n小时/天等
+- 全屏提醒弹窗（锁屏可显示），可配置声音与振动
 
 ### 桌面小组件
 - 任务列表小组件：快速查看待办事项
 - 甘特图小组件：时间安排一目了然
 - 截止日小组件：紧急任务桌面提醒
+
+### 数据备份与恢复
+- 全量导出为 JSON 文件（任务、子任务、分类、提醒、组件等）
+- 导入时自动识别重复任务（基于标题+时间+类型指纹），防止数据冗余
+- 分类智能合并，跨设备迁移无缝衔接
 
 ## 下载安装
 
@@ -86,19 +98,23 @@ EncryptedSharedPreferences - 安全存储
 ### 数据模型
 ```kotlin
 Task (任务主表)
-├── id, title, type, startTime, deadline
-├── isDone, isPinned, isExpired
-└── completedAt, expiredAt
+├── id, title, description, startTime, deadline
+├── isDone, isPinned, isExpired, categoryId
+└── createdAt, completedAt, expiredAt
 
-SubTask (子任务表)
-├── taskId (外键)
-├── content, isCompleted
-└── order
+SubTask (子任务表)              Category (分类表)
+├── taskId (FK)                 ├── id, name, colorHex
+├── content, isCompleted        └── iconName, isDefault
+└── sortOrder
 
-Reminder (提醒表)
-├── taskId (外键)
-├── triggerAt, label
+Reminder (提醒表)               TaskComponent (组件表)
+├── taskId (FK)                 ├── taskId (FK), componentType
+├── triggerAt, label            └── dataPayload (JSON), createdAt
 └── isFired
+
+AIHistory (AI 历史表)
+├── content, sourceType (VOICE/TEXT/SUBTASK)
+└── parsedCount, isSuccess, timestamp
 ```
 
 ## 项目结构
@@ -113,15 +129,16 @@ app/src/main/java/com/litetask/app/
 │   ├── repository/      # 数据仓库
 │   └── speech/          # 语音识别
 ├── di/                  # Hilt 依赖注入
-├── reminder/            # 提醒与通知
+├── reminder/            # 提醒调度与通知
 ├── ui/
+│   ├── backup/          # 数据备份与恢复
 │   ├── components/      # 可复用组件
 │   ├── home/            # 主页 (Timeline/Gantt/Deadline)
 │   ├── search/          # 搜索界面
 │   ├── settings/        # 设置界面
 │   └── theme/           # Material 3 主题
 ├── util/                # 工具类
-└── widget/              # 桌面小组件
+└── widget/              # 桌面小组件 (列表/甘特/截止)
 ```
 
 ## 开发环境
@@ -160,6 +177,7 @@ git clone https://github.com/cdz-hy/LiteTask.git
 | Retrofit | 2.9+ | 网络请求 |
 | OkHttp | 4.12+ | HTTP 客户端 |
 | Kotlin Coroutines | 1.7+ | 异步编程 |
+| Gson | 2.10+ | JSON 序列化 |
 
 ## 设计理念
 

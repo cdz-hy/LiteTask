@@ -2,7 +2,7 @@
 
 <div align="center">
 
-A lightweight task management app that simplifies schedule creation through AI voice recognition and large language model analysis.
+A lightweight task management app that simplifies the schedule creation process based on speech recognition and large language model analysis.
 
 [中文](README.md) | [English](README.en.md)
 
@@ -40,18 +40,30 @@ A lightweight task management app that simplifies schedule creation through AI v
 ### Multi-Dimensional Visualization
 - **Timeline View**: Daily task overview with color-coded categories
 - **Gantt Chart View**: Visualize time spans and track overall progress
-- **Deadline View**: Focus on urgent tasks and overcome procrastination
+- **Deadline View**: Focus on urgent tasks, grouped by urgency level
 
 ### Task Management System
-- Parent tasks define goals and time periods
-- Subtasks break down specific execution steps
+- Parent tasks define goals and time periods; subtasks break down specific execution steps
 - Real-time progress feedback via progress bars
 - Support for pinning, categorization, and reminders
+
+### Custom Categories & Colors
+- Built-in Work, Life, Study, and Urgent categories
+- Support for custom category names and colors (HEX)
+
+### Hard Task Reminders
+- Custom reminder times: at task start, n hours/days before deadline, etc.
+- Full-screen reminder popup (visible on lock screen), configurable sound and vibration
 
 ### Home Screen Widgets
 - Task List Widget: Quick view of upcoming to-dos
 - Gantt Chart Widget: Time schedule at a glance
 - Deadline Widget: Home screen reminders for urgent tasks
+
+### Data Backup & Restore
+- Full export to JSON file (tasks, subtasks, categories, reminders, components, etc.)
+- Auto-detect duplicate tasks on import (title + time + type fingerprint)
+- Smart category merging for seamless cross-device migration
 
 ## Download & Installation
 
@@ -61,7 +73,7 @@ Go to the [Releases](https://github.com/cdz-hy/LiteTask/releases) page to downlo
 
 ## Technical Implementation
 
-### Architecture
+### Architecture Design
 - **UI Layer**: Jetpack Compose + Material Design 3
 - **Data Layer**: Room Database + Repository Pattern
 - **Dependency Injection**: Hilt
@@ -86,19 +98,23 @@ EncryptedSharedPreferences - Secure storage
 ### Data Models
 ```kotlin
 Task (Primary Table)
-├── id, title, type, startTime, deadline
-├── isDone, isPinned, isExpired
-└── completedAt, expiredAt
+├── id, title, description, startTime, deadline
+├── isDone, isPinned, isExpired, categoryId
+└── createdAt, completedAt, expiredAt
 
-SubTask (Subtask Table)
-├── taskId (Foreign Key)
-├── content, isCompleted
-└── order
+SubTask (Subtasks Table)         Category (Category Table)
+├── taskId (FK)                  ├── id, name, colorHex
+├── content, isCompleted         └── iconName, isDefault
+└── sortOrder
 
-Reminder (Reminder Table)
-├── taskId (Foreign Key)
-├── triggerAt, label
+Reminder (Reminder Table)        TaskComponent (Component Table)
+├── taskId (FK)                  ├── taskId (FK), componentType
+├── triggerAt, label             └── dataPayload (JSON), createdAt
 └── isFired
+
+AIHistory (AI History Table)
+├── content, sourceType (VOICE/TEXT/SUBTASK)
+└── parsedCount, isSuccess, timestamp
 ```
 
 ## Project Structure
@@ -113,15 +129,16 @@ app/src/main/java/com/litetask/app/
 │   ├── repository/      # Data repositories
 │   └── speech/          # Speech recognition
 ├── di/                  # Hilt dependency injection
-├── reminder/            # Reminders & notifications
+├── reminder/            # Reminder scheduling & notifications
 ├── ui/
+│   ├── backup/          # Data backup & restore
 │   ├── components/      # Reusable components
 │   ├── home/            # Home (Timeline/Gantt/Deadline)
 │   ├── search/          # Search screen
 │   ├── settings/        # Settings screen
 │   └── theme/           # Material 3 theme
 ├── util/                # Utilities
-└── widget/              # Home screen widgets
+└── widget/              # Home screen widgets (List/Gantt/Deadline)
 ```
 
 ## Development Environment
@@ -156,9 +173,10 @@ git clone https://github.com/cdz-hy/LiteTask.git
 | Jetpack Compose | 1.5+ | UI Framework |
 | Room | 2.6+ | Database |
 | Hilt | 2.48+ | Dependency Injection |
-| Retrofit | 2.9+ | Network Requests |
+| Retrofit | 2.9+ | Networking |
 | OkHttp | 4.12+ | HTTP Client |
 | Kotlin Coroutines | 1.7+ | Async Programming |
+| Gson | 2.10+ | JSON Serialization |
 
 ## Design Philosophy
 
