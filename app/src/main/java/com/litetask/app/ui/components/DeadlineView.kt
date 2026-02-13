@@ -27,16 +27,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.litetask.app.R
+import com.litetask.app.data.model.Category
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.ui.search.SearchViewModel
 import com.litetask.app.ui.theme.LiteTaskColors
 import com.litetask.app.ui.theme.LocalExtendedColors
+import com.litetask.app.ui.util.ColorUtils
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.max
+import androidx.compose.ui.unit.sp
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -246,7 +251,7 @@ fun DeadlineTaskItem(
     }
 
     // Colors
-    val primaryColor = getTaskColor(task.type)
+    val primaryColor = getTaskColor(task.type, composite.category)
     val urgentColor = LiteTaskColors.urgentTask()
     val soonColor = Color(0xFFEAB308) // Amber/Yellow for soon tasks
     val extendedColors = LocalExtendedColors.current
@@ -365,7 +370,7 @@ fun DeadlineTaskItem(
                                 shape = RoundedCornerShape(4.dp)
                             ) {
                                 Text(
-                                    text = getTaskTypeName(task.type),
+                                    text = getTaskTypeName(task.type, composite.category),
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
@@ -408,7 +413,10 @@ fun DeadlineTaskItem(
 }
 
 @Composable
-private fun getTaskColor(type: TaskType): Color {
+private fun getTaskColor(type: TaskType, category: Category? = null): Color {
+    if (category != null) {
+        return ColorUtils.parseColor(category.colorHex)
+    }
     return when (type) {
         TaskType.WORK -> LiteTaskColors.workTask()
         TaskType.LIFE -> LiteTaskColors.lifeTask()
@@ -418,7 +426,10 @@ private fun getTaskColor(type: TaskType): Color {
 }
 
 @Composable
-private fun getTaskTypeName(type: TaskType): String {
+private fun getTaskTypeName(type: TaskType, category: Category? = null): String {
+    if (category != null) {
+        return category.name
+    }
     return when (type) {
         TaskType.WORK -> stringResource(R.string.task_type_work)
         TaskType.LIFE -> stringResource(R.string.task_type_life)

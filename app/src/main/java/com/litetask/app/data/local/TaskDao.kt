@@ -96,6 +96,10 @@ abstract class TaskDao {
     @Query("SELECT * FROM tasks WHERE id = :taskId")
     abstract fun getTaskDetail(taskId: Long): Flow<TaskDetailComposite>
 
+    @Transaction
+    @Query("SELECT * FROM tasks WHERE id = :taskId")
+    abstract suspend fun getTaskDetailCompositeSync(taskId: Long): TaskDetailComposite?
+
     @Query("SELECT * FROM tasks WHERE id = :id")
     abstract suspend fun getTaskById(id: Long): Task?
 
@@ -369,6 +373,15 @@ abstract class TaskDao {
      * 同步获取即将截止的任务（用于截止提醒小组件，排除已过期）
      * 按截止时间排序，最紧急的在前
      */
+    @Transaction
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE is_done = 0 AND is_expired = 0 AND deadline > :currentTime
+        ORDER BY deadline ASC
+        LIMIT :limit
+    """)
+    abstract suspend fun getUpcomingDeadlineCompositesSyncWithTime(currentTime: Long, limit: Int): List<TaskDetailComposite>
+
     @Query("""
         SELECT * FROM tasks 
         WHERE is_done = 0 AND is_expired = 0 AND deadline > :currentTime
@@ -402,9 +415,35 @@ abstract class TaskDao {
     abstract suspend fun getActiveTasksWithExpiredSync(): List<Task>
     
     /**
+     * 获取所有进行中的任务详情（包括未完成且未过期，以及已过期但未完成的任务）
+     * 用于任务列表小组件，支持分类颜色显示
+     * 排序要求：置顶未完成 -> 未完成 -> 置顶已过期 -> 已过期
+     */
+    @Transaction
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE is_done = 0
+        ORDER BY is_expired ASC, is_pinned DESC, start_time ASC, deadline ASC
+        LIMIT 40
+    """)
+    abstract suspend fun getActiveTaskDetailCompositesWithExpiredSync(): List<TaskDetailComposite>
+    
+    /**
      * 同步获取今日相关的所有任务（包括已完成的，用于甘特图小组件，排除已过期）
      * 包括：今天开始的任务 或 今天截止的任务 或 跨越今天的任务
      */
+    @Transaction
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE (
+            (start_time >= :startOfDay AND start_time < :endOfDay)
+            OR (deadline >= :startOfDay AND deadline < :endOfDay)
+            OR (start_time < :startOfDay AND deadline >= :endOfDay)
+        )
+        ORDER BY is_done ASC, start_time ASC, deadline ASC
+    """)
+    abstract suspend fun getTodayAllTaskCompositesSync(startOfDay: Long, endOfDay: Long): List<TaskDetailComposite>
+
     @Query("""
         SELECT * FROM tasks 
         WHERE (

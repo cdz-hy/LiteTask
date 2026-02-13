@@ -822,7 +822,10 @@ fun ActionIcon(
 }
 
 @Composable
-private fun getTaskTypeName(type: TaskType): String {
+private fun getTaskTypeName(type: TaskType, category: Category? = null): String {
+    if (category != null) {
+        return category.name
+    }
     return when (type) {
         TaskType.WORK -> stringResource(R.string.task_type_work)
         TaskType.LIFE -> stringResource(R.string.task_type_life)

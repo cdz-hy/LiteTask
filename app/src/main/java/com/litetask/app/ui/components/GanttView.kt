@@ -37,6 +37,8 @@ import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.data.model.Category
+import com.litetask.app.ui.util.ColorUtils
 import com.litetask.app.ui.theme.LocalExtendedColors
 import java.text.SimpleDateFormat
 import java.util.*
@@ -580,6 +582,31 @@ fun GanttTaskCard(
     }
 
     // Determine Colors using theme - 避免卡片半透明，保持实心背景
+    // Determine Colors using theme - 避免卡片半透明，保持实心背景
+    val category = composite.category
+    
+    val baseColor = if (category != null) {
+        ColorUtils.parseColor(category.colorHex)
+    } else {
+        when (task.type) {
+            TaskType.WORK -> extendedColors.ganttWork
+            TaskType.LIFE -> extendedColors.ganttLife
+            TaskType.STUDY -> extendedColors.ganttStudy
+            TaskType.URGENT -> extendedColors.ganttUrgent
+        }
+    }
+    
+    val baseSurface = if (category != null) {
+        ColorUtils.getSurfaceColor(baseColor)
+    } else {
+        when (task.type) {
+            TaskType.WORK -> extendedColors.ganttWorkBackground
+            TaskType.LIFE -> extendedColors.ganttLifeBackground
+            TaskType.STUDY -> extendedColors.ganttStudyBackground
+            TaskType.URGENT -> extendedColors.ganttUrgentBackground
+        }
+    }
+
     val (bg, border, text, fill) = when {
         task.isDone -> {
             // 已完成任务：灰色显示
@@ -587,21 +614,11 @@ fun GanttTaskCard(
         }
         task.isExpired -> {
             // 已过期任务：使用任务类型颜色但文字透明度降低，背景保持实心
-            when (task.type) {
-                TaskType.WORK -> Quad(extendedColors.ganttWorkBackground, extendedColors.ganttWorkBorder, extendedColors.ganttWork.copy(alpha = 0.7f), extendedColors.ganttWork.copy(alpha = 0.7f))
-                TaskType.LIFE -> Quad(extendedColors.ganttLifeBackground, extendedColors.ganttLifeBorder, extendedColors.ganttLife.copy(alpha = 0.7f), extendedColors.ganttLife.copy(alpha = 0.7f))
-                TaskType.STUDY -> Quad(extendedColors.ganttStudyBackground, extendedColors.ganttStudyBorder, extendedColors.ganttStudy.copy(alpha = 0.7f), extendedColors.ganttStudy.copy(alpha = 0.7f))
-                TaskType.URGENT -> Quad(extendedColors.ganttUrgentBackground, extendedColors.ganttUrgentBorder, extendedColors.ganttUrgent.copy(alpha = 0.7f), extendedColors.ganttUrgent.copy(alpha = 0.7f))
-            }
+            Quad(baseSurface, baseColor, baseColor.copy(alpha = 0.7f), baseColor.copy(alpha = 0.7f))
         }
         else -> {
             // 未完成任务：正常显示
-            when (task.type) {
-                TaskType.WORK -> Quad(extendedColors.ganttWorkBackground, extendedColors.ganttWorkBorder, extendedColors.ganttWork, extendedColors.ganttWork)
-                TaskType.LIFE -> Quad(extendedColors.ganttLifeBackground, extendedColors.ganttLifeBorder, extendedColors.ganttLife, extendedColors.ganttLife)
-                TaskType.STUDY -> Quad(extendedColors.ganttStudyBackground, extendedColors.ganttStudyBorder, extendedColors.ganttStudy, extendedColors.ganttStudy)
-                TaskType.URGENT -> Quad(extendedColors.ganttUrgentBackground, extendedColors.ganttUrgentBorder, extendedColors.ganttUrgent, extendedColors.ganttUrgent)
-            }
+            Quad(baseSurface, baseColor, baseColor, baseColor)
         }
     }
     

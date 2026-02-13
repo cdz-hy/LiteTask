@@ -36,6 +36,8 @@ object NotificationHelper {
     // Intent Extras
     const val EXTRA_TASK_ID = "task_id"
     const val EXTRA_FROM_NOTIFICATION = "from_notification"
+    const val EXTRA_CATEGORY_NAME = "category_name"
+    const val EXTRA_CATEGORY_COLOR = "category_color"
 
     /**
      * 创建通知渠道（Application 启动时调用）
@@ -90,11 +92,13 @@ object NotificationHelper {
         taskId: Long,
         taskTitle: String,
         reminderLabel: String?,
-        taskType: TaskType
+        taskType: TaskType,
+        categoryName: String? = null,
+        categoryColor: String? = null
     ) {
         Log.i(TAG, "★ showReminderNotification: $taskTitle")
 
-        val notification = buildReminderNotification(context, taskId, taskTitle, reminderLabel, taskType)
+        val notification = buildReminderNotification(context, taskId, taskTitle, reminderLabel, taskType, categoryName, categoryColor)
 
         try {
             NotificationManagerCompat.from(context).notify(taskId.toInt(), notification)
@@ -112,11 +116,13 @@ object NotificationHelper {
         taskId: Long,
         taskTitle: String,
         reminderLabel: String?,
-        taskType: TaskType
+        taskType: TaskType,
+        categoryName: String?,
+        categoryColor: String?
     ): Notification {
         val info = parseReminderLabel(reminderLabel)
         val channelId = if (info.isDeadline) CHANNEL_URGENT else CHANNEL_NORMAL
-        val color = getColor(taskType, info.isDeadline)
+        val color = getColor(taskType, info.isDeadline, categoryColor)
 
         // 点击通知跳转到 MainActivity 并打开任务详情
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -139,6 +145,8 @@ object NotificationHelper {
             putExtra("reminder_text", info.displayText)
             putExtra("task_type", taskType.name)
             putExtra("is_deadline", info.isDeadline)
+            putExtra(EXTRA_CATEGORY_NAME, categoryName)
+            putExtra(EXTRA_CATEGORY_COLOR, categoryColor)
         }
         
         val fullScreenPendingIntent = PendingIntent.getActivity(
@@ -151,7 +159,7 @@ object NotificationHelper {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(taskTitle)
             .setContentText(info.displayText)
-            .setSubText(getTypeLabel(taskType))
+            .setSubText(categoryName ?: getTypeLabel(taskType))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
@@ -202,11 +210,18 @@ object NotificationHelper {
         TaskType.LIFE -> "生活任务"
     }
 
-    private fun getColor(type: TaskType, isDeadline: Boolean): Int {
+    private fun getColor(type: TaskType, isDeadline: Boolean, categoryColor: String?): Int {
         // 通知小图标颜色：截止提醒强制显着红，普通提醒使用任务主色
         return if (isDeadline) {
             0xFFB3261E.toInt()
         } else {
+            if (categoryColor != null) {
+                try {
+                    return android.graphics.Color.parseColor(categoryColor)
+                } catch (e: Exception) {
+                    // Fallback
+                }
+            }
             when (type) {
                 TaskType.WORK -> 0xFF0B57D0.toInt()
                 TaskType.LIFE -> 0xFF146C2E.toInt()

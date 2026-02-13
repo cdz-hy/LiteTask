@@ -110,7 +110,7 @@ class TaskListRemoteViewsFactory(
     
     private val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
     
-    private var tasks: List<Task> = emptyList()
+    private var tasks: List<com.litetask.app.data.model.TaskDetailComposite> = emptyList()
     private var justCompletedTaskIds: Set<Long> = emptySet()
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("MM/dd", Locale.getDefault())
@@ -134,32 +134,37 @@ class TaskListRemoteViewsFactory(
                     // 自动同步过期状态（双向：标记过期 + 恢复未过期）
                     dao.autoSyncTaskExpiredStatus(System.currentTimeMillis())
                     
-                    // 获取所有未完成的任务（包括未过期和已过期的）
-                    val activeTasks = dao.getActiveTasksWithExpiredSync().toMutableList()
+                    // 获取所有未完成的任务详情（包括未过期和已过期的）
+                    val activeComposites = dao.getActiveTaskDetailCompositesWithExpiredSync().toMutableList()
                     
-                    Log.d("TaskListWidget", "Loaded ${activeTasks.size} active tasks (including expired)")
+                    Log.d("TaskListWidget", "Loaded ${activeComposites.size} active tasks (including expired)")
                     
                     // 获取刚完成的任务（还在显示时间内的）
                     val justCompletedTasks = TaskListWidgetService.getAllJustCompletedTasks()
                     
                     // 将刚完成的任务添加到列表中（如果不在列表中）
-                    val activeTaskIds = activeTasks.map { it.id }.toSet()
+                    val activeTaskIds = activeComposites.map { it.task.id }.toSet()
                     justCompletedTasks.forEach { completedTask ->
                         if (completedTask.id !in activeTaskIds) {
+                            // 构造临时的 Composite (无子任务和分类信息，因为刚完成的任务通常不需要显示这些细节或者从缓存取出的 Task 没有这些)
+                            // 如果需要分类信息，这里可能缺失，但刚完成的任务主要是为了撤销，显示上可以接受短暂缺失
+                            val composite = com.litetask.app.data.model.TaskDetailComposite(completedTask, emptyList(), emptyList(), null)
+                            
                             // 找到合适的位置插入（按新的排序规则：isExpired ASC, isPinned DESC, startTime ASC）
-                            val insertIndex = activeTasks.indexOfFirst { 
-                                if (it.isExpired != completedTask.isExpired) {
-                                    it.isExpired > completedTask.isExpired
-                                } else if (it.isPinned != completedTask.isPinned) {
-                                    !it.isPinned && completedTask.isPinned
+                            val insertIndex = activeComposites.indexOfFirst { 
+                                val t = it.task
+                                if (t.isExpired != completedTask.isExpired) {
+                                    t.isExpired > completedTask.isExpired
+                                } else if (t.isPinned != completedTask.isPinned) {
+                                    !t.isPinned && completedTask.isPinned
                                 } else {
-                                    it.startTime > completedTask.startTime
+                                    t.startTime > completedTask.startTime
                                 }
                             }
                             if (insertIndex >= 0) {
-                                activeTasks.add(insertIndex, completedTask)
+                                activeComposites.add(insertIndex, composite)
                             } else {
-                                activeTasks.add(completedTask)
+                                activeComposites.add(composite)
                             }
                         }
                     }
@@ -167,7 +172,7 @@ class TaskListRemoteViewsFactory(
                     // 记录哪些任务刚完成（用于UI显示）
                     justCompletedTaskIds = justCompletedTasks.map { it.id }.toSet()
                     
-                    tasks = activeTasks
+                    tasks = activeComposites
                     
                     // 清理过期缓存（由于现在加载更频繁，略微降低清理频率）
                     if (System.currentTimeMillis() % 10000 < 1000) { 
@@ -195,7 +200,9 @@ class TaskListRemoteViewsFactory(
             return RemoteViews(context.packageName, R.layout.widget_task_list_item)
         }
         
-        val task = tasks[position]
+        val composite = tasks[position]
+        val task = composite.task
+        val category = composite.category
         val views = RemoteViews(context.packageName, R.layout.widget_task_list_item)
         val isJustCompleted = justCompletedTaskIds.contains(task.id)
         
@@ -206,7 +213,23 @@ class TaskListRemoteViewsFactory(
         views.setTextViewText(R.id.task_time, formatTaskTime(task))
         
         // 设置类型指示条颜色
-        views.setImageViewResource(R.id.type_indicator, getTypeIndicatorRes(task.type))
+        if (task.isDone || task.isExpired) {
+             views.setImageViewResource(R.id.type_indicator, R.drawable.widget_type_indicator_done)
+             views.setInt(R.id.type_indicator, "setColorFilter", 0)
+        } else {
+             // 同样使用通用的单色 drawable 作为底图，然后染色
+             views.setImageViewResource(R.id.type_indicator, R.drawable.widget_type_indicator_work)
+             val indicatorColor = if (category != null) {
+                 try {
+                     android.graphics.Color.parseColor(category.colorHex)
+                 } catch (e: Exception) {
+                     context.getColor(getTaskColorRes(task.type))
+                 }
+             } else {
+                 context.getColor(getTaskColorRes(task.type))
+             }
+             views.setInt(R.id.type_indicator, "setColorFilter", indicatorColor)
+        }
         
         // 设置置顶图标
         views.setViewVisibility(R.id.pin_icon, 
@@ -226,12 +249,42 @@ class TaskListRemoteViewsFactory(
                 views.setViewVisibility(R.id.urgent_badge, android.view.View.VISIBLE)
                 views.setTextViewText(R.id.urgent_badge, context.getString(R.string.expired_tasks_header))
                 views.setInt(R.id.urgent_badge, "setBackgroundResource", R.drawable.widget_urgent_badge)
+                views.setTextColor(R.id.urgent_badge, android.graphics.Color.WHITE) // 恢复白色文字
             }
         } else {
             // 未过期：按原逻辑显示（始终显示类型）
             views.setViewVisibility(R.id.urgent_badge, android.view.View.VISIBLE)
-            views.setTextViewText(R.id.urgent_badge, getTypeText(task.type))
-            views.setInt(R.id.urgent_badge, "setBackgroundResource", getTypeBadgeBackground(task.type))
+            
+            if (category != null) {
+                val catColor = try {
+                    android.graphics.Color.parseColor(category.colorHex)
+                } catch (e: Exception) {
+                    context.getColor(getTaskColorRes(task.type))
+                }
+                
+                views.setTextViewText(R.id.urgent_badge, category.name)
+                
+                // 设置背景并上色
+                views.setInt(R.id.urgent_badge, "setBackgroundResource", R.drawable.widget_badge_background)
+                
+                try {
+                    val colorStateList = android.content.res.ColorStateList.valueOf(catColor)
+                    views.setColorStateList(R.id.urgent_badge, "setBackgroundTintList", colorStateList)
+                } catch (e: Exception) {
+                    views.setInt(R.id.urgent_badge, "setBackgroundColor", catColor)
+                }
+                
+                // 根据背景辨识度自动切换文字颜色 (文字白天白色夜晚黑色 -> 实际上是深色背景白字，浅色背景黑字)
+                val luminance = (0.299 * android.graphics.Color.red(catColor) + 
+                                 0.587 * android.graphics.Color.green(catColor) + 
+                                 0.114 * android.graphics.Color.blue(catColor)) / 255.0
+                views.setTextColor(R.id.urgent_badge, if (luminance < 0.6) android.graphics.Color.WHITE else android.graphics.Color.BLACK)
+                
+            } else {
+                views.setTextViewText(R.id.urgent_badge, getTypeText(task.type))
+                views.setInt(R.id.urgent_badge, "setBackgroundResource", getTypeBadgeBackground(task.type))
+                views.setTextColor(R.id.urgent_badge, android.graphics.Color.WHITE) // 默认类型保持白色文字
+            }
         }
         
         // 根据完成状态变化
@@ -308,9 +361,18 @@ class TaskListRemoteViewsFactory(
             TaskType.URGENT -> R.drawable.widget_urgent_badge
         }
     }
+
+    private fun getTaskColorRes(type: TaskType): Int {
+        return when (type) {
+            TaskType.WORK -> R.color.work_task
+            TaskType.LIFE -> R.color.life_task
+            TaskType.STUDY -> R.color.study_task
+            TaskType.URGENT -> R.color.urgent_task
+        }
+    }
     
     override fun getLoadingView(): RemoteViews? = null
     override fun getViewTypeCount(): Int = 1
-    override fun getItemId(position: Int): Long = if (position < tasks.size) tasks[position].id else position.toLong()
+    override fun getItemId(position: Int): Long = if (position < tasks.size) tasks[position].task.id else position.toLong()
     override fun hasStableIds(): Boolean = true
 }

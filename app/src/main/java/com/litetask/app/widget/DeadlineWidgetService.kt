@@ -34,7 +34,7 @@ class DeadlineRemoteViewsFactory(
     private val context: Context
 ) : RemoteViewsService.RemoteViewsFactory {
     
-    private var tasks: List<Task> = emptyList()
+    private var tasks: List<com.litetask.app.data.model.TaskDetailComposite> = emptyList()
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("MM/dd", Locale.getDefault())
     
@@ -56,7 +56,7 @@ class DeadlineRemoteViewsFactory(
                     // 自动同步状态
                     dao.autoSyncTaskExpiredStatus(System.currentTimeMillis())
                     
-                    tasks = dao.getUpcomingDeadlinesSyncWithTime(System.currentTimeMillis(), 10)
+                    tasks = dao.getUpcomingDeadlineCompositesSyncWithTime(System.currentTimeMillis(), 10)
                     
                     Log.d("DeadlineWidget", "Loaded ${tasks.size} deadline tasks")
                 } catch (e: Exception) {
@@ -80,7 +80,9 @@ class DeadlineRemoteViewsFactory(
             return RemoteViews(context.packageName, R.layout.widget_deadline_item)
         }
         
-        val task = tasks[position]
+        val composite = tasks[position]
+        val task = composite.task
+        val category = composite.category
         val views = RemoteViews(context.packageName, R.layout.widget_deadline_item)
         val now = System.currentTimeMillis()
         
@@ -127,9 +129,43 @@ class DeadlineRemoteViewsFactory(
         views.setTextViewText(R.id.task_title, task.title)
         
         // 设置任务类型指示条和标签
-        views.setImageViewResource(R.id.type_indicator, getTypeIndicatorRes(task.type))
-        views.setTextViewText(R.id.type_badge, getTypeText(task.type))
-        views.setInt(R.id.type_badge, "setBackgroundResource", getTypeBadgeBackground(task.type))
+        val indicatorColor = if (category != null) {
+            try {
+                android.graphics.Color.parseColor(category.colorHex)
+            } catch (e: Exception) {
+                context.getColor(getTaskColorRes(task.type))
+            }
+        } else {
+            context.getColor(getTaskColorRes(task.type))
+        }
+        
+        // 使用通用的单色 drawable 作为底图，然后染色
+        views.setImageViewResource(R.id.type_indicator, R.drawable.widget_type_indicator_work)
+        views.setInt(R.id.type_indicator, "setColorFilter", indicatorColor)
+        
+        if (category != null) {
+            views.setTextViewText(R.id.type_badge, category.name)
+            
+            // 使用 setColorStateList 动态改变背景染色 (API 21+ 支持)
+            // 这样可以保留 R.drawable.widget_badge_background 的圆角
+            try {
+                val colorStateList = android.content.res.ColorStateList.valueOf(indicatorColor)
+                views.setColorStateList(R.id.type_badge, "setBackgroundTintList", colorStateList)
+            } catch (e: Exception) {
+                // 极端兼容性兜底
+                views.setInt(R.id.type_badge, "setBackgroundColor", indicatorColor)
+            }
+            
+            // 根据背景辨识度自动切换文字颜色
+            val luminance = (0.299 * android.graphics.Color.red(indicatorColor) + 
+                             0.587 * android.graphics.Color.green(indicatorColor) + 
+                             0.114 * android.graphics.Color.blue(indicatorColor)) / 255.0
+            views.setTextColor(R.id.type_badge, if (luminance < 0.6) android.graphics.Color.WHITE else android.graphics.Color.BLACK)
+        } else {
+            views.setTextViewText(R.id.type_badge, getTypeText(task.type))
+            views.setInt(R.id.type_badge, "setBackgroundResource", getTypeBadgeBackground(task.type))
+            views.setTextColor(R.id.type_badge, android.graphics.Color.WHITE)
+        }
         
         // 设置截止时间
         val deadlineTime = formatDeadlineTime(task.deadline)
@@ -187,8 +223,17 @@ class DeadlineRemoteViewsFactory(
         }
     }
     
+    private fun getTaskColorRes(type: TaskType): Int {
+        return when (type) {
+            TaskType.WORK -> R.color.work_task
+            TaskType.LIFE -> R.color.life_task
+            TaskType.STUDY -> R.color.study_task
+            TaskType.URGENT -> R.color.urgent_task
+        }
+    }
+    
     override fun getLoadingView(): RemoteViews? = null
     override fun getViewTypeCount(): Int = 1
-    override fun getItemId(position: Int): Long = if (position < tasks.size) tasks[position].id else position.toLong()
+    override fun getItemId(position: Int): Long = if (position < tasks.size) tasks[position].task.id else position.toLong()
     override fun hasStableIds(): Boolean = true
 }

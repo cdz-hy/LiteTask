@@ -42,27 +42,34 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimeInput
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Flag
@@ -81,6 +88,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -205,7 +217,7 @@ fun SettingsScreen(
                 // AI 提供商选择
                 ExposedDropdownMenuBox(
                     expanded = aiProviderExpanded,
-                    onExpandedChange = { aiProviderExpanded = it }
+                    onExpandedChange = { aiProviderExpanded = it },
                 ) {
                     OutlinedTextField(
                         value = aiProviders.find { it.first == selectedAiProvider }?.second ?: "DeepSeek V3.2",
@@ -303,7 +315,7 @@ fun SettingsScreen(
                 // 语音识别服务选择
                 ExposedDropdownMenuBox(
                     expanded = speechProviderExpanded,
-                    onExpandedChange = { speechProviderExpanded = it }
+                    onExpandedChange = { speechProviderExpanded = it },
                 ) {
                     OutlinedTextField(
                         value = speechProviders.find { it.first == selectedSpeechProvider }?.second ?: "",
@@ -1024,6 +1036,32 @@ private fun CategoryManagementDialog(
     val categories by viewModel.categories.collectAsState(initial = emptyList())
     var editingCategory by remember { mutableStateOf<Category?>(null) }
     var isAddingNew by remember { mutableStateOf(false) }
+    var deletingCategory by remember { mutableStateOf<Category?>(null) }
+
+    if (deletingCategory != null) {
+        val categoryToDelete = deletingCategory!!
+        AlertDialog(
+            onDismissRequest = { deletingCategory = null },
+            title = { Text("删除分类") },
+            text = { Text("确定要删除分类“${categoryToDelete.name}”吗？此操作无法撤销。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteCategory(categoryToDelete)
+                        deletingCategory = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingCategory = null }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1088,7 +1126,7 @@ private fun CategoryManagementDialog(
                             CategoryRow(
                                 category = category,
                                 onEdit = { editingCategory = category },
-                                onDelete = { viewModel.deleteCategory(category) }
+                                onDelete = { deletingCategory = category }
                             )
                         }
                     }
@@ -1169,12 +1207,28 @@ private fun CategoryEditor(
     onCancel: () -> Unit
 ) {
     var name by remember { mutableStateOf(category?.name ?: "") }
-    var selectedColor by remember { mutableStateOf(category?.colorHex ?: "#FF6200EE") }
+    var selectedColor by remember { mutableStateOf(category?.colorHex ?: "#A8D8B9") }
     
+    // 简约美观的高对比度色系 (Vibrant & Functional Colors for Task ID)
     val presetColors = listOf(
-        "#FF6200EE", "#FF03DAC5", "#FFB00020", "#ffffeb3b", "#ff4caf50", "#ff2196f3", // Standard
-        // LiteTask Colors
-        "#FFDDCD", "#E6E6FA", "#D3E3FC", "#FFE0B2", "#E1BEE7", "#C8E6C9"
+        "#1976D2", // Blue (Work)
+        "#388E3C", // Green (Life)
+        "#7B1FA2", // Purple (Study)
+        "#D32F2F", // Red (Urgent)
+        "#F57C00", // Orange
+        "#0097A7", // Cyan
+        "#C2185B", // Pink
+        "#AFB42B", // Lime
+        "#FFA000", // Amber
+        "#5D4037", // Brown
+        "#0288D1", // Light Blue
+        "#00796B", // Teal
+        "#689F38", // Light Green
+        "#E64A19", // Deep Orange
+        "#303F9F", // Indigo
+        "#512DA8", // Deep Purple
+        "#455A64", // Blue Grey
+        "#333130"  // Dark charcoal
     )
 
     Column(modifier = Modifier.fillMaxWidth()) {
