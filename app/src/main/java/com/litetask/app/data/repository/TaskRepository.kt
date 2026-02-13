@@ -230,6 +230,42 @@ class TaskRepositoryImpl @Inject constructor(
     }
     
     /**
+     * 清理过期的提醒（已过触发时间但未触发的）
+     * 
+     * 应在应用启动时调用，清理系统中残留的无效 Alarm
+     * 例如：用户关机期间错过的提醒
+     */
+    suspend fun cleanupExpiredReminders() {
+        val currentTime = System.currentTimeMillis()
+        
+        // 查询所有未触发但已过期的提醒
+        val expiredReminders = taskDao.getExpiredUnfiredReminders(currentTime)
+        
+        if (expiredReminders.isEmpty()) {
+            Log.d(TAG, "No expired reminders to clean up")
+            return
+        }
+        
+        Log.i(TAG, "Cleaning up ${expiredReminders.size} expired reminders")
+        
+        // 取消系统中的 Alarm
+        expiredReminders.forEach { reminder ->
+            try {
+                reminderScheduler.cancelReminder(reminder)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error canceling expired reminder ${reminder.id}: ${e.message}")
+            }
+        }
+        
+        // 标记为已触发（避免重复处理）
+        expiredReminders.forEach { reminder ->
+            taskDao.updateReminderFired(reminder.id, true)
+        }
+        
+        Log.i(TAG, "Cleaned up ${expiredReminders.size} expired reminders")
+    }
+    
+    /**
      * 更新任务状态（处理完成状态变化时的时间记录）
      */
     suspend fun updateTaskWithStatusTracking(oldTask: Task, newTask: Task) {
@@ -245,7 +281,7 @@ class TaskRepositoryImpl @Inject constructor(
                     isPinned = false  // 完成时自动取消置顶
                 ))
             }
-            // 从完成变为未完成：清除完成时间，并重新评估过期状态
+            // 从完成变为未完成：清除完成时间，重新注册闹钟
             oldTask.isDone && !newTask.isDone -> {
                 val currentTime = System.currentTimeMillis()
                 // 如果已过截止时间，立即标记为过期，确保它出现在过期列表中
@@ -256,6 +292,20 @@ class TaskRepositoryImpl @Inject constructor(
                     isExpired = isNowExpired,
                     expiredAt = if (isNowExpired) newTask.deadline else null
                 ))
+                
+                // 重新注册未触发的提醒闹钟
+                val reminders = taskDao.getRemindersByTaskIdSync(newTask.id)
+                val pendingReminders = reminders.filter { !it.isFired && it.triggerAt > currentTime }
+                if (pendingReminders.isNotEmpty()) {
+                    Log.i(TAG, "Re-scheduling ${pendingReminders.size} reminders for uncompleted task ${newTask.id}")
+                    pendingReminders.forEach { reminder ->
+                        reminderScheduler.scheduleReminderWithTaskInfo(
+                            reminder = reminder,
+                            taskTitle = newTask.title,
+                            taskType = newTask.type.name
+                        )
+                    }
+                }
             }
             // 其他情况
             else -> {

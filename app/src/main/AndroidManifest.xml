@@ -14,6 +14,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
 
     <queries>
         <intent>
@@ -62,11 +63,21 @@
             </intent-filter>
         </receiver>
         
-        <!-- 悬浮提醒服务 -->
+        <!-- 悬浮提醒服务 (作为 Activity 模式的补充) -->
         <service
             android:name=".reminder.FloatingReminderService"
             android:exported="false"
             android:enabled="true" />
+
+        <!-- 强提醒 Activity (闹钟模式) -->
+        <activity
+            android:name=".reminder.ReminderActivity"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:theme="@style/Theme.LiteTask.Reminder" />
         
         <!-- ========== 小组件 ========== -->
         

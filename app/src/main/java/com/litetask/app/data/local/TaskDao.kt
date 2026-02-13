@@ -286,6 +286,10 @@ abstract class TaskDao {
     @Query("SELECT * FROM reminders WHERE is_fired = 0 AND trigger_at > :currentTime")
     abstract suspend fun getFutureReminders(currentTime: Long): List<Reminder>
     
+    // 获取所有未触发但已过期的提醒（用于清理）
+    @Query("SELECT * FROM reminders WHERE is_fired = 0 AND trigger_at < :currentTime")
+    abstract suspend fun getExpiredUnfiredReminders(currentTime: Long): List<Reminder>
+    
     // 同步获取任务（用于广播接收器中的校验）
     @Query("SELECT * FROM tasks WHERE id = :id")
     abstract suspend fun getTaskByIdSync(id: Long): Task?

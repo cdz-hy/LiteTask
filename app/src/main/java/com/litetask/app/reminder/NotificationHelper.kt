@@ -118,6 +118,7 @@ object NotificationHelper {
         val channelId = if (info.isDeadline) CHANNEL_URGENT else CHANNEL_NORMAL
         val color = getColor(taskType, info.isDeadline)
 
+        // 点击通知跳转到 MainActivity 并打开任务详情
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_TASK_ID, taskId)
@@ -128,6 +129,23 @@ object NotificationHelper {
             context, taskId.toInt(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        
+        // 全屏意图仍然使用 ReminderActivity（用于锁屏/息屏时自动弹出）
+        val fullScreenIntent = Intent(context, ReminderActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_TASK_ID, taskId)
+            putExtra(EXTRA_FROM_NOTIFICATION, true)
+            putExtra("task_title", taskTitle)
+            putExtra("reminder_text", info.displayText)
+            putExtra("task_type", taskType.name)
+            putExtra("is_deadline", info.isDeadline)
+        }
+        
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            context, (taskId + 100000).toInt(), // 使用不同的 request code 避免冲突
+            fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification)
@@ -135,9 +153,10 @@ object NotificationHelper {
             .setContentText(info.displayText)
             .setSubText(getTypeLabel(taskType))
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(pendingIntent) // 点击通知 → MainActivity
+            .setFullScreenIntent(fullScreenPendingIntent, true) // 全屏意图 → ReminderActivity
             .setColor(color)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -146,11 +165,6 @@ object NotificationHelper {
                     .bigText(info.displayText)
                     .setBigContentTitle(taskTitle)
             )
-
-        // Heads-up 触发
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            builder.setFullScreenIntent(pendingIntent, true)
-        }
 
         return builder.build()
     }
@@ -188,10 +202,17 @@ object NotificationHelper {
         TaskType.LIFE -> "生活任务"
     }
 
-    private fun getColor(type: TaskType, isDeadline: Boolean) = when (type) {
-        TaskType.URGENT -> if (isDeadline) 0xFFB3261E.toInt() else 0xFFF43F5E.toInt()
-        TaskType.WORK -> if (isDeadline) 0xFF0B57D0.toInt() else 0xFF3B82F6.toInt()
-        TaskType.STUDY -> if (isDeadline) 0xFF7C3AED.toInt() else 0xFF8B5CF6.toInt()
-        TaskType.LIFE -> if (isDeadline) 0xFF059669.toInt() else 0xFF10B981.toInt()
+    private fun getColor(type: TaskType, isDeadline: Boolean): Int {
+        // 通知小图标颜色：截止提醒强制显着红，普通提醒使用任务主色
+        return if (isDeadline) {
+            0xFFB3261E.toInt()
+        } else {
+            when (type) {
+                TaskType.WORK -> 0xFF0B57D0.toInt()
+                TaskType.LIFE -> 0xFF146C2E.toInt()
+                TaskType.STUDY -> 0xFF65558F.toInt()
+                TaskType.URGENT -> 0xFFB3261E.toInt()
+            }
+        }
     }
 }

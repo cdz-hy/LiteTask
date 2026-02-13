@@ -547,6 +547,8 @@ private fun ReminderSettingsCard(
     // 检查各项权限状态
     var hasNotificationPermission by remember { mutableStateOf(true) }
     var hasExactAlarmPermission by remember { mutableStateOf(true) }
+    var hasBackgroundActivityPermission by remember { mutableStateOf(true) }
+    var hasLockScreenPermission by remember { mutableStateOf(true) }
     var hasOverlayPermission by remember { mutableStateOf(true) }
     var hasAutoStartSettings by remember { mutableStateOf(false) }
     
@@ -575,7 +577,9 @@ private fun ReminderSettingsCard(
     LaunchedEffect(refreshTrigger) {
         hasNotificationPermission = PermissionHelper.hasNotificationPermission(context)
         hasExactAlarmPermission = PermissionHelper.canScheduleExactAlarms(context)
-        hasOverlayPermission = FloatingReminderService.canDrawOverlays(context)
+        hasBackgroundActivityPermission = PermissionHelper.hasBackgroundActivityPermission(context)
+        hasLockScreenPermission = PermissionHelper.hasLockScreenPermission(context)
+        hasOverlayPermission = PermissionHelper.hasOverlayPermission(context)
         hasAutoStartSettings = PermissionHelper.hasAutoStartSettings(context)
     }
     
@@ -632,19 +636,38 @@ private fun ReminderSettingsCard(
                 )
             }
             
-            // 悬浮窗权限
-            PermissionItem(
-                title = "悬浮窗权限",
-                description = "允许显示悬浮提醒弹窗",
-                isGranted = hasOverlayPermission,
-                onClick = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:${context.packageName}")
-                        )
+            // 后台弹出界面权限（Android 10+）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                PermissionItem(
+                    title = "后台弹出界面",
+                    description = "允许在后台弹出提醒界面",
+                    isGranted = hasBackgroundActivityPermission,
+                    onClick = {
+                        val intent = PermissionHelper.getBackgroundActivitySettingsIntent(context)
                         context.startActivity(intent)
                     }
+                )
+            }
+            
+            // 锁屏显示权限
+            PermissionItem(
+                title = "锁屏显示",
+                description = "允许在锁屏界面显示提醒",
+                isGranted = hasLockScreenPermission,
+                onClick = {
+                    val intent = PermissionHelper.getLockScreenSettingsIntent(context)
+                    context.startActivity(intent)
+                }
+            )
+            
+            // 悬浮窗权限（可选，用于增强提醒效果）
+            PermissionItem(
+                title = "悬浮窗权限（可选）",
+                description = "增强亮屏时的提醒效果",
+                isGranted = hasOverlayPermission,
+                onClick = {
+                    val intent = PermissionHelper.getOverlaySettingsIntent(context)
+                    context.startActivity(intent)
                 }
             )
             
