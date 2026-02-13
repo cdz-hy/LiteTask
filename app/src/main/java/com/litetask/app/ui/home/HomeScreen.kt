@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Mic
@@ -73,6 +75,7 @@ fun HomeScreen(
     onNavigateToAdd: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToHistory: () -> Unit,
+    onNavigateToBackup: () -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToGanttFullscreen: (com.litetask.app.ui.components.GanttViewMode) -> Unit,
     initialView: String = "timeline",
@@ -230,6 +233,22 @@ fun HomeScreen(
                             drawerState.close()
                         }
                         onNavigateToHistory()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 数据管理
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Storage, contentDescription = null) },
+                    label = { Text(stringResource(R.string.data_backup)) },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                        onNavigateToBackup()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )

@@ -354,4 +354,14 @@
     <string name="ai_history_parsed_tasks">解析出 %d 个任务</string>
     <string name="ai_history_parsed_subtasks">拆解出 %d 个步骤</string>
     <string name="ai_history_detail">记录详情</string>
+    <!-- 数据管理 -->
+    <string name="data_backup">数据管理</string>
+    <string name="export_data">导出数据</string>
+    <string name="export_data_desc">将所有任务、分类及设置导出为 JSON 文件，用于备份或迁移。</string>
+    <string name="import_data">导入数据</string>
+    <string name="import_data_desc">从 JSON 文件恢复数据。系统会自动识别并跳过重复任务。</string>
+    <string name="export_success">数据导出成功</string>
+    <string name="export_fail">导出失败</string>
+    <string name="import_success_fmt">成功导入 %1$d 条数据，跳过 %2$d 条重复数据</string>
+    <string name="import_fail">导入失败</string>
 </resources>

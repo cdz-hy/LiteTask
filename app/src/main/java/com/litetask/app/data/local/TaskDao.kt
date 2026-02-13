@@ -461,4 +461,9 @@ abstract class TaskDao {
         ORDER BY is_done ASC, start_time ASC, deadline ASC
     """)
     abstract suspend fun getTodayAllTasksSync(startOfDay: Long, endOfDay: Long): List<Task>
+    
+    // 获取所有任务及其详情（用于备份）
+    @Transaction
+    @Query("SELECT * FROM tasks")
+    abstract suspend fun getAllTaskDetailsSync(): List<TaskDetailComposite>
 }
