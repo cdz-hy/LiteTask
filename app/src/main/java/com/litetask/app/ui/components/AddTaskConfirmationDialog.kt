@@ -77,7 +77,7 @@ private object ConfirmTaskColors {
 fun TaskConfirmationSheet(
     tasks: List<Task>,
     onDismiss: () -> Unit,
-    onConfirm: (List<Task>, Map<Int, List<com.litetask.app.data.model.ReminderConfig>>) -> Unit,
+    onConfirm: (List<Task>, Map<Int, List<com.litetask.app.data.model.ReminderConfig>>, Map<Int, List<com.litetask.app.data.model.TaskComponent>>) -> Unit,
     onEditTask: (Int, Task) -> Unit = { _, _ -> },
     onDeleteTask: (Int) -> Unit = {}
 ) {
@@ -90,8 +90,9 @@ fun TaskConfirmationSheet(
     // 内部管理任务列表状态
     var taskList by remember(tasks) { mutableStateOf(tasks) }
     
-    // 存储每个任务的提醒配置
+    // 存储每个任务的提醒和组件配置
     var taskReminders by remember { mutableStateOf<Map<Int, List<com.litetask.app.data.model.ReminderConfig>>>(emptyMap()) }
+    var taskComponents by remember { mutableStateOf<Map<Int, List<com.litetask.app.data.model.TaskComponent>>>(emptyMap()) }
     
     // 编辑对话框状态
     var showEditDialog by remember { mutableStateOf(false) }
@@ -266,7 +267,7 @@ fun TaskConfirmationSheet(
                             onDismiss = { closeSheet() },
                             onConfirm = {
                                 if (taskList.isNotEmpty()) {
-                                    onConfirm(taskList, taskReminders)
+                                    onConfirm(taskList, taskReminders, taskComponents)
                                 }
                             }
                         )
@@ -296,13 +297,16 @@ fun TaskConfirmationSheet(
                 editingTask = null
                 editingTaskIndex = -1
             },
-            onConfirmWithReminders = { updatedTask, reminders ->
+            onConfirmWithComponents = { updatedTask, reminders, components ->
                 if (editingTaskIndex >= 0 && editingTaskIndex < taskList.size) {
                     taskList = taskList.toMutableList().apply { 
                         set(editingTaskIndex, updatedTask) 
                     }
                     taskReminders = taskReminders.toMutableMap().apply {
                         put(editingTaskIndex, reminders)
+                    }
+                    taskComponents = taskComponents.toMutableMap().apply {
+                        put(editingTaskIndex, components)
                     }
                     onEditTask(editingTaskIndex, updatedTask)
                 }

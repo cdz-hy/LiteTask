@@ -620,28 +620,39 @@ class HomeViewModel @Inject constructor(
      */
     fun confirmAddTasksWithReminders(
         tasks: List<Task>, 
-        taskReminders: Map<Int, List<com.litetask.app.data.model.ReminderConfig>>
+        taskReminders: Map<Int, List<com.litetask.app.data.model.ReminderConfig>>,
+        taskComponents: Map<Int, List<com.litetask.app.data.model.TaskComponent>>
     ) {
         viewModelScope.launch {
             if (tasks.isNotEmpty()) {
                 tasks.forEachIndexed { index, task ->
                     val reminderConfigs = taskReminders[index] ?: emptyList()
-                    if (reminderConfigs.isNotEmpty()) {
-                        // 有提醒配置，使用带提醒的插入方法
-                        val reminders = reminderConfigs.mapNotNull { config ->
-                            val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
-                            if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
-                                com.litetask.app.data.model.Reminder(
-                                    taskId = 0, // 会在插入时更新
-                                    triggerAt = triggerAt,
-                                    label = config.generateLabel()
-                                )
-                            } else null
+                    val components = taskComponents[index] ?: emptyList()
+                    
+                    // 1. 计算提醒
+                    val reminders = reminderConfigs.mapNotNull { config ->
+                        val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
+                        if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
+                            com.litetask.app.data.model.Reminder(
+                                taskId = 0, // 会在插入时更新
+                                triggerAt = triggerAt,
+                                label = config.generateLabel()
+                            )
+                        } else null
+                    }
+                    
+                    // 2. 插入任务和提醒
+                    val newTaskId = taskRepository.insertTaskWithReminders(task, reminders)
+                    
+                    // 3. 插入组件
+                    components.forEach { component ->
+                        val entity = when (component) {
+                            is com.litetask.app.data.model.TaskComponent.AMapComponent -> 
+                                component.toEntity(newTaskId)
+                            is com.litetask.app.data.model.TaskComponent.FileComponent -> 
+                                component.toEntity(newTaskId)
                         }
-                        taskRepository.insertTaskWithReminders(task, reminders)
-                    } else {
-                        // 没有提醒配置，直接插入任务
-                        taskRepository.insertTask(task)
+                        taskRepository.insertComponent(entity)
                     }
                 }
             }
