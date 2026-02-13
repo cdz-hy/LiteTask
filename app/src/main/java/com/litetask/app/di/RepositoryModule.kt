@@ -1,6 +1,7 @@
 package com.litetask.app.di
 
 import com.litetask.app.data.local.TaskDao
+import com.litetask.app.data.local.CategoryDao
 import com.litetask.app.data.repository.AIRepository
 import com.litetask.app.data.repository.AIRepositoryImpl
 import com.litetask.app.data.repository.TaskRepositoryImpl
@@ -21,9 +22,10 @@ object RepositoryModule {
     @Singleton
     fun provideTaskRepository(
         taskDao: TaskDao,
+        categoryDao: CategoryDao,
         reminderScheduler: ReminderScheduler
     ): TaskRepositoryImpl {
-        return TaskRepositoryImpl(taskDao, reminderScheduler)
+        return TaskRepositoryImpl(taskDao, categoryDao, reminderScheduler)
     }
 
     @Provides

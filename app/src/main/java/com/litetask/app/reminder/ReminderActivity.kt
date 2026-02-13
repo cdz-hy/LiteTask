@@ -178,18 +178,20 @@ class ReminderActivity : ComponentActivity() {
     ) {
         val extendedColors = LocalExtendedColors.current
         
-        // 根据任务类型动态获取颜色
+        // 根据任务类型和分类动态获取颜色
         val (primaryColor, containerColor) = remember(isDeadline, taskType, categoryColor) {
-            if (isDeadline) {
-                extendedColors.deadlineUrgent to extendedColors.deadlineUrgentSurface
-            } else if (categoryColor != null) {
+            if (categoryColor != null) {
                 try {
                     val color = com.litetask.app.ui.util.ColorUtils.parseColor(categoryColor)
+                    // 如果是截止日期且没有明确颜色，可以使用红色装饰，
+                    // 但这里优先尊重分类的主色调
                     val surface = com.litetask.app.ui.util.ColorUtils.getSurfaceColor(color)
                     color to surface
                 } catch (e: Exception) {
                     extendedColors.workTask to extendedColors.workTaskSurface
                 }
+            } else if (isDeadline) {
+                extendedColors.deadlineUrgent to extendedColors.deadlineUrgentSurface
             } else {
                 when (taskType) {
                     TaskType.WORK -> extendedColors.workTask to extendedColors.workTaskSurface
@@ -199,6 +201,9 @@ class ReminderActivity : ComponentActivity() {
                 }
             }
         }
+        
+        // 截止日期的警告特有颜色（用于图标和警告文字）
+        val warningColor = if (isDeadline) extendedColors.deadlineUrgent else primaryColor
 
         // 呼吸动画
         val infiniteTransition = rememberInfiniteTransition(label = "Pulse")
@@ -250,7 +255,7 @@ class ReminderActivity : ComponentActivity() {
                             id = if (isDeadline) R.drawable.ic_warning else R.drawable.ic_alarm
                         ),
                         contentDescription = null,
-                        colorFilter = ColorFilter.tint(primaryColor),
+                        colorFilter = ColorFilter.tint(warningColor),
                         modifier = Modifier.size(40.dp)
                     )
                 }
@@ -299,7 +304,7 @@ class ReminderActivity : ComponentActivity() {
                             text = reminderText,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (isDeadline) extendedColors.deadlineUrgent else primaryColor
+                            color = warningColor
                         )
                     }
                 }

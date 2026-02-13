@@ -2,6 +2,7 @@ package com.litetask.app.data.repository
 
 import android.util.Log
 import com.litetask.app.data.local.TaskDao
+import com.litetask.app.data.local.CategoryDao
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Reminder
@@ -17,6 +18,7 @@ private const val TAG = "TaskRepository"
 @Singleton
 class TaskRepositoryImpl @Inject constructor(
     private val taskDao: TaskDao,
+    private val categoryDao: CategoryDao,
     private val reminderScheduler: ReminderScheduler
 ) {
     // 拆分流
@@ -146,13 +148,18 @@ class TaskRepositoryImpl @Inject constructor(
             val newReminders = reminders.map { it.copy(taskId = task.id, id = 0) }
             taskDao.insertReminders(newReminders)
             
+            // 获取分类信息
+            val category = categoryDao.getCategoryById(task.categoryId)
+            
             // 注册新闹钟（带任务信息）
             val savedReminders = taskDao.getRemindersByTaskIdSync(task.id)
             savedReminders.forEach { reminder ->
                 reminderScheduler.scheduleReminderWithTaskInfo(
                     reminder = reminder,
                     taskTitle = task.title,
-                    taskType = task.type.name
+                    taskType = @Suppress("DEPRECATION") task.type.name,
+                    categoryName = category?.name,
+                    categoryColor = category?.colorHex
                 )
             }
         }
@@ -178,6 +185,9 @@ class TaskRepositoryImpl @Inject constructor(
             val newReminders = reminders.map { it.copy(taskId = taskId, id = 0) }
             taskDao.insertReminders(newReminders)
             
+            // 获取分类信息
+            val category = categoryDao.getCategoryById(task.categoryId)
+            
             // 3. 注册闹钟（带任务信息）
             val savedReminders = taskDao.getRemindersByTaskIdSync(taskId)
             Log.d(TAG, "Scheduling ${savedReminders.size} reminders with task info")
@@ -187,7 +197,9 @@ class TaskRepositoryImpl @Inject constructor(
                 val success = reminderScheduler.scheduleReminderWithTaskInfo(
                     reminder = reminder,
                     taskTitle = task.title,
-                    taskType = task.type.name
+                    taskType = @Suppress("DEPRECATION") task.type.name,
+                    categoryName = category?.name,
+                    categoryColor = category?.colorHex
                 )
                 Log.i(TAG, "★ Schedule result: $success for reminder ${reminder.id}")
             }
@@ -300,11 +312,16 @@ class TaskRepositoryImpl @Inject constructor(
                 val pendingReminders = reminders.filter { !it.isFired && it.triggerAt > currentTime }
                 if (pendingReminders.isNotEmpty()) {
                     Log.i(TAG, "Re-scheduling ${pendingReminders.size} reminders for uncompleted task ${newTask.id}")
+                    
+                    val category = categoryDao.getCategoryById(newTask.categoryId)
+                    
                     pendingReminders.forEach { reminder ->
                         reminderScheduler.scheduleReminderWithTaskInfo(
                             reminder = reminder,
                             taskTitle = newTask.title,
-                            taskType = newTask.type.name
+                            taskType = @Suppress("DEPRECATION") newTask.type.name,
+                            categoryName = category?.name,
+                            categoryColor = category?.colorHex
                         )
                     }
                 }
