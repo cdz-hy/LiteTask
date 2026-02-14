@@ -715,7 +715,11 @@ fun HomeScreen(
                     onDismiss = { viewModel.dismissAiResult() },
                     onConfirm = { tasks, reminders, components -> viewModel.confirmAddTasksWithReminders(tasks, reminders, components) },
                     onEditTask = { index, task -> viewModel.updateAiParsedTask(index, task) },
-                    onDeleteTask = { index -> viewModel.deleteAiParsedTask(index) }
+                    onDeleteTask = { index -> viewModel.deleteAiParsedTask(index) },
+                    amapKey = amapKey,
+                    onGeocode = { address -> viewModel.geocodeLocation(address) },
+                    onSearchLocations = { keyword -> viewModel.searchLocations(keyword) },
+                    onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) }
                 )
             }
 

@@ -79,7 +79,11 @@ fun TaskConfirmationSheet(
     onDismiss: () -> Unit,
     onConfirm: (List<Task>, Map<Int, List<com.litetask.app.data.model.ReminderConfig>>, Map<Int, List<com.litetask.app.data.model.TaskComponent>>) -> Unit,
     onEditTask: (Int, Task) -> Unit = { _, _ -> },
-    onDeleteTask: (Int) -> Unit = {}
+    onDeleteTask: (Int) -> Unit = {},
+    amapKey: String? = null,
+    onGeocode: (suspend (String) -> com.litetask.app.data.model.AMapRouteData?)? = null,
+    onSearchLocations: (suspend (String) -> List<com.litetask.app.data.model.AMapRouteData>)? = null,
+    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null
 ) {
     val extendedColors = LocalExtendedColors.current
     val configuration = LocalConfiguration.current
@@ -313,7 +317,11 @@ fun TaskConfirmationSheet(
                 showEditDialog = false
                 editingTask = null
                 editingTaskIndex = -1
-            }
+            },
+            amapKey = amapKey,
+            onGeocode = onGeocode,
+            onSearchLocations = onSearchLocations,
+            onGetWeather = onGetWeather
         )
     }
 }
