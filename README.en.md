@@ -31,6 +31,7 @@ A lightweight task management app that simplifies the schedule creation process 
 - Tap and speak or type text, AI automatically parses task information
 - Supports batch task creation and natural language recognition
 - Real-time speech recognition with editable confirmation before submission
+- Automatically parse locations and attach map components.
 
 ### AI Subtask Decomposition
 - Breakdown complex goals into several concrete, actionable subtasks with AI assistance
@@ -45,6 +46,7 @@ A lightweight task management app that simplifies the schedule creation process 
 ### Task Management System
 - Parent tasks define goals and time periods; subtasks break down specific execution steps
 - Real-time progress feedback via progress bars
+- Supports diverse attachments like map locations and route planning.
 - Support for pinning, categorization, and reminders
 
 ### Custom Categories & Colors
