@@ -9,6 +9,8 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -42,15 +44,22 @@ import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.home.TimelineItem
 import com.litetask.app.ui.theme.LocalExtendedColors
+import com.litetask.app.ui.util.ColorUtils
+import com.litetask.app.data.model.Category
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.litetask.app.data.model.ComponentType
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
 
 /** 获取任务类型主色 */
+/** 获取任务类型主色 */
 @Composable
-private fun getTaskPrimaryColor(type: TaskType): Color {
+private fun getTaskPrimaryColor(type: TaskType, category: Category? = null): Color {
+    if (category != null) {
+        return ColorUtils.parseColor(category.colorHex)
+    }
     val extendedColors = LocalExtendedColors.current
     return when (type) {
         TaskType.WORK -> extendedColors.workTask
@@ -62,7 +71,11 @@ private fun getTaskPrimaryColor(type: TaskType): Color {
 
 /** 获取任务类型表面色 */
 @Composable
-private fun getTaskSurfaceColor(type: TaskType): Color {
+private fun getTaskSurfaceColor(type: TaskType, category: Category? = null): Color {
+    if (category != null) {
+        val primary = ColorUtils.parseColor(category.colorHex)
+        return ColorUtils.getSurfaceColor(primary)
+    }
     val extendedColors = LocalExtendedColors.current
     return when (type) {
         TaskType.WORK -> extendedColors.workTaskSurface
@@ -316,6 +329,7 @@ fun HtmlStyleTaskCard(
 ) {
     val task = composite.task
     val subTasks = composite.subTasks
+    val category = composite.category
     val extendedColors = LocalExtendedColors.current
 
     val isDone = task.isDone
@@ -323,16 +337,19 @@ fun HtmlStyleTaskCard(
     val isExpired = task.isExpired
 
     // 颜色状态计算
+    val basePrimaryColor = getTaskPrimaryColor(task.type, category)
+    val baseSurfaceColor = getTaskSurfaceColor(task.type, category)
+
     val primaryColor = when {
         isDone -> extendedColors.textTertiary
-        isExpired -> getTaskPrimaryColor(task.type).copy(alpha = 0.5f)
-        else -> getTaskPrimaryColor(task.type)
+        isExpired -> basePrimaryColor.copy(alpha = 0.5f)
+        else -> basePrimaryColor
     }
     
     val surfaceColor = when {
         isDone -> extendedColors.cardBackground
-        isExpired -> getTaskSurfaceColor(task.type).copy(alpha = 0.3f)
-        else -> getTaskSurfaceColor(task.type)
+        isExpired -> baseSurfaceColor.copy(alpha = 0.3f)
+        else -> baseSurfaceColor
     }
 
 
@@ -448,7 +465,7 @@ fun HtmlStyleTaskCard(
                         val checkboxColor = if (isDone) {
                             extendedColors.textTertiary
                         } else {
-                            getTaskPrimaryColor(task.type)
+                            basePrimaryColor
                         }
                         
                         TaskCheckbox(
@@ -475,7 +492,7 @@ fun HtmlStyleTaskCard(
                                 shape = RoundedCornerShape(6.dp)
                             ) {
                                 Text(
-                                    text = getTaskTypeName(task.type),
+                                    text = category?.name ?: getTaskTypeName(task.type),
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
@@ -583,6 +600,52 @@ fun HtmlStyleTaskCard(
                                 color = primaryColor
                             )
                         }
+                    }
+
+                    // Task Components Tags
+                    if (composite.components.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            composite.components.forEach { component ->
+                                val (icon, label) = when (component.type) {
+                                    ComponentType.AMAP_ROUTE -> Icons.Default.Place to "Route"
+                                    ComponentType.FILE_ATTACHMENT -> Icons.Default.AttachFile to "File"
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(
+                                                alpha = if (isExpired) 0.3f else 0.5f
+                                            ),
+                                            shape = RoundedCornerShape(6.dp)
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = label,
+                                        tint = extendedColors.textSecondary.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = extendedColors.textSecondary.copy(alpha = 0.9f),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
 
                         // 下一步行动
                         val nextAction = subTasks.firstOrNull { !it.isCompleted }
@@ -634,7 +697,7 @@ fun HtmlStyleTaskCard(
                 isExpired && !isDone && isPinned -> {
                     Box(
                         modifier = Modifier
-                            .matchParentSize()
+                            .fillMaxSize()
                             .background(
                                 primaryColor.copy(alpha = 0.08f),
                                 RoundedCornerShape(24.dp)
@@ -645,14 +708,13 @@ fun HtmlStyleTaskCard(
                 isExpired && !isDone -> {
                     Box(
                         modifier = Modifier
-                            .matchParentSize()
+                            .fillMaxSize()
                             .background(
                                 Color.Gray.copy(alpha = 0.2f),
                                 RoundedCornerShape(24.dp)
                             )
                     )
                 }
-            }
         }
     }
 }
@@ -808,7 +870,10 @@ fun ActionIcon(
 }
 
 @Composable
-private fun getTaskTypeName(type: TaskType): String {
+private fun getTaskTypeName(type: TaskType, category: Category? = null): String {
+    if (category != null) {
+        return category.name
+    }
     return when (type) {
         TaskType.WORK -> stringResource(R.string.task_type_work)
         TaskType.LIFE -> stringResource(R.string.task_type_life)

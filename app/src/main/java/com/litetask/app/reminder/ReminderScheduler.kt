@@ -180,7 +180,9 @@ class ReminderScheduler @Inject constructor(
     fun scheduleReminderWithTaskInfo(
         reminder: Reminder,
         taskTitle: String,
-        taskType: String
+        taskType: String,
+        categoryName: String? = null,
+        categoryColor: String? = null
     ): Boolean {
         val now = System.currentTimeMillis()
         
@@ -204,6 +206,8 @@ class ReminderScheduler @Inject constructor(
             putExtra(EXTRA_TASK_TITLE, taskTitle)
             putExtra(EXTRA_REMINDER_LABEL, reminder.label ?: "")
             putExtra(EXTRA_TASK_TYPE, taskType)
+            putExtra(EXTRA_CATEGORY_NAME, categoryName)
+            putExtra(EXTRA_CATEGORY_COLOR, categoryColor)
         }
         
         val pendingIntent = PendingIntent.getBroadcast(
@@ -234,5 +238,7 @@ class ReminderScheduler @Inject constructor(
         const val EXTRA_TASK_TITLE = "task_title"
         const val EXTRA_REMINDER_LABEL = "reminder_label"
         const val EXTRA_TASK_TYPE = "task_type"
+        const val EXTRA_CATEGORY_NAME = "category_name"
+        const val EXTRA_CATEGORY_COLOR = "category_color"
     }
 }

@@ -61,6 +61,8 @@ class ReminderActivity : ComponentActivity() {
         private const val EXTRA_REMINDER_TEXT = "reminder_text"
         private const val EXTRA_TASK_TYPE = "task_type"
         private const val EXTRA_IS_DEADLINE = "is_deadline"
+        private const val EXTRA_CATEGORY_NAME = "category_name"
+        private const val EXTRA_CATEGORY_COLOR = "category_color"
 
         fun start(
             context: Context,
@@ -68,7 +70,9 @@ class ReminderActivity : ComponentActivity() {
             taskTitle: String,
             reminderText: String,
             taskType: TaskType,
-            isDeadline: Boolean
+            isDeadline: Boolean,
+            categoryName: String? = null,
+            categoryColor: String? = null
         ) {
             val intent = Intent(context, ReminderActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -77,6 +81,8 @@ class ReminderActivity : ComponentActivity() {
                 putExtra(EXTRA_REMINDER_TEXT, reminderText)
                 putExtra(EXTRA_TASK_TYPE, taskType.name)
                 putExtra(EXTRA_IS_DEADLINE, isDeadline)
+                putExtra(EXTRA_CATEGORY_NAME, categoryName)
+                putExtra(EXTRA_CATEGORY_COLOR, categoryColor)
             }
             context.startActivity(intent)
         }
@@ -90,6 +96,8 @@ class ReminderActivity : ComponentActivity() {
     private var reminderText: String = ""
     private var taskType: TaskType = TaskType.WORK
     private var isDeadline: Boolean = false
+    private var categoryName: String? = null
+    private var categoryColor: String? = null
     
     // 标记用户是否已处理提醒
     private var userHandled = false
@@ -141,6 +149,8 @@ class ReminderActivity : ComponentActivity() {
                         reminderText = reminderText,
                         taskType = taskType,
                         isDeadline = isDeadline,
+                        categoryName = categoryName,
+                        categoryColor = categoryColor,
                         onDismiss = {
                             userHandled = true
                             finish()
@@ -161,19 +171,39 @@ class ReminderActivity : ComponentActivity() {
         reminderText: String,
         taskType: TaskType,
         isDeadline: Boolean,
+        categoryName: String?,
+        categoryColor: String?,
         onDismiss: () -> Unit,
         onAction: () -> Unit
     ) {
         val extendedColors = LocalExtendedColors.current
         
-        // 根据任务类型动态获取颜色
-        val (primaryColor, containerColor) = when {
-            isDeadline -> extendedColors.deadlineUrgent to extendedColors.deadlineUrgentSurface
-            taskType == TaskType.WORK -> extendedColors.workTask to extendedColors.workTaskSurface
-            taskType == TaskType.LIFE -> extendedColors.lifeTask to extendedColors.lifeTaskSurface
-            taskType == TaskType.STUDY -> extendedColors.studyTask to extendedColors.studyTaskSurface
-            else -> extendedColors.urgentTask to extendedColors.urgentTaskSurface
+        // 根据任务类型和分类动态获取颜色
+        val (primaryColor, containerColor) = remember(isDeadline, taskType, categoryColor) {
+            if (categoryColor != null) {
+                try {
+                    val color = com.litetask.app.ui.util.ColorUtils.parseColor(categoryColor)
+                    // 如果是截止日期且没有明确颜色，可以使用红色装饰，
+                    // 但这里优先尊重分类的主色调
+                    val surface = com.litetask.app.ui.util.ColorUtils.getSurfaceColor(color)
+                    color to surface
+                } catch (e: Exception) {
+                    extendedColors.workTask to extendedColors.workTaskSurface
+                }
+            } else if (isDeadline) {
+                extendedColors.deadlineUrgent to extendedColors.deadlineUrgentSurface
+            } else {
+                when (taskType) {
+                    TaskType.WORK -> extendedColors.workTask to extendedColors.workTaskSurface
+                    TaskType.LIFE -> extendedColors.lifeTask to extendedColors.lifeTaskSurface
+                    TaskType.STUDY -> extendedColors.studyTask to extendedColors.studyTaskSurface
+                    else -> extendedColors.urgentTask to extendedColors.urgentTaskSurface
+                }
+            }
         }
+        
+        // 截止日期的警告特有颜色（用于图标和警告文字）
+        val warningColor = if (isDeadline) extendedColors.deadlineUrgent else primaryColor
 
         // 呼吸动画
         val infiniteTransition = rememberInfiniteTransition(label = "Pulse")
@@ -225,7 +255,7 @@ class ReminderActivity : ComponentActivity() {
                             id = if (isDeadline) R.drawable.ic_warning else R.drawable.ic_alarm
                         ),
                         contentDescription = null,
-                        colorFilter = ColorFilter.tint(primaryColor),
+                        colorFilter = ColorFilter.tint(warningColor),
                         modifier = Modifier.size(40.dp)
                     )
                 }
@@ -245,7 +275,7 @@ class ReminderActivity : ComponentActivity() {
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "${getTypeLabel(taskType)} · ${if (isDeadline) "即将截止" else "即将开始"}",
+                    text = "${categoryName ?: getTypeLabel(taskType)} · ${if (isDeadline) "即将截止" else "即将开始"}",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -274,7 +304,7 @@ class ReminderActivity : ComponentActivity() {
                             text = reminderText,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (isDeadline) extendedColors.deadlineUrgent else primaryColor
+                            color = warningColor
                         )
                     }
                 }
@@ -349,6 +379,8 @@ class ReminderActivity : ComponentActivity() {
         val typeStr = intent.getStringExtra(EXTRA_TASK_TYPE) ?: "WORK"
         taskType = try { TaskType.valueOf(typeStr) } catch (e: Exception) { TaskType.WORK }
         isDeadline = intent.getBooleanExtra(EXTRA_IS_DEADLINE, false)
+        categoryName = intent.getStringExtra(EXTRA_CATEGORY_NAME)
+        categoryColor = intent.getStringExtra(EXTRA_CATEGORY_COLOR)
     }
 
     private fun startAlertEffects() {
@@ -424,7 +456,9 @@ class ReminderActivity : ComponentActivity() {
                 taskId,
                 taskTitle,
                 "$reminderText（未查看）",
-                taskType
+                taskType,
+                categoryName,
+                categoryColor
             )
         }
         finish()

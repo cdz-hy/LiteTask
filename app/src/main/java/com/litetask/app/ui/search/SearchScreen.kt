@@ -23,6 +23,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.data.model.Category
+import com.litetask.app.ui.util.ColorUtils
 import com.litetask.app.ui.components.HtmlStyleTaskCard
 import com.litetask.app.ui.components.SwipeRevealItem
 import com.litetask.app.ui.theme.LocalExtendedColors
@@ -42,6 +44,8 @@ fun SearchScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val selectedTypes by viewModel.selectedTypes.collectAsState()
+    val selectedCategoryIds by viewModel.selectedCategoryIds.collectAsState()
+    val categories by viewModel.categories.collectAsState()
     val dateRange by viewModel.dateRange.collectAsState()
     var showFilterSheet by remember { mutableStateOf(false) }
     val extendedColors = LocalExtendedColors.current
@@ -103,7 +107,7 @@ fun SearchScreen(
                             Icon(
                                 Icons.Default.FilterList,
                                 contentDescription = stringResource(R.string.filter_criteria),
-                                tint = if (selectedTypes.isNotEmpty() || dateRange != null) 
+                                tint = if (selectedTypes.isNotEmpty() || selectedCategoryIds.isNotEmpty() || dateRange != null) 
                                     MaterialTheme.colorScheme.primary 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -124,12 +128,33 @@ fun SearchScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // 筛选标签 - 使用 FlowRow 实现自动换行
-            if (selectedTypes.isNotEmpty() || dateRange != null) {
+            if (selectedTypes.isNotEmpty() || selectedCategoryIds.isNotEmpty() || dateRange != null) {
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    selectedCategoryIds.forEach { categoryId ->
+                        val category = categories.find { it.id == categoryId }
+                        if (category != null) {
+                            FilterChip(
+                                selected = true,
+                                onClick = { viewModel.toggleCategoryFilter(categoryId) },
+                                label = { Text(category.name, fontSize = 13.sp) },
+                                trailingIcon = {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = ColorUtils.parseColor(category.colorHex).copy(alpha = 0.15f),
+                                    selectedLabelColor = ColorUtils.parseColor(category.colorHex)
+                                )
+                            )
+                        }
+                    }
                     selectedTypes.forEach { type ->
                         FilterChip(
                             selected = true,
@@ -179,7 +204,7 @@ fun SearchScreen(
             }
 
             // 结果统计
-            if (searchQuery.isNotEmpty() || selectedTypes.isNotEmpty() || dateRange != null) {
+            if (searchQuery.isNotEmpty() || selectedTypes.isNotEmpty() || selectedCategoryIds.isNotEmpty() || dateRange != null) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -302,7 +327,7 @@ fun SearchScreen(
                 }
 
                 // 空状态
-                if (searchResults.isEmpty() && (searchQuery.isNotEmpty() || selectedTypes.isNotEmpty() || dateRange != null)) {
+                if (searchResults.isEmpty() && (searchQuery.isNotEmpty() || selectedTypes.isNotEmpty() || selectedCategoryIds.isNotEmpty() || dateRange != null)) {
                     item {
                         Column(
                             modifier = Modifier
@@ -351,8 +376,11 @@ fun SearchScreen(
     if (showFilterSheet) {
         FilterBottomSheet(
             selectedTypes = selectedTypes,
+            selectedCategoryIds = selectedCategoryIds,
+            categories = categories,
             dateRange = dateRange,
             onTypeToggle = { viewModel.toggleTypeFilter(it) },
+            onCategoryToggle = { viewModel.toggleCategoryFilter(it) },
             onDateRangeSelected = { start, end -> viewModel.setDateRange(start, end) },
             onClearAll = { viewModel.clearAllFilters() },
             onDismiss = { showFilterSheet = false }
@@ -364,8 +392,11 @@ fun SearchScreen(
 @Composable
 fun FilterBottomSheet(
     selectedTypes: Set<TaskType>,
+    selectedCategoryIds: Set<Long>,
+    categories: List<Category>,
     dateRange: Pair<Long, Long>?,
     onTypeToggle: (TaskType) -> Unit,
+    onCategoryToggle: (Long) -> Unit,
     onDateRangeSelected: (Long, Long) -> Unit,
     onClearAll: () -> Unit,
     onDismiss: () -> Unit
@@ -424,11 +455,11 @@ fun FilterBottomSheet(
                 
                 TextButton(
                     onClick = onClearAll,
-                    enabled = selectedTypes.isNotEmpty() || dateRange != null
+                    enabled = selectedTypes.isNotEmpty() || selectedCategoryIds.isNotEmpty() || dateRange != null
                 ) {
                     Text(
                         stringResource(R.string.clear_all),
-                        color = if (selectedTypes.isNotEmpty() || dateRange != null) 
+                        color = if (selectedTypes.isNotEmpty() || selectedCategoryIds.isNotEmpty() || dateRange != null) 
                             MaterialTheme.colorScheme.primary 
                         else 
                             MaterialTheme.colorScheme.onSurfaceVariant
@@ -438,7 +469,9 @@ fun FilterBottomSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 任务类型筛选
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 任务分类筛选
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -458,19 +491,19 @@ fun FilterBottomSheet(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            stringResource(R.string.task_type),
+                            "任务类型",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        if (selectedTypes.isNotEmpty()) {
+                        if (selectedCategoryIds.isNotEmpty()) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                             ) {
                                 Text(
-                                    text = "${selectedTypes.size}",
+                                    text = "${selectedCategoryIds.size}",
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
@@ -485,18 +518,20 @@ fun FilterBottomSheet(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        searchableTaskTypes.forEach { type ->
+                        categories.forEach { category ->
+                            val isSelected = category.id in selectedCategoryIds
+                            val color = ColorUtils.parseColor(category.colorHex)
                             FilterChip(
-                                selected = type in selectedTypes,
-                                onClick = { onTypeToggle(type) },
+                                selected = isSelected,
+                                onClick = { onCategoryToggle(category.id) },
                                 label = { 
                                     Text(
-                                        getTaskTypeName(type),
+                                        category.name,
                                         fontSize = 14.sp,
-                                        fontWeight = if (type in selectedTypes) FontWeight.SemiBold else FontWeight.Normal
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                                     ) 
                                 },
-                                leadingIcon = if (type in selectedTypes) {
+                                leadingIcon = if (isSelected) {
                                     {
                                         Icon(
                                             Icons.Default.Check,
@@ -506,9 +541,9 @@ fun FilterBottomSheet(
                                     }
                                 } else null,
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
+                                    selectedContainerColor = color.copy(alpha = 0.2f),
+                                    selectedLabelColor = color,
+                                    selectedLeadingIconColor = color,
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                     labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -517,6 +552,8 @@ fun FilterBottomSheet(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             Spacer(modifier = Modifier.height(16.dp))
 

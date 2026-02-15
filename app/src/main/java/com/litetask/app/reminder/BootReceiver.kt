@@ -63,19 +63,24 @@ class BootReceiver : BroadcastReceiver() {
         
         // 遍历每个提醒，获取任务信息后注册
         for (reminder in pendingReminders) {
-            val task = taskDao.getTaskByIdSync(reminder.taskId)
+            val taskDetail = taskDao.getTaskDetailCompositeSync(reminder.taskId)
             
             // 跳过已完成或不存在的任务
-            if (task == null || task.isDone) {
+            if (taskDetail == null || taskDetail.task.isDone) {
                 Log.d(TAG, "Skipping reminder ${reminder.id}: task null or done")
                 continue
             }
+            
+            val task = taskDetail.task
+            val category = taskDetail.category
             
             // 使用带任务信息的方法注册，确保触发时能直接显示通知
             val success = scheduler.scheduleReminderWithTaskInfo(
                 reminder = reminder,
                 taskTitle = task.title,
-                taskType = task.type.name
+                taskType = task.type.name,
+                categoryName = category?.name,
+                categoryColor = category?.colorHex
             )
             
             if (success) {

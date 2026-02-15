@@ -1,9 +1,12 @@
 package com.litetask.app.di
 
 import com.litetask.app.data.local.TaskDao
+import com.litetask.app.data.local.CategoryDao
 import com.litetask.app.data.repository.AIRepository
 import com.litetask.app.data.repository.AIRepositoryImpl
 import com.litetask.app.data.repository.TaskRepositoryImpl
+import com.litetask.app.data.repository.CategoryRepository
+import com.litetask.app.data.repository.CategoryRepositoryImpl
 import com.litetask.app.reminder.ReminderScheduler
 import dagger.Module
 import dagger.Provides
@@ -19,9 +22,11 @@ object RepositoryModule {
     @Singleton
     fun provideTaskRepository(
         taskDao: TaskDao,
+        categoryDao: CategoryDao,
+        taskComponentDao: com.litetask.app.data.local.TaskComponentDao,
         reminderScheduler: ReminderScheduler
     ): TaskRepositoryImpl {
-        return TaskRepositoryImpl(taskDao, reminderScheduler)
+        return TaskRepositoryImpl(taskDao, categoryDao, taskComponentDao, reminderScheduler)
     }
 
     @Provides
@@ -29,4 +34,10 @@ object RepositoryModule {
     fun provideAIRepository(
         aiRepositoryImpl: AIRepositoryImpl
     ): AIRepository = aiRepositoryImpl
+
+    @Provides
+    @Singleton
+    fun provideCategoryRepository(
+        categoryRepositoryImpl: CategoryRepositoryImpl
+    ): CategoryRepository = categoryRepositoryImpl
 }

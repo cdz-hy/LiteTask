@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Mic
@@ -73,6 +75,7 @@ fun HomeScreen(
     onNavigateToAdd: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToHistory: () -> Unit,
+    onNavigateToBackup: () -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToGanttFullscreen: (com.litetask.app.ui.components.GanttViewMode) -> Unit,
     initialView: String = "timeline",
@@ -85,9 +88,11 @@ fun HomeScreen(
 ) {
     // ViewModel 数据流
     val todayTasks by viewModel.tasks.collectAsState()
+    val amapKey by viewModel.amapKey.collectAsState() // Collect AMap Key
     val timelineItems by viewModel.timelineItems.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val categories by viewModel.categories.collectAsState()
     var currentView by androidx.compose.runtime.saveable.rememberSaveable { 
         mutableStateOf(if (initialView == "timeline") viewModel.getDefaultHomeView() else initialView) 
     }
@@ -228,6 +233,22 @@ fun HomeScreen(
                             drawerState.close()
                         }
                         onNavigateToHistory()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 数据管理
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Storage, contentDescription = null) },
+                    label = { Text(stringResource(R.string.data_backup)) },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                        onNavigateToBackup()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -517,7 +538,17 @@ fun HomeScreen(
                     onConfirmWithReminders = { task, reminderConfigs ->
                         viewModel.addTaskWithReminders(task, reminderConfigs)
                         showAddTaskDialog = false
-                    }
+                    },
+                    onConfirmWithComponents = { task, reminderConfigs, components ->
+                        viewModel.addTaskWithComponents(task, reminderConfigs, components)
+                        showAddTaskDialog = false
+                    },
+
+                    availableCategories = categories,
+                    amapKey = amapKey,
+                    onGeocode = { address -> viewModel.geocodeLocation(address) },
+                    onSearchLocations = { keyword -> viewModel.searchLocations(keyword) },
+                    onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) }
                 )
             }
             
@@ -544,40 +575,63 @@ fun HomeScreen(
                 }
             }
             
-            // 编辑任务时需要加载已有提醒
+            // 编辑任务时需要加载已有提醒和组件
             var editTaskReminders by remember { mutableStateOf<List<com.litetask.app.data.model.Reminder>>(emptyList()) }
-            var isLoadingReminders by remember { mutableStateOf(false) }
+            var editTaskComponents by remember { mutableStateOf<List<com.litetask.app.data.model.TaskComponent>>(emptyList()) }
+            var isLoadingTaskData by remember { mutableStateOf(false) }
             
-            // 当 taskToEdit 变化时，先加载提醒，加载完成后再显示对话框
+            // 当 taskToEdit 变化时，先加载提醒和组件，加载完成后再显示对话框
             LaunchedEffect(taskToEdit) {
                 if (taskToEdit != null && !showEditDialog) {
-                    isLoadingReminders = true
-                    editTaskReminders = viewModel.getRemindersForTaskSync(taskToEdit!!.id)
-                    isLoadingReminders = false
+                    isLoadingTaskData = true
+                    // 并行加载提醒和组件
+                    val remindersDeferred = viewModel.getRemindersForTaskSync(taskToEdit!!.id)
+                    val componentsDeferred = viewModel.getComponentsForTaskSync(taskToEdit!!.id)
+                    
+                    editTaskReminders = remindersDeferred
+                    editTaskComponents = componentsDeferred
+                    
+                    isLoadingTaskData = false
                     showEditDialog = true
                 }
             }
 
-            if (showEditDialog && !isLoadingReminders) {
+            if (showEditDialog && !isLoadingTaskData) {
                 AddTaskDialog(
                     initialTask = taskToEdit,
                     initialReminders = editTaskReminders,
+                    initialComponents = editTaskComponents,
+                    availableCategories = categories,
+                    amapKey = amapKey,
+                    onGeocode = { address -> viewModel.geocodeLocation(address) },
+                    onSearchLocations = { keyword -> viewModel.searchLocations(keyword) },
+                    onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) },
                     onDismiss = {
                         showEditDialog = false
                         taskToEdit = null
                         editTaskReminders = emptyList()
+                        editTaskComponents = emptyList()
                     },
                     onConfirm = { task ->
                         viewModel.updateTask(task)
                         showEditDialog = false
                         taskToEdit = null
                         editTaskReminders = emptyList()
+                        editTaskComponents = emptyList()
                     },
                     onConfirmWithReminders = { task, reminderConfigs ->
                         viewModel.updateTaskWithReminders(task, reminderConfigs)
                         showEditDialog = false
                         taskToEdit = null
                         editTaskReminders = emptyList()
+                        editTaskComponents = emptyList()
+                    },
+                    onConfirmWithComponents = { task, reminderConfigs, components ->
+                        viewModel.updateTaskWithComponents(task, reminderConfigs, components)
+                        showEditDialog = false
+                        taskToEdit = null
+                        editTaskReminders = emptyList()
+                        editTaskComponents = emptyList()
                     }
                 )
             }
@@ -601,6 +655,11 @@ fun HomeScreen(
                     task = composite.task,
                     subTasks = composite.subTasks,
                     reminders = composite.reminders, // 直接使用复合数据中的提醒
+                    components = composite.components.map { it.toTaskComponent() },
+
+                    category = composite.category,
+                    amapKey = amapKey,
+                    onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) },
                     onDismiss = { selectedTaskId = null },
                     onDelete = {
                         viewModel.deleteTask(it)
@@ -622,7 +681,10 @@ fun HomeScreen(
                     onGenerateSubTasksWithContext = { task ->
                         viewModel.showSubTaskInputDialog(task)
                     },
-                    isGeneratingSubTasks = uiState.isAnalyzing
+                    isGeneratingSubTasks = uiState.isAnalyzing,
+                    onDeleteComponent = { component ->
+                        viewModel.deleteComponent(component)
+                    }
                 )
             }
 
@@ -651,9 +713,14 @@ fun HomeScreen(
                 TaskConfirmationSheet(
                     tasks = uiState.aiParsedTasks,
                     onDismiss = { viewModel.dismissAiResult() },
-                    onConfirm = { tasks, reminders -> viewModel.confirmAddTasksWithReminders(tasks, reminders) },
+                    onConfirm = { tasks, reminders, components -> viewModel.confirmAddTasksWithReminders(tasks, reminders, components) },
                     onEditTask = { index, task -> viewModel.updateAiParsedTask(index, task) },
-                    onDeleteTask = { index -> viewModel.deleteAiParsedTask(index) }
+                    onDeleteTask = { index -> viewModel.deleteAiParsedTask(index) },
+                    amapKey = amapKey,
+                    onGeocode = { address -> viewModel.geocodeLocation(address) },
+                    onSearchLocations = { keyword -> viewModel.searchLocations(keyword) },
+                    onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) },
+                    initialComponents = uiState.aiParsedComponents
                 )
             }
 

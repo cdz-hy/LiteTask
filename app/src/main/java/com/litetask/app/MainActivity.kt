@@ -225,6 +225,12 @@ fun AppContent(
                 onSelectedTaskIdChange = { selectedTaskId = it }
             )
         }
+        
+        composable("backup") {
+            com.litetask.app.ui.backup.DataBackupScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
     }
 }
 
@@ -245,6 +251,7 @@ private fun HomeScreenWrapper(
         onNavigateToAdd = { /* 添加任务功能保持在 HomeScreen 内部 */ },
         onNavigateToSettings = { navController.navigate("settings") },
         onNavigateToHistory = onNavigateToHistory,
+        onNavigateToBackup = { navController.navigate("backup") },
         onNavigateToSearch = { navController.navigate("search") },
         onNavigateToGanttFullscreen = { viewMode ->
             // 通过 savedStateHandle 传递参数

@@ -65,21 +65,22 @@ class ReminderReceiver : BroadcastReceiver() {
         val taskId = intent.getLongExtra(ReminderScheduler.EXTRA_TASK_ID, -1)
         val taskTitle = intent.getStringExtra(ReminderScheduler.EXTRA_TASK_TITLE)
         val reminderLabel = intent.getStringExtra(ReminderScheduler.EXTRA_REMINDER_LABEL)
-        val taskTypeStr = intent.getStringExtra(ReminderScheduler.EXTRA_TASK_TYPE)
+        val categoryName = intent.getStringExtra(ReminderScheduler.EXTRA_CATEGORY_NAME)
+        val categoryColor = intent.getStringExtra(ReminderScheduler.EXTRA_CATEGORY_COLOR)
 
         Log.i(TAG, "★ Receiver wake: reminderId=$reminderId, taskId=$taskId, title=$taskTitle")
 
         // 快速路径：Intent 中包含完整数据
         if (reminderId != -1L && !taskTitle.isNullOrEmpty()) {
             val taskType = try { 
-                TaskType.valueOf(taskTypeStr ?: "WORK") 
+                TaskType.valueOf(intent.getStringExtra("task_type") ?: "WORK") 
             } catch (e: Exception) { 
                 TaskType.WORK 
             }
             val isDeadline = reminderLabel?.contains("截止") == true
 
             withContext(Dispatchers.Main) {
-                showReminder(context, taskId, taskTitle, reminderLabel ?: "任务提醒", taskType, isDeadline)
+                showReminder(context, taskId, taskTitle, reminderLabel ?: "任务提醒", taskType, isDeadline, categoryName, categoryColor)
             }
             
             // 更新数据库状态
@@ -100,12 +101,13 @@ class ReminderReceiver : BroadcastReceiver() {
     private suspend fun processReminderFromDatabase(context: Context, reminderId: Long, taskId: Long) {
         try {
             val db = AppDatabase.getInstance(context)
-            val task = db.taskDao().getTaskByIdSync(taskId)
+            val taskDetail = db.taskDao().getTaskDetailCompositeSync(taskId)
             
-            if (task == null) {
+            if (taskDetail == null) {
                 Log.e(TAG, "Task not found: taskId=$taskId")
                 return
             }
+            val task = taskDetail.task
             
             if (task.isDone) {
                 Log.i(TAG, "Task already done, skipping reminder")
@@ -117,8 +119,10 @@ class ReminderReceiver : BroadcastReceiver() {
             val label = reminder?.label ?: "任务提醒"
             val isDeadline = label.contains("截止")
             
+            val category = taskDetail.category
+            
             withContext(Dispatchers.Main) {
-                showReminder(context, taskId, task.title, label, task.type, isDeadline)
+                showReminder(context, taskId, task.title, label, task.type, isDeadline, category?.name, category?.colorHex)
             }
             
             db.taskDao().updateReminderFired(reminderId, true)
@@ -141,7 +145,9 @@ class ReminderReceiver : BroadcastReceiver() {
         taskTitle: String,
         reminderText: String,
         taskType: TaskType,
-        isDeadline: Boolean
+        isDeadline: Boolean,
+        categoryName: String? = null,
+        categoryColor: String? = null
     ) {
         Log.i(TAG, "★ showReminder: $taskTitle")
         
@@ -152,7 +158,9 @@ class ReminderReceiver : BroadcastReceiver() {
             taskTitle = taskTitle,
             reminderText = reminderText,
             taskType = taskType,
-            isDeadline = isDeadline
+            isDeadline = isDeadline,
+            categoryName = categoryName,
+            categoryColor = categoryColor
         )
     }
 }

@@ -11,15 +11,20 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import com.litetask.app.data.model.Category
+import com.litetask.app.data.repository.CategoryRepository
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val application: Application,
     private val preferenceManager: PreferenceManager,
     private val aiProviderFactory: AIProviderFactory,
-    private val speechProviderFactory: SpeechProviderFactory
+    private val speechProviderFactory: SpeechProviderFactory,
+    private val categoryRepository: CategoryRepository
 ) : ViewModel() {
 
     // ========== 通用状态 ==========
@@ -43,6 +48,9 @@ class SettingsViewModel @Inject constructor(
     fun saveApiKey(key: String) = preferenceManager.saveApiKey(key)
     fun getAiProvider(): String = preferenceManager.getAiProvider()
     fun saveAiProvider(provider: String) = preferenceManager.saveAiProvider(provider)
+    
+    fun isAiDestinationEnabled(): Boolean = preferenceManager.isAiDestinationEnabled()
+    fun setAiDestinationEnabled(enabled: Boolean) = preferenceManager.setAiDestinationEnabled(enabled)
 
     fun resetConnectionState() {
         _aiConnectionState.value = ConnectionState.Idle
@@ -66,6 +74,9 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
+    
+    // ========== 提醒方式配置 ==========
+    // (Existing reminder logic below...)
     
     // ========== 语音识别配置 ==========
     
@@ -142,6 +153,56 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
+
+    // ========== 高德地图配置 ==========
+    
+    private val _amapConnectionState = MutableStateFlow<ConnectionState>(ConnectionState.Idle)
+    val amapConnectionState: StateFlow<ConnectionState> = _amapConnectionState.asStateFlow()
+
+    fun getAMapKey(): String? = preferenceManager.getAMapKey()
+    fun saveAMapKey(key: String) = preferenceManager.saveAMapKey(key)
+
+    fun resetAMapConnectionState() {
+        _amapConnectionState.value = ConnectionState.Idle
+    }
+
+    fun testAMapConnection(key: String) {
+        if (key.isBlank()) {
+            _amapConnectionState.value = ConnectionState.Error("请输入高德地图 Key")
+            return
+        }
+
+        viewModelScope.launch {
+            _amapConnectionState.value = ConnectionState.Testing
+            try {
+                val encodedAddress = java.net.URLEncoder.encode("北京", "UTF-8")
+                val urlString = "https://restapi.amap.com/v3/geocode/geo?address=$encodedAddress&output=JSON&key=$key"
+                
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val url = java.net.URL(urlString)
+                    val connection = url.openConnection() as java.net.HttpURLConnection
+                    connection.requestMethod = "GET"
+                    connection.connectTimeout = 5000
+                    connection.readTimeout = 5000
+
+                    if (connection.responseCode == 200) {
+                        val response = connection.inputStream.bufferedReader().use { it.readText() }
+                        val json = org.json.JSONObject(response)
+                        if (json.optString("status") == "1") {
+                            _amapConnectionState.value = ConnectionState.Success
+                        } else {
+                            val info = json.optString("info")
+                            _amapConnectionState.value = ConnectionState.Error(info.ifBlank { "验证失败" })
+                        }
+                    } else {
+                        _amapConnectionState.value = ConnectionState.Error("HTTP Error: ${connection.responseCode}")
+                    }
+                }
+            } catch (e: Exception) {
+                _amapConnectionState.value = ConnectionState.Error(e.message ?: "连接异常")
+            }
+        }
+    }
     
     // ========== 提醒配置 ==========
     
@@ -186,4 +247,26 @@ class SettingsViewModel @Inject constructor(
      * 设置默认首页视图
      */
     fun setDefaultHomeView(view: String) = preferenceManager.setDefaultHomeView(view)
+    
+    // ========== 分类管理 ==========
+    
+    val categories: Flow<List<Category>> = categoryRepository.getAllCategories()
+    
+    fun addCategory(category: Category) {
+        viewModelScope.launch {
+            categoryRepository.insertCategory(category)
+        }
+    }
+    
+    fun updateCategory(category: Category) {
+        viewModelScope.launch {
+            categoryRepository.updateCategory(category)
+        }
+    }
+    
+    fun deleteCategory(category: Category) {
+        viewModelScope.launch {
+            categoryRepository.deleteCategory(category)
+        }
+    }
 }

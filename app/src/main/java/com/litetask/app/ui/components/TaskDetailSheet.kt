@@ -60,6 +60,8 @@ import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.components.AISparkle
 import com.litetask.app.ui.theme.LocalExtendedColors
+import com.litetask.app.ui.util.ColorUtils
+import com.litetask.app.data.model.Category
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -69,8 +71,14 @@ import java.util.concurrent.TimeUnit
 /**
  * 获取任务类型主题色
  */
+/**
+ * 获取任务类型主题色
+ */
 @Composable
-private fun getTaskThemeColor(type: TaskType): Color {
+private fun getTaskThemeColor(type: TaskType, category: Category? = null): Color {
+    if (category != null) {
+        return ColorUtils.parseColor(category.colorHex)
+    }
     val extendedColors = LocalExtendedColors.current
     return when (type) {
         TaskType.WORK -> extendedColors.workTask
@@ -84,7 +92,11 @@ private fun getTaskThemeColor(type: TaskType): Color {
  * 获取任务类型表面色
  */
 @Composable
-private fun getTaskSurfaceColor(type: TaskType): Color {
+private fun getTaskSurfaceColor(type: TaskType, category: Category? = null): Color {
+    if (category != null) {
+        val primary = ColorUtils.parseColor(category.colorHex)
+        return ColorUtils.getSurfaceColor(primary)
+    }
     val extendedColors = LocalExtendedColors.current
     return when (type) {
         TaskType.WORK -> extendedColors.workTaskSurface
@@ -108,6 +120,8 @@ fun TaskDetailSheet(
     task: Task,
     subTasks: List<SubTask>,
     reminders: List<Reminder> = emptyList(),
+    components: List<com.litetask.app.data.model.TaskComponent> = emptyList(),
+    category: Category? = null,
     onDismiss: () -> Unit,
     onDelete: (Task) -> Unit,
     onUpdateTask: (Task) -> Unit,
@@ -116,7 +130,10 @@ fun TaskDetailSheet(
     onDeleteSubTask: (SubTask) -> Unit,
     onGenerateSubTasks: () -> Unit = {},
     onGenerateSubTasksWithContext: (Task) -> Unit = {},
-    isGeneratingSubTasks: Boolean = false
+    isGeneratingSubTasks: Boolean = false,
+    onDeleteComponent: (com.litetask.app.data.model.TaskComponent) -> Unit = {},
+    amapKey: String? = null,
+    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null
 ) {
     val context = LocalContext.current
     val extendedColors = LocalExtendedColors.current
@@ -172,8 +189,8 @@ fun TaskDetailSheet(
 
     var newSubTaskText by remember { mutableStateOf("") }
 
-    val themeColor = if (task.isDone) extendedColors.ganttDoneText else getTaskThemeColor(task.type)
-    val surfaceColor = if (task.isDone) MaterialTheme.colorScheme.surfaceVariant else getTaskSurfaceColor(task.type)
+    val themeColor = if (task.isDone) extendedColors.ganttDoneText else getTaskThemeColor(task.type, category)
+    val surfaceColor = if (task.isDone) MaterialTheme.colorScheme.surfaceVariant else getTaskSurfaceColor(task.type, category)
 
     // 关闭动画
     fun closeSheet() {
@@ -293,7 +310,7 @@ fun TaskDetailSheet(
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 ) {
                                     Text(
-                                        text = getTaskTypeName(task.type),
+                                        text = category?.name ?: getTaskTypeName(task.type),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = themeColor,
                                         fontWeight = FontWeight.Bold,
@@ -382,6 +399,17 @@ fun TaskDetailSheet(
                                         )
                                     }
                                 }
+                            }
+
+                            // 3.5 Components
+                            if (components.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                com.litetask.app.ui.components.TaskComponentList(
+                                    components = components,
+                                    onRemove = { onDeleteComponent(it) },
+                                    amapKey = amapKey,
+                                    onGetWeather = onGetWeather
+                                )
                             }
 
                             Spacer(modifier = Modifier.height(24.dp))

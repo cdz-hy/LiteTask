@@ -10,17 +10,26 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -28,40 +37,63 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimeInput
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.litetask.app.data.model.Category
+import com.litetask.app.ui.util.ColorUtils
 import androidx.compose.material3.Switch
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -115,6 +147,16 @@ fun SettingsScreen(
     val speechCredentials = remember { mutableStateMapOf<String, String>() }
     val speechConnectionState by viewModel.speechConnectionState.collectAsState()
     
+    // ========== 高德地图配置状态 ==========
+    var amapKey by remember { mutableStateOf("") }
+    val amapConnectionState by viewModel.amapConnectionState.collectAsState()
+    
+    // ========== AI 智能目的地状态 ==========
+    var isAiDestinationEnabled by remember { mutableStateOf(false) }
+    
+    // ========== 分类管理状态 ==========
+    var showCategoryDialog by remember { mutableStateOf(false) }
+    
     val speechProviders = viewModel.getSupportedSpeechProviders()
     val speechCredentialFields = remember(selectedSpeechProvider) {
         viewModel.getSpeechCredentialFields(selectedSpeechProvider)
@@ -125,6 +167,9 @@ fun SettingsScreen(
         apiKey = viewModel.getApiKey() ?: ""
         selectedAiProvider = viewModel.getAiProvider()
         selectedSpeechProvider = viewModel.getSpeechProvider()
+        selectedSpeechProvider = viewModel.getSpeechProvider()
+        amapKey = viewModel.getAMapKey() ?: ""
+        isAiDestinationEnabled = viewModel.isAiDestinationEnabled()
         
         // 加载语音识别凭证
         val savedCredentials = viewModel.getSpeechCredentials(selectedSpeechProvider)
@@ -147,6 +192,13 @@ fun SettingsScreen(
     LaunchedEffect(apiKey, selectedAiProvider) {
         if (aiConnectionState !is SettingsViewModel.ConnectionState.Idle) {
             viewModel.resetConnectionState()
+        }
+    }
+
+    // 当 AMap Key 改变时，重置测试状态
+    LaunchedEffect(amapKey) {
+        if (amapConnectionState !is SettingsViewModel.ConnectionState.Idle) {
+            viewModel.resetAMapConnectionState()
         }
     }
 
@@ -183,7 +235,7 @@ fun SettingsScreen(
                 // AI 提供商选择
                 ExposedDropdownMenuBox(
                     expanded = aiProviderExpanded,
-                    onExpandedChange = { aiProviderExpanded = it }
+                    onExpandedChange = { aiProviderExpanded = it },
                 ) {
                     OutlinedTextField(
                         value = aiProviders.find { it.first == selectedAiProvider }?.second ?: "DeepSeek V3.2",
@@ -235,7 +287,7 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = stringResource(R.string.key_stored_locally),
+                        text = "密钥仅保存在本地设备",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -262,6 +314,7 @@ fun SettingsScreen(
                 ) {
                     Text(stringResource(R.string.ai_save_settings))
                 }
+                
             }
             
             // ========== 语音识别配置卡片 ==========
@@ -281,7 +334,7 @@ fun SettingsScreen(
                 // 语音识别服务选择
                 ExposedDropdownMenuBox(
                     expanded = speechProviderExpanded,
-                    onExpandedChange = { speechProviderExpanded = it }
+                    onExpandedChange = { speechProviderExpanded = it },
                 ) {
                     OutlinedTextField(
                         value = speechProviders.find { it.first == selectedSpeechProvider }?.second ?: "",
@@ -336,7 +389,7 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = stringResource(R.string.key_stored_locally),
+                        text = "密钥仅保存在本地设备",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -369,6 +422,120 @@ fun SettingsScreen(
                 }
             }
             
+            // ========== 高德地图配置卡片 ==========
+            SettingsCard(
+                title = "地图与定位配置",
+                icon = Icons.Default.Map
+            ) {
+                Text(
+                    text = "用于开启任务路线规划与地图预览功能",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                OutlinedTextField(
+                    value = amapKey,
+                    onValueChange = { amapKey = it },
+                    label = { Text("高德地图 Web 服务 Key") },
+                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("在此输入您的 AMap Web Key") },
+                    singleLine = true,
+                    isError = amapConnectionState is SettingsViewModel.ConnectionState.Error
+                )
+
+                // 测试状态显示
+                ConnectionStateIndicator(state = amapConnectionState)
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "密钥仅保存在本地设备",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Row {
+                        TextButton(
+                            onClick = { viewModel.testAMapConnection(amapKey) },
+                            enabled = amapKey.isNotBlank() && amapConnectionState !is SettingsViewModel.ConnectionState.Testing
+                        ) {
+                            Text("测试连接")
+                        }
+                        
+                        TextButton(
+                            onClick = { 
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://console.amap.com/dev/key/app"))
+                                context.startActivity(intent)
+                            }
+                        ) {
+                            Text("获取 Key")
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = { 
+                        viewModel.saveAMapKey(amapKey)
+                        Toast.makeText(context, "地图设置已保存", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("保存地图设置")
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 智能目的地开关
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "识别任务目的地",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = if (amapKey.isBlank()) "需先配置高德地图 Key" else "自动为任务添加地图组件",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (amapKey.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isAiDestinationEnabled && amapKey.isNotBlank(),
+                        onCheckedChange = { checked ->
+                            if (amapKey.isBlank()) {
+                                Toast.makeText(context, "请先配置高德地图 Key", Toast.LENGTH_SHORT).show()
+                            } else {
+                                isAiDestinationEnabled = checked
+                                viewModel.setAiDestinationEnabled(checked) // 自动保存
+                            }
+                        },
+                        enabled = amapKey.isNotBlank()
+                    )
+                }
+            }
+            
+            // ========== 分类设置卡片 ==========
+            CategorySettingsCard(
+                onManageCategories = { showCategoryDialog = true }
+            )
+            
             // ========== 提醒设置卡片 ==========
             ReminderSettingsCard(context)
             
@@ -377,6 +544,13 @@ fun SettingsScreen(
             
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    if (showCategoryDialog) {
+        CategoryManagementDialog(
+            viewModel = viewModel,
+            onDismiss = { showCategoryDialog = false }
+        )
     }
 }
 
@@ -396,7 +570,7 @@ private fun UserPreferencesCard(
     val fabOptions = listOf(
         Triple("voice", "语音添加", Icons.Default.Mic),
         Triple("text", "文字输入", Icons.Default.Edit),
-        Triple("manual", "手动添加", Icons.Rounded.Add)
+        Triple("manual", "手动添加", Icons.Default.Add)
     )
     
     val viewOptions = listOf(
@@ -955,6 +1129,299 @@ private fun ConnectionStateIndicator(state: SettingsViewModel.ConnectionState) {
                     )
                 }
                 else -> {}
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategorySettingsCard(onManageCategories: () -> Unit) {
+    SettingsCard(
+        title = "分类管理",
+        icon = Icons.Default.Category
+    ) {
+        Text(
+            text = "自定义任务分类名称和颜色",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        Button(
+            onClick = onManageCategories,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text("管理分类")
+        }
+    }
+}
+
+@Composable
+private fun CategoryManagementDialog(
+    viewModel: SettingsViewModel,
+    onDismiss: () -> Unit
+) {
+    val categories by viewModel.categories.collectAsState(initial = emptyList())
+    var editingCategory by remember { mutableStateOf<Category?>(null) }
+    var isAddingNew by remember { mutableStateOf(false) }
+    var deletingCategory by remember { mutableStateOf<Category?>(null) }
+
+    if (deletingCategory != null) {
+        val categoryToDelete = deletingCategory!!
+        AlertDialog(
+            onDismissRequest = { deletingCategory = null },
+            title = { Text("删除分类") },
+            text = { Text("确定要删除分类“${categoryToDelete.name}”吗？此操作无法撤销。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteCategory(categoryToDelete)
+                        deletingCategory = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingCategory = null }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .fillMaxHeight(0.8f),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+                
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "分类管理",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Content
+                if (isAddingNew || editingCategory != null) {
+                    // Editor
+                    CategoryEditor(
+                        category = editingCategory,
+                        onSave = { name, colorHex ->
+                            if (isAddingNew) {
+                                viewModel.addCategory(Category(name = name, colorHex = colorHex, isDefault = false))
+                            } else {
+                                editingCategory?.let {
+                                    viewModel.updateCategory(it.copy(name = name, colorHex = colorHex))
+                                }
+                            }
+                            isAddingNew = false
+                            editingCategory = null
+                        },
+                        onCancel = {
+                            isAddingNew = false
+                            editingCategory = null
+                        }
+                    )
+                } else {
+                    // List
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(categories) { category ->
+                            CategoryRow(
+                                category = category,
+                                onEdit = { editingCategory = category },
+                                onDelete = { deletingCategory = category }
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Button(
+                        onClick = { isAddingNew = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("添加新分类")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryRow(
+    category: Category,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val color = ColorUtils.parseColor(category.colorHex)
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Color Circle
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .background(color, CircleShape)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = category.name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+            if (category.isDefault) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "(默认)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
+        }
+        
+        Row {
+            IconButton(onClick = onEdit) {
+                Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+            }
+            if (!category.isDefault) { // Default category cannot be deleted
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryEditor(
+    category: Category?,
+    onSave: (String, String) -> Unit,
+    onCancel: () -> Unit
+) {
+    var name by remember { mutableStateOf(category?.name ?: "") }
+    var selectedColor by remember { mutableStateOf(category?.colorHex ?: "#A8D8B9") }
+    
+    // 简约美观的高对比度色系 (Vibrant & Functional Colors for Task ID)
+    val presetColors = listOf(
+        "#1976D2", // Blue (Work)
+        "#388E3C", // Green (Life)
+        "#7B1FA2", // Purple (Study)
+        "#D32F2F", // Red (Urgent)
+        "#F57C00", // Orange
+        "#0097A7", // Cyan
+        "#C2185B", // Pink
+        "#AFB42B", // Lime
+        "#FFA000", // Amber
+        "#5D4037", // Brown
+        "#0288D1", // Light Blue
+        "#00796B", // Teal
+        "#689F38", // Light Green
+        "#E64A19", // Deep Orange
+        "#303F9F", // Indigo
+        "#512DA8", // Deep Purple
+        "#455A64", // Blue Grey
+        "#333130"  // Dark charcoal
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = if (category == null) "添加分类" else "编辑分类",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("分类名称") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text("选择颜色", style = MaterialTheme.typography.labelMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // Color Palette
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(presetColors) { colorHex ->
+                val color = ColorUtils.parseColor(colorHex)
+                val isSelected = selectedColor.equals(colorHex, ignoreCase = true)
+                
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(color, CircleShape)
+                        .clickable { selectedColor = colorHex }
+                        .then(if (isSelected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape) else Modifier),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = ColorUtils.getSurfaceColor(color))
+                    }
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = onCancel,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("取消")
+            }
+            Button(
+                onClick = { onSave(name, selectedColor) },
+                enabled = name.isNotBlank(),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("保存")
             }
         }
     }

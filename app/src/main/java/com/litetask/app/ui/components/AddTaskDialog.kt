@@ -35,6 +35,10 @@ import com.litetask.app.data.model.ReminderType
 import com.litetask.app.data.model.ReminderTimeUnit
 import com.litetask.app.data.model.ReminderBaseTime
 import com.litetask.app.ui.theme.LocalExtendedColors
+import com.litetask.app.data.model.Category
+import com.litetask.app.ui.util.ColorUtils
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import java.util.Calendar
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -45,16 +49,35 @@ import java.util.Date
 fun AddTaskDialog(
     initialTask: Task? = null,
     initialReminders: List<Reminder> = emptyList(),
+    initialComponents: List<com.litetask.app.data.model.TaskComponent> = emptyList(),
+    availableCategories: List<Category> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (Task) -> Unit,
-    onConfirmWithReminders: ((Task, List<ReminderConfig>) -> Unit)? = null
+    onConfirmWithReminders: ((Task, List<ReminderConfig>) -> Unit)? = null,
+    onConfirmWithComponents: ((Task, List<ReminderConfig>, List<com.litetask.app.data.model.TaskComponent>) -> Unit)? = null,
+    amapKey: String? = null,
+    onGeocode: (suspend (String) -> com.litetask.app.data.model.AMapRouteData?)? = null,
+    onSearchLocations: (suspend (String) -> List<com.litetask.app.data.model.AMapRouteData>)? = null,
+    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null
 ) {
     val extendedColors = LocalExtendedColors.current
     var title by remember { mutableStateOf(initialTask?.title ?: "") }
     var description by remember { mutableStateOf(initialTask?.description ?: "") }
-    var selectedType by remember { mutableStateOf(initialTask?.type ?: TaskType.STUDY) }
+    
+    // 初始化选中的分类ID
+    var selectedCategoryId by remember { 
+        mutableStateOf(
+            initialTask?.categoryId ?: 
+            availableCategories.find { it.isDefault }?.id ?: 
+            availableCategories.firstOrNull()?.id ?: 
+            1L 
+        ) 
+    }
     var isPinned by remember { mutableStateOf(initialTask?.isPinned ?: false) }
     
+    // 组件状态
+    var components by remember { mutableStateOf(initialComponents) }
+
     // 时间初始化
     val initialStart = initialTask?.startTime ?: System.currentTimeMillis()
     val initialDead = initialTask?.deadline ?: (System.currentTimeMillis() + 24 * 60 * 60 * 1000)
@@ -80,7 +103,7 @@ fun AddTaskDialog(
     val isTaskDone = initialTask?.isDone ?: false
     var showAdvanced by remember { 
         mutableStateOf(
-            if (isTaskDone) false else (initialTask?.isPinned == true || initialReminders.isNotEmpty())
+            if (isTaskDone) false else (initialTask?.isPinned == true || initialReminders.isNotEmpty() || initialComponents.isNotEmpty())
         ) 
     }
 
@@ -209,7 +232,7 @@ fun AddTaskDialog(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Task Type Selection
+                    // Category Selection
                     Text(
                         text = stringResource(R.string.task_type),
                         style = MaterialTheme.typography.titleSmall,
@@ -218,18 +241,21 @@ fun AddTaskDialog(
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
                     
-                    Row(
+                    LazyRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        TaskType.values().take(4).forEach { type ->
-                            val isSelected = selectedType == type
+                        items(availableCategories) { category ->
+                            val isSelected = selectedCategoryId == category.id
+                            val categoryColor = ColorUtils.parseColor(category.colorHex)
+                            val contentColor = ColorUtils.getSurfaceColor(categoryColor)
+                            
                             FilterChip(
                                 selected = isSelected,
-                                onClick = { selectedType = type },
+                                onClick = { selectedCategoryId = category.id },
                                 label = { 
                                     Text(
-                                        getTaskTypeName(type),
+                                        category.name,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                     ) 
                                 },
@@ -237,9 +263,17 @@ fun AddTaskDialog(
                                     { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
                                 } else null,
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary
+                                    selectedContainerColor = categoryColor,
+                                    selectedLabelColor = contentColor,
+                                    selectedLeadingIconColor = contentColor,
+                                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                                    labelColor = extendedColors.textPrimary
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    selected = isSelected,
+                                    enabled = true,
+                                    borderColor = if (isSelected) Color.Transparent else extendedColors.divider,
+                                    borderWidth = 1.dp
                                 )
                             )
                         }
@@ -354,6 +388,30 @@ fun AddTaskDialog(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
+                    // 组件列表区域 (显示在折叠选项之前，方便查看)
+                    if (components.isNotEmpty()) {
+                        Text(
+                            text = "任务组件",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = extendedColors.textPrimary,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        
+                            
+                        // 显示已添加的组件
+                            TaskComponentList(
+                                components = components,
+                                onRemove = { component ->
+                                    components = components.filter { it != component }
+                                },
+                                amapKey = amapKey,
+                                onGetWeather = onGetWeather
+                            )
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
                     // Advanced Options Toggle
                     TextButton(
                         onClick = { showAdvanced = !showAdvanced },
@@ -374,7 +432,41 @@ fun AddTaskDialog(
                         exit = shrinkVertically() + fadeOut()
                     ) {
                         Column {
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            // 组件添加栏
+                            Text(
+                                text = "添加扩展组件",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF1F1F1F),
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+                            TaskComponentAddBar(
+                                onAddAMap = { data ->
+                                    val newId = -(System.currentTimeMillis()) // 临时 ID，负数表示未保存
+                                    val component = com.litetask.app.data.model.TaskComponent.AMapComponent(
+                                        id = newId,
+                                        taskId = initialTask?.id ?: 0,
+                                        data = data
+                                    )
+                                    components = components + component
+                                },
+                                onAddFile = { data ->
+                                    val newId = -(System.currentTimeMillis())
+                                    val component = com.litetask.app.data.model.TaskComponent.FileComponent(
+                                        id = newId,
+                                        taskId = initialTask?.id ?: 0,
+                                        data = data
+                                    )
+                                    components = components + component
+                                },
+                                amapKey = amapKey,
+                                onGeocode = onGeocode,
+                                onSearchLocations = onSearchLocations
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
                             
                             // 提醒设置
                             ReminderSelector(
@@ -464,7 +556,8 @@ fun AddTaskDialog(
                                     id = initialTask?.id ?: 0,
                                     title = title,
                                     description = description.ifBlank { null },
-                                    type = selectedType,
+                                    categoryId = selectedCategoryId,
+                                    type = TaskType.WORK, // Deprecated, placeholder
                                     startTime = startTimeMillis,
                                     deadline = deadlineMillis,
                                     isPinned = effectiveIsPinned,
@@ -477,8 +570,10 @@ fun AddTaskDialog(
                                     originalVoiceText = initialTask?.originalVoiceText
                                 )
                                 
-                                // 如果提供了带提醒的回调，使用它
-                                if (onConfirmWithReminders != null) {
+                                // 优先使用新的带组件回调
+                                if (onConfirmWithComponents != null) {
+                                    onConfirmWithComponents(newTask, selectedReminders, components)
+                                } else if (onConfirmWithReminders != null) {
                                     onConfirmWithReminders(newTask, selectedReminders)
                                 } else {
                                     onConfirm(newTask)

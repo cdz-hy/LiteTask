@@ -2,6 +2,10 @@ package com.litetask.app.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.onStart
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -11,6 +15,20 @@ class PreferenceManager @Inject constructor(
     @ApplicationContext context: Context
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences("litetask_prefs", Context.MODE_PRIVATE)
+
+    /**
+     * 获取高德地图 Key 的 Flow
+     */
+    val amapKeyFlow: Flow<String?> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
+            if (key == KEY_AMAP_KEY) {
+                trySend(sharedPreferences.getString(KEY_AMAP_KEY, null))
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(prefs.getString(KEY_AMAP_KEY, null))
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
 
     companion object {
         // AI 相关
@@ -32,6 +50,9 @@ class PreferenceManager @Inject constructor(
         private const val KEY_DEFAULT_HOME_VIEW = "default_home_view"
         const val DEFAULT_FAB_ACTION = "voice"  // voice, text, manual
         const val DEFAULT_HOME_VIEW = "timeline"  // timeline, gantt, deadline
+        
+        // 高德地图相关
+        private const val KEY_AMAP_KEY = "amap_key"
     }
 
     // ========== AI 配置 ==========
@@ -50,6 +71,21 @@ class PreferenceManager @Inject constructor(
     
     fun saveAiProvider(provider: String) {
         prefs.edit().putString(KEY_AI_PROVIDER, provider).apply()
+    }
+    
+    // ========== AI 智能目的地 ==========
+    
+    // AI 识别目的地开关 (需配合 AMap Key 使用)
+    private val KEY_ENABLE_AI_DESTINATION = "enable_ai_destination"
+    
+    fun isAiDestinationEnabled(): Boolean {
+        // 只有配置了 AMap Key 并且开关打开才生效
+        val hasAMapKey = !getAMapKey().isNullOrBlank()
+        return hasAMapKey && prefs.getBoolean(KEY_ENABLE_AI_DESTINATION, false)
+    }
+    
+    fun setAiDestinationEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ENABLE_AI_DESTINATION, enabled).apply()
     }
     
     // ========== 语音识别配置 ==========
@@ -177,11 +213,21 @@ class PreferenceManager @Inject constructor(
     fun getDefaultHomeView(): String {
         return prefs.getString(KEY_DEFAULT_HOME_VIEW, DEFAULT_HOME_VIEW) ?: DEFAULT_HOME_VIEW
     }
-    
+
     /**
      * 设置默认首页视图
      */
     fun setDefaultHomeView(view: String) {
         prefs.edit().putString(KEY_DEFAULT_HOME_VIEW, view).apply()
+    }
+    
+    // ========== 高德地图配置 ==========
+    
+    fun getAMapKey(): String? {
+        return prefs.getString(KEY_AMAP_KEY, null)
+    }
+
+    fun saveAMapKey(key: String) {
+        prefs.edit().putString(KEY_AMAP_KEY, key).apply()
     }
 }

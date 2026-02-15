@@ -30,7 +30,7 @@ class GanttRemoteViewsFactory(
     private val context: Context
 ) : RemoteViewsService.RemoteViewsFactory {
     
-    private var tasks: List<Task> = emptyList()
+    private var tasks: List<com.litetask.app.data.model.TaskDetailComposite> = emptyList()
     private val dateTimeFormat = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     
@@ -65,7 +65,7 @@ class GanttRemoteViewsFactory(
                     dao.autoSyncTaskExpiredStatus(System.currentTimeMillis())
                     
                     // 获取今日相关的所有任务（包括已完成的）
-                    tasks = dao.getTodayAllTasksSync(startOfDay, endOfDay)
+                    tasks = dao.getTodayAllTaskCompositesSync(startOfDay, endOfDay)
                     
                     Log.d("GanttWidget", "Loaded ${tasks.size} today tasks")
                 } catch (e: Exception) {
@@ -89,7 +89,9 @@ class GanttRemoteViewsFactory(
             return RemoteViews(context.packageName, R.layout.widget_gantt_item)
         }
         
-        val task = tasks[position]
+        val composite = tasks[position]
+        val task = composite.task
+        val category = composite.category
         val views = RemoteViews(context.packageName, R.layout.widget_gantt_item)
         val now = System.currentTimeMillis()
         
@@ -115,8 +117,24 @@ class GanttRemoteViewsFactory(
         if (task.isDone || task.isExpired) {
             // 已完成或已过期任务使用灰色指示条
             views.setImageViewResource(R.id.type_indicator, R.drawable.widget_type_indicator_done)
+            views.setInt(R.id.type_indicator, "setColorFilter", 0) // 清除滤镜或设为透明/默认
         } else {
-            views.setImageViewResource(R.id.type_indicator, getTypeIndicatorRes(task.type))
+            // 使用通用的白色指示条背景，然后染色
+            // 注意：这里假设有一个白色的 drawable，或者我们可以复用现有的并染色（只要它本身不是多色的）
+            // 为了安全起见，我们使用 R.drawable.widget_type_indicator_work 作为底图，因为它是单色的
+            views.setImageViewResource(R.id.type_indicator, R.drawable.widget_type_indicator_work)
+            
+            val color = if (category != null) {
+                try {
+                    android.graphics.Color.parseColor(category.colorHex)
+                } catch (e: Exception) {
+                    getTypeColor(task.type)
+                }
+            } else {
+                getTypeColor(task.type)
+            }
+            // 使用 setColorFilter 动态改变颜色 (PorterDuff.Mode.SRC_IN)
+            views.setInt(R.id.type_indicator, "setColorFilter", color)
         }
         
         // 设置已完成或已过期任务样式 - 整体变灰变淡
@@ -131,7 +149,19 @@ class GanttRemoteViewsFactory(
             views.setViewVisibility(R.id.progress_bar_done, android.view.View.VISIBLE)
         } else {
             views.setTextColor(R.id.task_title, context.getColor(R.color.on_surface))
-            views.setTextColor(R.id.progress_text, getTypeColor(task.type))
+            
+            // Set text color using category color if available
+            val textColor = if (category != null) {
+                try {
+                    android.graphics.Color.parseColor(category.colorHex)
+                } catch (e: Exception) {
+                    getTypeColor(task.type)
+                }
+            } else {
+                getTypeColor(task.type)
+            }
+            views.setTextColor(R.id.progress_text, textColor)
+            
             views.setTextColor(R.id.time_range, context.getColor(R.color.on_surface_variant))
             views.setTextColor(R.id.progress_status, context.getColor(R.color.on_surface_variant))
             views.setInt(R.id.gantt_item_container, "setBackgroundResource", R.drawable.widget_item_background)
@@ -240,6 +270,6 @@ class GanttRemoteViewsFactory(
     
     override fun getLoadingView(): RemoteViews? = null
     override fun getViewTypeCount(): Int = 1
-    override fun getItemId(position: Int): Long = if (position < tasks.size) tasks[position].id else position.toLong()
+    override fun getItemId(position: Int): Long = if (position < tasks.size) tasks[position].task.id else position.toLong()
     override fun hasStableIds(): Boolean = true
 }

@@ -9,6 +9,10 @@ import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.repository.TaskRepositoryImpl
 import com.litetask.app.data.repository.AIRepository
+import com.litetask.app.data.model.Category
+import com.litetask.app.data.model.TaskComponent
+import com.litetask.app.data.model.toEntity
+import com.litetask.app.data.repository.CategoryRepository
 import com.litetask.app.widget.WidgetUpdateHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -32,9 +36,11 @@ class HomeViewModel @Inject constructor(
     private val application: Application,
     private val taskRepository: TaskRepositoryImpl,
     private val aiRepository: AIRepository,
+    private val categoryRepository: CategoryRepository,
     private val aiHistoryRepository: com.litetask.app.data.repository.AIHistoryRepository,
     private val speechHelper: com.litetask.app.util.SpeechRecognizerHelper,
-    private val preferenceManager: com.litetask.app.data.local.PreferenceManager
+    private val preferenceManager: com.litetask.app.data.local.PreferenceManager,
+    private val aMapRepository: com.litetask.app.data.repository.AMapRepository
 ) : ViewModel() {
 
     // ==================== 数据加载配置 ====================
@@ -90,6 +96,10 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    /** 所有分类列表 */
+    val categories: StateFlow<List<Category>> = categoryRepository.getAllCategories()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     /**
      * 合并后的 Timeline 列表
      * 
@@ -134,6 +144,36 @@ class HomeViewModel @Inject constructor(
             if (isLoading) add(TimelineItem.Loading)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // ==================== 高德地图配置 ====================
+    
+    val amapKey: StateFlow<String?> = preferenceManager.amapKeyFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), preferenceManager.getAMapKey())
+
+    fun updateAMapKey(key: String) {
+        preferenceManager.saveAMapKey(key)
+    }
+    
+    /**
+     * 简单地理编码实现 (IO线程)
+     */
+    suspend fun geocodeLocation(address: String): com.litetask.app.data.model.AMapRouteData? {
+        return aMapRepository.geocodeLocation(address)
+    }
+
+    /**
+     * 搜索地点建议 (IO线程)
+     */
+    suspend fun searchLocations(keyword: String): List<com.litetask.app.data.model.AMapRouteData> {
+        return aMapRepository.searchLocations(keyword)
+    }
+    
+    /**
+     * 获取实况天气 (IO线程)
+     */
+    suspend fun getWeatherForAdcode(adcode: String): Pair<String, String>? {
+        return aMapRepository.fetchWeather(adcode)
+    }
 
     // ==================== 日期筛选（用于日历视图） ====================
     
@@ -438,6 +478,38 @@ class HomeViewModel @Inject constructor(
             val result = aiRepository.parseTasksFromText("", text) // 空字符串让 Repository 使用存储的 Key
             
             result.onSuccess { tasks ->
+                val tasksWithLocations = mutableMapOf<Int, List<com.litetask.app.data.model.TaskComponent>>()
+                
+                // 检查是否开启了 AI 目的地识别
+                if (preferenceManager.isAiDestinationEnabled()) {
+                    val amapKey = preferenceManager.getAMapKey()
+                    if (!amapKey.isNullOrBlank()) {
+                        tasks.forEachIndexed { index, task ->
+                            val destination = task.parsedDestination
+                            if (!destination.isNullOrBlank()) {
+                                try {
+                                    // 搜索目的地
+                                    val results = aMapRepository.searchLocations(destination)
+                                    if (results.isNotEmpty()) {
+                                        // 取第一个结果
+                                        val firstResult = results[0]
+                                        // 创建组件
+                                        val component = com.litetask.app.data.model.TaskComponent.AMapComponent(
+                                            id = -(System.currentTimeMillis() + index), // 临时 ID
+                                            taskId = 0,
+                                            data = firstResult
+                                        )
+                                        tasksWithLocations[index] = listOf(component)
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                    // 忽略单个搜索错误，不影响整体流程
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // 记录 AI 历史
                 viewModelScope.launch {
                     aiHistoryRepository.insertHistory(
@@ -455,6 +527,7 @@ class HomeViewModel @Inject constructor(
                     isAnalyzing = false,
                     showAiResult = true,
                     aiParsedTasks = tasks,
+                    aiParsedComponents = tasksWithLocations,
                     recordingState = com.litetask.app.util.RecordingState.IDLE
                 )
             }.onFailure { error ->
@@ -504,26 +577,55 @@ class HomeViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isAnalyzing = true)
             
             val result = aiRepository.parseTasksFromText("", text)
-            
-            result.onSuccess { tasks ->
-                // 记录 AI 历史
-                viewModelScope.launch {
-                    aiHistoryRepository.insertHistory(
-                        com.litetask.app.data.model.AIHistory(
-                            content = text,
-                            sourceType = com.litetask.app.data.model.AIHistorySource.TEXT,
-                            parsedCount = tasks.size,
-                            isSuccess = true
+                        result.onSuccess { tasks ->
+                    // 目的地解析逻辑
+                    val tasksWithLocations = mutableMapOf<Int, List<com.litetask.app.data.model.TaskComponent>>()
+                    
+                    if (preferenceManager.isAiDestinationEnabled()) {
+                        val amapKey = preferenceManager.getAMapKey()
+                        if (!amapKey.isNullOrBlank()) {
+                            // 实际执行搜索
+                            tasks.forEachIndexed { index, task ->
+                                val destination = task.parsedDestination
+                                if (!destination.isNullOrBlank()) {
+                                    try {
+                                        val results = aMapRepository.searchLocations(destination)
+                                        if (results.isNotEmpty()) {
+                                            val firstResult = results[0]
+                                            val component = com.litetask.app.data.model.TaskComponent.AMapComponent(
+                                                id = -(System.currentTimeMillis() + index * 10), 
+                                                taskId = 0,
+                                                data = firstResult
+                                            )
+                                            tasksWithLocations[index] = listOf(component)
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 记录成功历史
+                    viewModelScope.launch {
+                        aiHistoryRepository.insertHistory(
+                            com.litetask.app.data.model.AIHistory(
+                                content = text,
+                                sourceType = com.litetask.app.data.model.AIHistorySource.TEXT,
+                                parsedCount = tasks.size,
+                                isSuccess = true
+                            )
                         )
+                    }
+
+                    _uiState.value = _uiState.value.copy(
+                        isAnalyzing = false,
+                        showAiResult = true,
+                        aiParsedTasks = tasks,
+                        aiParsedComponents = tasksWithLocations
                     )
-                }
-                
-                _uiState.value = _uiState.value.copy(
-                    isAnalyzing = false,
-                    showAiResult = true,
-                    aiParsedTasks = tasks
-                )
-            }.onFailure { error ->
+                }.onFailure { error ->
                 // 记录失败历史
                 viewModelScope.launch {
                     aiHistoryRepository.insertHistory(
@@ -580,28 +682,39 @@ class HomeViewModel @Inject constructor(
      */
     fun confirmAddTasksWithReminders(
         tasks: List<Task>, 
-        taskReminders: Map<Int, List<com.litetask.app.data.model.ReminderConfig>>
+        taskReminders: Map<Int, List<com.litetask.app.data.model.ReminderConfig>>,
+        taskComponents: Map<Int, List<com.litetask.app.data.model.TaskComponent>>
     ) {
         viewModelScope.launch {
             if (tasks.isNotEmpty()) {
                 tasks.forEachIndexed { index, task ->
                     val reminderConfigs = taskReminders[index] ?: emptyList()
-                    if (reminderConfigs.isNotEmpty()) {
-                        // 有提醒配置，使用带提醒的插入方法
-                        val reminders = reminderConfigs.mapNotNull { config ->
-                            val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
-                            if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
-                                com.litetask.app.data.model.Reminder(
-                                    taskId = 0, // 会在插入时更新
-                                    triggerAt = triggerAt,
-                                    label = config.generateLabel()
-                                )
-                            } else null
+                    val components = taskComponents[index] ?: emptyList()
+                    
+                    // 1. 计算提醒
+                    val reminders = reminderConfigs.mapNotNull { config ->
+                        val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
+                        if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
+                            com.litetask.app.data.model.Reminder(
+                                taskId = 0, // 会在插入时更新
+                                triggerAt = triggerAt,
+                                label = config.generateLabel()
+                            )
+                        } else null
+                    }
+                    
+                    // 2. 插入任务和提醒
+                    val newTaskId = taskRepository.insertTaskWithReminders(task, reminders)
+                    
+                    // 3. 插入组件
+                    components.forEach { component ->
+                        val entity = when (component) {
+                            is com.litetask.app.data.model.TaskComponent.AMapComponent -> 
+                                component.toEntity(newTaskId)
+                            is com.litetask.app.data.model.TaskComponent.FileComponent -> 
+                                component.toEntity(newTaskId)
                         }
-                        taskRepository.insertTaskWithReminders(task, reminders)
-                    } else {
-                        // 没有提醒配置，直接插入任务
-                        taskRepository.insertTask(task)
+                        taskRepository.insertComponent(entity)
                     }
                 }
             }
@@ -630,6 +743,46 @@ class HomeViewModel @Inject constructor(
     fun addTask(task: Task) {
         viewModelScope.launch { 
             taskRepository.insertTask(task)
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+    
+    /** 添加任务（带组件和提醒） */
+    fun addTaskWithComponents(
+        task: Task, 
+        reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>,
+        components: List<com.litetask.app.data.model.TaskComponent>
+    ) {
+        viewModelScope.launch {
+            // 1. 插入任务并获取 ID (Repository 需要修改以返回新 ID，目前暂不支持，先用 work-around)
+            // 由于 Room 的 insertTask 返回 Row ID，我们需要 Repository 返回它
+            // 临时方案：先插入任务，再查询最新插入的任务 ID (存在并发风险，单人使用尚可)
+            
+            // 更稳健的方案：修改 TaskRepository.insertTaskWithReminders 返回 taskId
+            // 这里假设我们稍后会修改 Repository，先写逻辑
+            
+            // 计算提醒
+            val reminders = reminderConfigs.mapNotNull { config ->
+                val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
+                if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
+                    com.litetask.app.data.model.Reminder(taskId = 0, triggerAt = triggerAt, label = config.generateLabel())
+                } else null
+            }
+            
+            // 插入任务和提醒
+            val newTaskId = taskRepository.insertTaskWithRemindersAndReturnId(task, reminders)
+            
+            // 2. 插入组件
+            components.forEach { component ->
+                val entity = when (component) {
+                    is com.litetask.app.data.model.TaskComponent.AMapComponent -> 
+                        component.toEntity(newTaskId)
+                    is com.litetask.app.data.model.TaskComponent.FileComponent -> 
+                        component.toEntity(newTaskId)
+                }
+                taskRepository.insertComponent(entity)
+            }
+            
             WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
@@ -724,10 +877,22 @@ class HomeViewModel @Inject constructor(
     
     /** 更新任务并更新提醒 */
     fun updateTaskWithReminders(task: Task, reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>) {
+        updateTaskWithComponents(task, reminderConfigs, emptyList()) // 兼容旧方法，但不建议混用
+    }
+
+    /** 更新任务（带组件和提醒） */
+    fun updateTaskWithComponents(
+        task: Task, 
+        reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>,
+        components: List<com.litetask.app.data.model.TaskComponent>
+    ) {
         viewModelScope.launch {
             // 对于已完成任务，只更新任务信息，不处理提醒（已完成任务不需要提醒）
             if (task.isDone) {
                 taskRepository.updateTask(task)
+                // 更新组件 (即使已完成也允许编辑组件)
+                updateComponentsForTask(task.id, components)
+                
                 WidgetUpdateHelper.refreshAllWidgets(application)
                 return@launch
             }
@@ -739,8 +904,32 @@ class HomeViewModel @Inject constructor(
                 } else null
             }
             taskRepository.updateTaskWithReminders(task, reminders)
+            
+            // 更新组件
+            updateComponentsForTask(task.id, components)
+            
             cleanupTaskFromAdditionalHistory(task.id)
             WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+    
+    private suspend fun updateComponentsForTask(taskId: Long, newComponents: List<com.litetask.app.data.model.TaskComponent>) {
+        // 1. 获取现有组件
+        val oldComponents = taskRepository.getComponentsByTaskId(taskId).first()
+        
+        // 2. 删除所有现有组件 (简单粗暴，但有效。优化方案是做 Diff)
+        // 注意：实际应用中可能需要更精细的更新策略以保留某些状态，但在目前设计中组件是值对象
+        oldComponents.forEach { taskRepository.deleteComponent(it) }
+        
+        // 3. 插入新组件
+        newComponents.forEach { component ->
+             val entity = when (component) {
+                is com.litetask.app.data.model.TaskComponent.AMapComponent -> 
+                    component.toEntity(taskId)
+                is com.litetask.app.data.model.TaskComponent.FileComponent -> 
+                    component.toEntity(taskId)
+            }
+            taskRepository.insertComponent(entity)
         }
     }
 
@@ -1049,15 +1238,25 @@ class HomeViewModel @Inject constructor(
         )
     }
     
-    /**
-     * 取消子任务生成结果
-     */
     fun dismissSubTaskResult() {
         _uiState.value = _uiState.value.copy(
             showSubTaskResult = false,
             generatedSubTasks = emptyList(),
             currentTask = null
         )
+    }
+
+    suspend fun getComponentsForTaskSync(taskId: Long): List<com.litetask.app.data.model.TaskComponent> {
+        return taskRepository.getComponentsByTaskId(taskId).map { list -> list.map { it.toTaskComponent() } }.first()
+    }
+
+    /**
+     * 删除任务组件
+     */
+    fun deleteComponent(component: com.litetask.app.data.model.TaskComponent) {
+        viewModelScope.launch {
+            taskRepository.deleteComponent(component.toEntity(component.taskId))
+        }
     }
 }
 
@@ -1071,6 +1270,7 @@ data class HomeUiState(
     val showSpeechError: Boolean = false,   // 显示语音识别错误界面
     val speechErrorMessage: String = "",    // 语音识别错误信息
     val aiParsedTasks: List<Task> = emptyList(),
+    val aiParsedComponents: Map<Int, List<com.litetask.app.data.model.TaskComponent>> = emptyMap(), // AI 解析生成的组件（如地图）
     val recognizedText: String = "",        // 实时识别的文字
     val finalRecognizedText: String = "",   // 最终识别结果
     val recordingState: com.litetask.app.util.RecordingState = com.litetask.app.util.RecordingState.IDLE,

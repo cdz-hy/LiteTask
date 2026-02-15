@@ -11,5 +11,11 @@ data class TaskDetailComposite(
     val subTasks: List<SubTask>,
     
     @Relation(parentColumn = "id", entityColumn = "task_id")
-    val reminders: List<Reminder>
+    val reminders: List<Reminder>,
+
+    @Relation(parentColumn = "category_id", entityColumn = "id")
+    val category: Category?,
+
+    @Relation(parentColumn = "id", entityColumn = "task_id")
+    val components: List<TaskComponentEntity> = emptyList()
 )

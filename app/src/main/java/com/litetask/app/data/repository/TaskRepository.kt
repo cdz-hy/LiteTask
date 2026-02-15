@@ -2,6 +2,7 @@ package com.litetask.app.data.repository
 
 import android.util.Log
 import com.litetask.app.data.local.TaskDao
+import com.litetask.app.data.local.CategoryDao
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Reminder
@@ -17,6 +18,8 @@ private const val TAG = "TaskRepository"
 @Singleton
 class TaskRepositoryImpl @Inject constructor(
     private val taskDao: TaskDao,
+    private val categoryDao: CategoryDao,
+    private val taskComponentDao: com.litetask.app.data.local.TaskComponentDao,
     private val reminderScheduler: ReminderScheduler
 ) {
     // 拆分流
@@ -55,13 +58,31 @@ class TaskRepositoryImpl @Inject constructor(
     suspend fun deleteSubTask(subTask: SubTask) = taskDao.deleteSubTask(subTask)
 
     suspend fun updateTaskWithSubTasks(task: Task, subTasks: List<SubTask>) {
-        taskDao.updateTask(task)
-        taskDao.deleteSubTasksByTaskId(task.id)
-        if (subTasks.isNotEmpty()) {
-            val newSubTasks = subTasks.map { it.copy(taskId = task.id, id = 0) } 
-            taskDao.insertSubTasks(newSubTasks)
-        }
+        taskDao.updateTaskWithSubTasks(task, subTasks)
     }
+
+    suspend fun insertTaskWithRemindersAndReturnId(task: Task, reminders: List<com.litetask.app.data.model.Reminder>): Long {
+        val taskId = taskDao.insertTask(task)
+        if (reminders.isNotEmpty()) {
+            val remindersWithId = reminders.map { it.copy(taskId = taskId) }
+            taskDao.insertReminders(remindersWithId)
+            
+            // 调度提醒
+            val category = categoryDao.getCategoryById(task.categoryId)
+            remindersWithId.forEach { reminder ->
+                reminderScheduler.scheduleReminderWithTaskInfo(
+                    reminder,
+                    task.title,
+                    task.type.name,
+                    category?.name,
+                    category?.colorHex
+                )
+            }
+        }
+        return taskId
+    }
+
+
     
     suspend fun insertTasks(tasks: List<Task>) = taskDao.insertTasks(tasks)
     
@@ -85,15 +106,17 @@ class TaskRepositoryImpl @Inject constructor(
         taskDao.reactivateExpiredTask(taskId, newDeadline)
     
     // 搜索
+    // 搜索
     fun searchTasks(
         query: String,
         types: List<TaskType>,
+        categoryIds: List<Long>,
         startDate: Long?,
         endDate: Long?
     ) = taskDao.searchTasks(
         query = query,
         types = types.map { it.name },
-        typesEmpty = types.isEmpty(),
+        categoryIds = categoryIds,
         startDate = startDate,
         endDate = endDate
     )
@@ -111,6 +134,11 @@ class TaskRepositoryImpl @Inject constructor(
     suspend fun deleteReminder(reminder: Reminder) = taskDao.deleteReminder(reminder)
     suspend fun updateReminderFired(reminderId: Long, fired: Boolean) = taskDao.updateReminderFired(reminderId, fired)
     suspend fun getPendingReminders(currentTime: Long) = taskDao.getPendingReminders(currentTime)
+    
+    // --- 组件相关操作 ---
+    fun getComponentsByTaskId(taskId: Long) = taskComponentDao.getComponentsByTaskId(taskId)
+    suspend fun insertComponent(component: com.litetask.app.data.model.TaskComponentEntity) = taskComponentDao.insertComponent(component)
+    suspend fun deleteComponent(component: com.litetask.app.data.model.TaskComponentEntity) = taskComponentDao.deleteComponent(component)
     
     /**
      * 更新任务及其提醒
@@ -144,13 +172,18 @@ class TaskRepositoryImpl @Inject constructor(
             val newReminders = reminders.map { it.copy(taskId = task.id, id = 0) }
             taskDao.insertReminders(newReminders)
             
+            // 获取分类信息
+            val category = categoryDao.getCategoryById(task.categoryId)
+            
             // 注册新闹钟（带任务信息）
             val savedReminders = taskDao.getRemindersByTaskIdSync(task.id)
             savedReminders.forEach { reminder ->
                 reminderScheduler.scheduleReminderWithTaskInfo(
                     reminder = reminder,
                     taskTitle = task.title,
-                    taskType = task.type.name
+                    taskType = @Suppress("DEPRECATION") task.type.name,
+                    categoryName = category?.name,
+                    categoryColor = category?.colorHex
                 )
             }
         }
@@ -176,6 +209,9 @@ class TaskRepositoryImpl @Inject constructor(
             val newReminders = reminders.map { it.copy(taskId = taskId, id = 0) }
             taskDao.insertReminders(newReminders)
             
+            // 获取分类信息
+            val category = categoryDao.getCategoryById(task.categoryId)
+            
             // 3. 注册闹钟（带任务信息）
             val savedReminders = taskDao.getRemindersByTaskIdSync(taskId)
             Log.d(TAG, "Scheduling ${savedReminders.size} reminders with task info")
@@ -185,7 +221,9 @@ class TaskRepositoryImpl @Inject constructor(
                 val success = reminderScheduler.scheduleReminderWithTaskInfo(
                     reminder = reminder,
                     taskTitle = task.title,
-                    taskType = task.type.name
+                    taskType = @Suppress("DEPRECATION") task.type.name,
+                    categoryName = category?.name,
+                    categoryColor = category?.colorHex
                 )
                 Log.i(TAG, "★ Schedule result: $success for reminder ${reminder.id}")
             }
@@ -298,11 +336,16 @@ class TaskRepositoryImpl @Inject constructor(
                 val pendingReminders = reminders.filter { !it.isFired && it.triggerAt > currentTime }
                 if (pendingReminders.isNotEmpty()) {
                     Log.i(TAG, "Re-scheduling ${pendingReminders.size} reminders for uncompleted task ${newTask.id}")
+                    
+                    val category = categoryDao.getCategoryById(newTask.categoryId)
+                    
                     pendingReminders.forEach { reminder ->
                         reminderScheduler.scheduleReminderWithTaskInfo(
                             reminder = reminder,
                             taskTitle = newTask.title,
-                            taskType = newTask.type.name
+                            taskType = @Suppress("DEPRECATION") newTask.type.name,
+                            categoryName = category?.name,
+                            categoryColor = category?.colorHex
                         )
                     }
                 }
