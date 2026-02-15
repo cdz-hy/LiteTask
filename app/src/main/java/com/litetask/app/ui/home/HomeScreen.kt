@@ -719,7 +719,8 @@ fun HomeScreen(
                     amapKey = amapKey,
                     onGeocode = { address -> viewModel.geocodeLocation(address) },
                     onSearchLocations = { keyword -> viewModel.searchLocations(keyword) },
-                    onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) }
+                    onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) },
+                    initialComponents = uiState.aiParsedComponents
                 )
             }
 

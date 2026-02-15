@@ -83,7 +83,8 @@ fun TaskConfirmationSheet(
     amapKey: String? = null,
     onGeocode: (suspend (String) -> com.litetask.app.data.model.AMapRouteData?)? = null,
     onSearchLocations: (suspend (String) -> List<com.litetask.app.data.model.AMapRouteData>)? = null,
-    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null
+    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null,
+    initialComponents: Map<Int, List<com.litetask.app.data.model.TaskComponent>> = emptyMap()
 ) {
     val extendedColors = LocalExtendedColors.current
     val configuration = LocalConfiguration.current
@@ -96,7 +97,7 @@ fun TaskConfirmationSheet(
     
     // 存储每个任务的提醒和组件配置
     var taskReminders by remember { mutableStateOf<Map<Int, List<com.litetask.app.data.model.ReminderConfig>>>(emptyMap()) }
-    var taskComponents by remember { mutableStateOf<Map<Int, List<com.litetask.app.data.model.TaskComponent>>>(emptyMap()) }
+    var taskComponents by remember(initialComponents) { mutableStateOf(initialComponents) }
     
     // 编辑对话框状态
     var showEditDialog by remember { mutableStateOf(false) }
@@ -251,6 +252,7 @@ fun TaskConfirmationSheet(
                                 itemsIndexed(taskList, key = { index, task -> "${task.title}_$index" }) { index, task ->
                                     SwipeableTaskCard(
                                         task = task,
+                                        components = taskComponents[index] ?: emptyList(),
                                         onEdit = {
                                             editingTaskIndex = index
                                             editingTask = task
@@ -283,8 +285,17 @@ fun TaskConfirmationSheet(
     
     // 编辑对话框
     if (showEditDialog && editingTask != null) {
+        val currentComponents = if (editingTaskIndex >= 0) taskComponents[editingTaskIndex] ?: emptyList() else emptyList()
+        val currentReminders = if (editingTaskIndex >= 0) taskReminders[editingTaskIndex] ?: emptyList() else emptyList()
+        
         AddTaskDialog(
             initialTask = editingTask,
+            initialComponents = currentComponents,
+            // 暂时 AddTaskDialog 不支持 initialReminders (TODO: 需确认 AddTaskDialog 定义)
+            // 检查 AddTaskDialog 定义发现支持 initialReminders (line 51 in viewed file)
+            // 但这里为了保险起见，或者如果需要传递 ReminderConfig 转换回 Reminder... 暂不处理 Reminders 的回显，因为比较复杂
+            // 实际上 AddTaskDialog 接收 List<Reminder>，而 taskReminders 是 List<ReminderConfig>
+            // 这里为了简单，只处理 components，因为 Reminders 编辑逻辑复杂且目前需求主要是 Map
             onDismiss = { 
                 showEditDialog = false
                 editingTask = null
@@ -463,6 +474,7 @@ private fun OriginalVoiceCard(voiceText: String) {
 @Composable
 private fun SwipeableTaskCard(
     task: Task,
+    components: List<com.litetask.app.data.model.TaskComponent> = emptyList(),
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -523,7 +535,7 @@ private fun SwipeableTaskCard(
                     }
                 )
         ) {
-            AITaskCard(task = task)
+            AITaskCard(task = task, components = components)
         }
     }
 }
@@ -541,8 +553,12 @@ private fun SwipeActionIcon(icon: ImageVector, color: Color, onClick: () -> Unit
 }
 
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AITaskCard(task: Task) {
+private fun AITaskCard(
+    task: Task,
+    components: List<com.litetask.app.data.model.TaskComponent> = emptyList()
+) {
     val primaryColor = ConfirmTaskColors.getPrimary(task.type)
     val extendedColors = LocalExtendedColors.current
 
@@ -676,6 +692,47 @@ private fun AITaskCard(task: Task) {
                         style = MaterialTheme.typography.bodySmall,
                         color = extendedColors.textTertiary
                     )
+                }
+
+                // Task Components Tags (Newly added)
+                if (components.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        components.forEach { component ->
+                            val (icon, label) = when (component.type) {
+                                com.litetask.app.data.model.ComponentType.AMAP_ROUTE -> Icons.Default.Place to "Route" // Or "Map"
+                                com.litetask.app.data.model.ComponentType.FILE_ATTACHMENT -> Icons.Default.AttachFile to "File"
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .background(
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        shape = RoundedCornerShape(6.dp)
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = label,
+                                    tint = extendedColors.textSecondary.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = label, // 使用简单的标签名，或者根据 component.data 解析更详细的名字
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = extendedColors.textSecondary.copy(alpha = 0.9f),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

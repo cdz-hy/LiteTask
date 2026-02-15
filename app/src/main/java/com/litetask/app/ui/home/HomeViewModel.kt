@@ -478,6 +478,38 @@ class HomeViewModel @Inject constructor(
             val result = aiRepository.parseTasksFromText("", text) // 空字符串让 Repository 使用存储的 Key
             
             result.onSuccess { tasks ->
+                val tasksWithLocations = mutableMapOf<Int, List<com.litetask.app.data.model.TaskComponent>>()
+                
+                // 检查是否开启了 AI 目的地识别
+                if (preferenceManager.isAiDestinationEnabled()) {
+                    val amapKey = preferenceManager.getAMapKey()
+                    if (!amapKey.isNullOrBlank()) {
+                        tasks.forEachIndexed { index, task ->
+                            val destination = task.parsedDestination
+                            if (!destination.isNullOrBlank()) {
+                                try {
+                                    // 搜索目的地
+                                    val results = aMapRepository.searchLocations(destination)
+                                    if (results.isNotEmpty()) {
+                                        // 取第一个结果
+                                        val firstResult = results[0]
+                                        // 创建组件
+                                        val component = com.litetask.app.data.model.TaskComponent.AMapComponent(
+                                            id = -(System.currentTimeMillis() + index), // 临时 ID
+                                            taskId = 0,
+                                            data = firstResult
+                                        )
+                                        tasksWithLocations[index] = listOf(component)
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                    // 忽略单个搜索错误，不影响整体流程
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // 记录 AI 历史
                 viewModelScope.launch {
                     aiHistoryRepository.insertHistory(
@@ -495,6 +527,7 @@ class HomeViewModel @Inject constructor(
                     isAnalyzing = false,
                     showAiResult = true,
                     aiParsedTasks = tasks,
+                    aiParsedComponents = tasksWithLocations,
                     recordingState = com.litetask.app.util.RecordingState.IDLE
                 )
             }.onFailure { error ->
@@ -544,26 +577,55 @@ class HomeViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isAnalyzing = true)
             
             val result = aiRepository.parseTasksFromText("", text)
-            
-            result.onSuccess { tasks ->
-                // 记录 AI 历史
-                viewModelScope.launch {
-                    aiHistoryRepository.insertHistory(
-                        com.litetask.app.data.model.AIHistory(
-                            content = text,
-                            sourceType = com.litetask.app.data.model.AIHistorySource.TEXT,
-                            parsedCount = tasks.size,
-                            isSuccess = true
+                        result.onSuccess { tasks ->
+                    // 目的地解析逻辑
+                    val tasksWithLocations = mutableMapOf<Int, List<com.litetask.app.data.model.TaskComponent>>()
+                    
+                    if (preferenceManager.isAiDestinationEnabled()) {
+                        val amapKey = preferenceManager.getAMapKey()
+                        if (!amapKey.isNullOrBlank()) {
+                            // 实际执行搜索
+                            tasks.forEachIndexed { index, task ->
+                                val destination = task.parsedDestination
+                                if (!destination.isNullOrBlank()) {
+                                    try {
+                                        val results = aMapRepository.searchLocations(destination)
+                                        if (results.isNotEmpty()) {
+                                            val firstResult = results[0]
+                                            val component = com.litetask.app.data.model.TaskComponent.AMapComponent(
+                                                id = -(System.currentTimeMillis() + index * 10), 
+                                                taskId = 0,
+                                                data = firstResult
+                                            )
+                                            tasksWithLocations[index] = listOf(component)
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 记录成功历史
+                    viewModelScope.launch {
+                        aiHistoryRepository.insertHistory(
+                            com.litetask.app.data.model.AIHistory(
+                                content = text,
+                                sourceType = com.litetask.app.data.model.AIHistorySource.TEXT,
+                                parsedCount = tasks.size,
+                                isSuccess = true
+                            )
                         )
+                    }
+
+                    _uiState.value = _uiState.value.copy(
+                        isAnalyzing = false,
+                        showAiResult = true,
+                        aiParsedTasks = tasks,
+                        aiParsedComponents = tasksWithLocations
                     )
-                }
-                
-                _uiState.value = _uiState.value.copy(
-                    isAnalyzing = false,
-                    showAiResult = true,
-                    aiParsedTasks = tasks
-                )
-            }.onFailure { error ->
+                }.onFailure { error ->
                 // 记录失败历史
                 viewModelScope.launch {
                     aiHistoryRepository.insertHistory(
@@ -1208,6 +1270,7 @@ data class HomeUiState(
     val showSpeechError: Boolean = false,   // 显示语音识别错误界面
     val speechErrorMessage: String = "",    // 语音识别错误信息
     val aiParsedTasks: List<Task> = emptyList(),
+    val aiParsedComponents: Map<Int, List<com.litetask.app.data.model.TaskComponent>> = emptyMap(), // AI 解析生成的组件（如地图）
     val recognizedText: String = "",        // 实时识别的文字
     val finalRecognizedText: String = "",   // 最终识别结果
     val recordingState: com.litetask.app.util.RecordingState = com.litetask.app.util.RecordingState.IDLE,

@@ -73,6 +73,21 @@ class PreferenceManager @Inject constructor(
         prefs.edit().putString(KEY_AI_PROVIDER, provider).apply()
     }
     
+    // ========== AI 智能目的地 ==========
+    
+    // AI 识别目的地开关 (需配合 AMap Key 使用)
+    private val KEY_ENABLE_AI_DESTINATION = "enable_ai_destination"
+    
+    fun isAiDestinationEnabled(): Boolean {
+        // 只有配置了 AMap Key 并且开关打开才生效
+        val hasAMapKey = !getAMapKey().isNullOrBlank()
+        return hasAMapKey && prefs.getBoolean(KEY_ENABLE_AI_DESTINATION, false)
+    }
+    
+    fun setAiDestinationEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ENABLE_AI_DESTINATION, enabled).apply()
+    }
+    
     // ========== 语音识别配置 ==========
     
     /**

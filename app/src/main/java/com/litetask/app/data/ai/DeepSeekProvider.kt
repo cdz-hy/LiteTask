@@ -66,10 +66,13 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
    - 仅对需要拆解的复杂任务生成子任务
    - 简单任务（如"买菜"、"开会"等）不需要子任务
    - 子任务必须与主任务紧密相关，具体可执行
+6. **目的地识别**:
+   - 若用户提及明确地点（如“去万达”、“到图书馆”），提取地名放入 `destination` 字段。
+   - 若无明确地点，该字段省略或为空字符串。
 
 # Output
 仅返回纯 JSON 数组，无 Markdown。
-[{"title":"精炼标题<20字","startTime":"yyyy-MM-dd HH:mm","endTime":"yyyy-MM-dd HH:mm","type":"分类名称","description":"基于输入的真实任务描述"}]
+[{"title":"精炼标题<20字","startTime":"yyyy-MM-dd HH:mm","endTime":"yyyy-MM-dd HH:mm","type":"分类名称","description":"基于输入的真实任务描述","destination":"明确的地点名称(可选)"}]
                 """.trimIndent()
                 
                 val requestBody = JSONObject().apply {
@@ -185,6 +188,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                 val endStr = obj.getString("endTime")
                 val typeStr = obj.optString("type", "WORK")
                 val description = obj.optString("description", "")
+                val destination = obj.optString("destination", "").takeIf { it.isNotBlank() }
                 
                 val startTime = dateFormat.parse(startStr)?.time ?: System.currentTimeMillis()
                 val endTime = dateFormat.parse(endStr)?.time ?: (startTime + 3600000)
@@ -206,17 +210,18 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                     else -> TaskType.WORK
                 }
                 
-                tasks.add(
-                    Task(
-                        title = title,
-                        description = description.takeIf { it.isNotBlank() } ?: "",
-                        startTime = startTime,
-                        deadline = endTime,
-                        type = legacyType, // Deprecated
-                        categoryId = categoryId, // New Dynamic ID
-                        originalVoiceText = originalVoiceText  // 保存原始语音文本
-                    )
+                val task = Task(
+                    title = title,
+                    description = description.takeIf { it.isNotBlank() } ?: "",
+                    startTime = startTime,
+                    deadline = endTime,
+                    type = legacyType, // Deprecated
+                    categoryId = categoryId, // New Dynamic ID
+                    originalVoiceText = originalVoiceText  // 保存原始语音文本
                 )
+                // 设置解析出的目的地（临时字段）
+                task.parsedDestination = destination
+                tasks.add(task)
             }
         } catch (e: org.json.JSONException) {
             e.printStackTrace()

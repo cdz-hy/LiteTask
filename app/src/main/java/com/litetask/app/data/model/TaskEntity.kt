@@ -93,4 +93,8 @@ data class Task(
         System.currentTimeMillis() < startTime -> "未开始"
         else -> "进行中"
     }
+    
+    // AI 解析目的地 (临时字段，不入库)
+    @androidx.room.Ignore
+    var parsedDestination: String? = null
 }

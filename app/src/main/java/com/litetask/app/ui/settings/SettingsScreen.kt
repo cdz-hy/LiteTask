@@ -151,6 +151,9 @@ fun SettingsScreen(
     var amapKey by remember { mutableStateOf("") }
     val amapConnectionState by viewModel.amapConnectionState.collectAsState()
     
+    // ========== AI 智能目的地状态 ==========
+    var isAiDestinationEnabled by remember { mutableStateOf(false) }
+    
     // ========== 分类管理状态 ==========
     var showCategoryDialog by remember { mutableStateOf(false) }
     
@@ -164,7 +167,9 @@ fun SettingsScreen(
         apiKey = viewModel.getApiKey() ?: ""
         selectedAiProvider = viewModel.getAiProvider()
         selectedSpeechProvider = viewModel.getSpeechProvider()
+        selectedSpeechProvider = viewModel.getSpeechProvider()
         amapKey = viewModel.getAMapKey() ?: ""
+        isAiDestinationEnabled = viewModel.isAiDestinationEnabled()
         
         // 加载语音识别凭证
         val savedCredentials = viewModel.getSpeechCredentials(selectedSpeechProvider)
@@ -309,6 +314,7 @@ fun SettingsScreen(
                 ) {
                     Text(stringResource(R.string.ai_save_settings))
                 }
+                
             }
             
             // ========== 语音识别配置卡片 ==========
@@ -486,6 +492,42 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("保存地图设置")
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 智能目的地开关
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "识别任务目的地",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = if (amapKey.isBlank()) "需先配置高德地图 Key" else "自动为任务添加地图组件",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (amapKey.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isAiDestinationEnabled && amapKey.isNotBlank(),
+                        onCheckedChange = { checked ->
+                            if (amapKey.isBlank()) {
+                                Toast.makeText(context, "请先配置高德地图 Key", Toast.LENGTH_SHORT).show()
+                            } else {
+                                isAiDestinationEnabled = checked
+                                viewModel.setAiDestinationEnabled(checked) // 自动保存
+                            }
+                        },
+                        enabled = amapKey.isNotBlank()
+                    )
                 }
             }
             

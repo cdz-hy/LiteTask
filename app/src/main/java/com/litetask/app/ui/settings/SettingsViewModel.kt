@@ -48,6 +48,9 @@ class SettingsViewModel @Inject constructor(
     fun saveApiKey(key: String) = preferenceManager.saveApiKey(key)
     fun getAiProvider(): String = preferenceManager.getAiProvider()
     fun saveAiProvider(provider: String) = preferenceManager.saveAiProvider(provider)
+    
+    fun isAiDestinationEnabled(): Boolean = preferenceManager.isAiDestinationEnabled()
+    fun setAiDestinationEnabled(enabled: Boolean) = preferenceManager.setAiDestinationEnabled(enabled)
 
     fun resetConnectionState() {
         _aiConnectionState.value = ConnectionState.Idle
