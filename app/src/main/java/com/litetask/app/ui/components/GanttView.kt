@@ -47,7 +47,8 @@ import kotlin.math.max
 enum class GanttViewMode {
     TODAY,    // 今日视图
     THREE_DAY, // 3日视图
-    SEVEN_DAY  // 7日视图
+    SEVEN_DAY, // 7日视图
+    ONE_MONTH  // 1月视图
 }
 
 @Composable
@@ -76,6 +77,7 @@ fun GanttView(
         GanttViewMode.TODAY -> Triple(800.dp, 1, 0)      // 今日视图：更宽，显示1天
         GanttViewMode.THREE_DAY -> Triple(220.dp, 3, 0)  // 3日视图：今天+未来2天
         GanttViewMode.SEVEN_DAY -> Triple(180.dp, 7, -2) // 7日视图：前2天+今天+后4天
+        GanttViewMode.ONE_MONTH -> Triple(80.dp, 30, -5) // 1月视图：前5天+今天+后24天
     }
     
     val totalWidth = dayWidth * daysToShow
@@ -107,10 +109,15 @@ fun GanttView(
         val verticalScrollState = rememberScrollState()
         val density = LocalDensity.current
         
-        // 7日视图初始滚动到今天的位置（居中）
+        // 视图初始滚动到今天的位置
         LaunchedEffect(viewMode) {
-            if (viewMode == GanttViewMode.SEVEN_DAY) {
-                val todayOffset = 2 // 今天是第3天（索引2）
+            val todayOffset = when (viewMode) {
+                GanttViewMode.SEVEN_DAY -> 2 // 今天是第3天（索引2）
+                GanttViewMode.ONE_MONTH -> 5 // 今天是第6天（索引5）
+                else -> 0
+            }
+            
+            if (todayOffset > 0) {
                 val scrollToX = (todayOffset * with(density) { dayWidth.toPx() }).toInt()
                 horizontalScrollState.scrollTo(scrollToX)
             } else {
@@ -283,6 +290,7 @@ fun GanttHeader(
                             GanttViewMode.TODAY -> stringResource(R.string.today_view)
                             GanttViewMode.THREE_DAY -> stringResource(R.string.three_day_view)
                             GanttViewMode.SEVEN_DAY -> stringResource(R.string.seven_day_view)
+                            GanttViewMode.ONE_MONTH -> stringResource(R.string.one_month_view)
                         },
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
@@ -326,6 +334,16 @@ fun GanttHeader(
                     text = { Text(stringResource(R.string.seven_day_view), style = MaterialTheme.typography.bodyMedium) },
                     onClick = {
                         onViewModeChange(GanttViewMode.SEVEN_DAY)
+                        expanded = false
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.one_month_view), style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        onViewModeChange(GanttViewMode.ONE_MONTH)
                         expanded = false
                     },
                     leadingIcon = {
@@ -392,6 +410,7 @@ fun GanttGrid(
             GanttViewMode.TODAY -> (0..23).toList()      // 今日视图：每小时
             GanttViewMode.THREE_DAY -> listOf(0, 6, 12, 18) // 3日视图：6小时间隔
             GanttViewMode.SEVEN_DAY -> listOf(0, 12)     // 7日视图：12小时间隔
+            GanttViewMode.ONE_MONTH -> listOf(0)         // 1月视图：只显示天分隔线
         }
         
         // Draw Day Columns and Hour Lines
@@ -458,6 +477,7 @@ fun GanttGrid(
                         GanttViewMode.TODAY -> (0..23 step 1).toList()
                         GanttViewMode.THREE_DAY -> listOf(0, 6, 12, 18)
                         GanttViewMode.SEVEN_DAY -> listOf(0, 12)
+                        GanttViewMode.ONE_MONTH -> listOf() // 不显示小时
                     }
                     
                     hourIntervals.forEach { h ->
