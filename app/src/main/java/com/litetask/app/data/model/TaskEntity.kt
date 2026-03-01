@@ -5,6 +5,10 @@ import androidx.room.PrimaryKey
 import androidx.room.ColumnInfo
 import androidx.room.Index
 
+import androidx.annotation.Keep
+import com.google.gson.annotations.SerializedName
+
+@Keep
 @Entity(
     tableName = "tasks",
     indices = [
@@ -17,13 +21,16 @@ import androidx.room.Index
     ]
 )
 data class Task(
+    @SerializedName("id", alternate = ["a"])
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
 
     // --- 1. 任务内容 ---
+    @SerializedName("title", alternate = ["b"])
     @ColumnInfo(name = "title")
     val title: String,            // 例："完成毕业论文初稿"
 
+    @SerializedName("description", alternate = ["c"])
     @ColumnInfo(name = "description")
     val description: String? = null, // 例："需要包含摘要和前三章"
 
@@ -31,52 +38,63 @@ data class Task(
     
     // 截止时间 (App 的灵魂)
     // 必填。首页列表按此字段 ASC (由近到远) 排序。
+    @SerializedName("deadline", alternate = ["d"])
     @ColumnInfo(name = "deadline")
     val deadline: Long, 
 
     // 开始/创建时间
     // 默认为创建那一刻的时间戳。
     // 作用：用于计算"时间余额"。例如：任务总长3天，已经过了2天，进度条显示 66% (红色预警)。
+    @SerializedName("start_time", alternate = ["e"])
     @ColumnInfo(name = "start_time")
     val startTime: Long = System.currentTimeMillis(),
 
     // --- 3. 状态与权重 ---
     
+    @SerializedName("is_done", alternate = ["f"])
     @ColumnInfo(name = "is_done")
     val isDone: Boolean = false,
 
     // 手动置顶 (比如虽然下周才截止，但我今天就想盯着它做)
+    @SerializedName("is_pinned", alternate = ["g"])
     @ColumnInfo(name = "is_pinned")
     val isPinned: Boolean = false,
 
     // 任务类型 (已废弃，保留用于兼容迁移，实际逻辑使用 category_id)
+    @SerializedName("type", alternate = ["h"])
     @Deprecated("Use categoryId instead")
     @ColumnInfo(name = "type")
     val type: TaskType = TaskType.WORK, 
     
     // --- 3.1 分类 (动态扩展) ---
+    @SerializedName("category_id", alternate = ["i"])
     @ColumnInfo(name = "category_id")
     val categoryId: Long = 1, // 默认为 1 (Work)
 
     // --- 4. 新增状态字段 ---
     
     // 过期标记 - 任务已过截止时间但未完成
+    @SerializedName("is_expired", alternate = ["j"])
     @ColumnInfo(name = "is_expired")
     val isExpired: Boolean = false,
 
     // 过期时间 - 记录任务何时被标记为过期
+    @SerializedName("expired_at", alternate = ["k"])
     @ColumnInfo(name = "expired_at")
     val expiredAt: Long? = null,
 
     // 任务创建时间 - 记录任务实际创建的时间
+    @SerializedName("created_at", alternate = ["l"])
     @ColumnInfo(name = "created_at")
     val createdAt: Long = System.currentTimeMillis(),
 
     // 任务完成时间 - 记录任务被标记为完成的时间
+    @SerializedName("completed_at", alternate = ["m"])
     @ColumnInfo(name = "completed_at")
     val completedAt: Long? = null,
 
     // --- 5. AI 字段 ---
+    @SerializedName("original_voice_text", alternate = ["n"])
     @ColumnInfo(name = "original_voice_text")
     val originalVoiceText: String? = null
 ) {

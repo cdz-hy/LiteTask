@@ -4,12 +4,15 @@ import androidx.room.*
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 
+import androidx.annotation.Keep
+
 /**
  * 任务组件实体类
  *
  * 使用多态存储不同类型的组件数据。
  * 核心设计：component_type + data_payload (JSON)
  */
+@Keep
 @Entity(
     tableName = "task_components",
     foreignKeys = [
@@ -23,18 +26,23 @@ import com.google.gson.annotations.SerializedName
     indices = [Index(value = ["task_id"])]
 )
 data class TaskComponentEntity(
+    @SerializedName("id", alternate = ["a"])
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
 
+    @SerializedName("task_id", alternate = ["b"])
     @ColumnInfo(name = "task_id")
     val taskId: Long,
 
+    @SerializedName("component_type", alternate = ["c"])
     @ColumnInfo(name = "component_type")
     val type: ComponentType,
 
+    @SerializedName("data_payload", alternate = ["d"])
     @ColumnInfo(name = "data_payload")
     val dataJson: String, // 存储具体组件数据的 JSON 字符串
 
+    @SerializedName("created_at", alternate = ["e"])
     @ColumnInfo(name = "created_at")
     val createdAt: Long = System.currentTimeMillis()
 ) {
@@ -85,21 +93,23 @@ sealed class TaskComponent {
 
 // --- 组件具体数据结构 (Data Payload) ---
 
+@Keep
 data class AMapRouteData(
-    @SerializedName("start_name") val startName: String = "我的位置",
-    @SerializedName("end_name") val endName: String,
-    @SerializedName("end_address") val endAddress: String?,
-    @SerializedName("end_lat") val endLat: Double,
-    @SerializedName("end_lng") val endLng: Double,
-    @SerializedName("adcode") val adcode: String? = null,
-    @SerializedName("strategy") val strategy: Int = 0 // 0: 速度优先, 2: 距离优先
+    @SerializedName("start_name", alternate = ["a"]) val startName: String = "我的位置",
+    @SerializedName("end_name", alternate = ["b"]) val endName: String,
+    @SerializedName("end_address", alternate = ["c"]) val endAddress: String?,
+    @SerializedName("end_lat", alternate = ["d"]) val endLat: Double,
+    @SerializedName("end_lng", alternate = ["e"]) val endLng: Double,
+    @SerializedName("adcode", alternate = ["f"]) val adcode: String? = null,
+    @SerializedName("strategy", alternate = ["g"]) val strategy: Int = 0 // 0: 速度优先, 2: 距离优先
 )
 
+@Keep
 data class FileAttachmentData(
-    @SerializedName("file_name") val fileName: String,
-    @SerializedName("file_uri") val fileUri: String, // 持久化 URI
-    @SerializedName("mime_type") val mimeType: String,
-    @SerializedName("file_size") val fileSize: Long
+    @SerializedName("file_name", alternate = ["a"]) val fileName: String,
+    @SerializedName("file_uri", alternate = ["b"]) val fileUri: String, // 持久化 URI
+    @SerializedName("mime_type", alternate = ["c"]) val mimeType: String,
+    @SerializedName("file_size", alternate = ["d"]) val fileSize: Long
 )
 
 /**

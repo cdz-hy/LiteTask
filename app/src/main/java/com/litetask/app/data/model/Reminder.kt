@@ -6,6 +6,10 @@ import androidx.room.ColumnInfo
 import androidx.room.ForeignKey
 import androidx.room.Index
 
+import androidx.annotation.Keep
+import com.google.gson.annotations.SerializedName
+
+@Keep
 @Entity(
     tableName = "reminders",
     foreignKeys = [ForeignKey(
@@ -17,23 +21,28 @@ import androidx.room.Index
     indices = [Index("task_id")]
 )
 data class Reminder(
+    @SerializedName("id", alternate = ["a"])
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
 
+    @SerializedName("task_id", alternate = ["b"])
     @ColumnInfo(name = "task_id")
     val taskId: Long,
 
     // 具体的触发时间 (毫秒时间戳)
     // AI 分析时会自动计算：如果用户说"提前1小时提醒"，这里存的就是 (deadline - 1h)
+    @SerializedName("trigger_at", alternate = ["c"])
     @ColumnInfo(name = "trigger_at")
     val triggerAt: Long,
 
     // 提醒文案
     // 例："还有 1 小时就要交稿了！"
+    @SerializedName("label", alternate = ["d"])
     @ColumnInfo(name = "label")
     val label: String? = null,
 
     // 状态标记：是否已经响过了
+    @SerializedName("is_fired", alternate = ["e"])
     @ColumnInfo(name = "is_fired")
     val isFired: Boolean = false
 )
