@@ -9,6 +9,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -126,10 +127,14 @@ fun GanttFullscreenView(
         GanttViewMode.TODAY -> Pair(1, 0)
         GanttViewMode.THREE_DAY -> Pair(3, 0)
         GanttViewMode.SEVEN_DAY -> Pair(7, -2)
+        GanttViewMode.ONE_MONTH -> Pair(30, -5)
     }
     
     // 横屏全屏：每天的宽度 = 屏幕宽度 / 天数，填满屏幕
-    val dayWidth = screenWidth / daysToShow
+    val minDayWidth = 50.dp
+    val computedDayWidth = screenWidth / daysToShow
+    val dayWidth = if (viewMode == GanttViewMode.ONE_MONTH) max(computedDayWidth, minDayWidth) else computedDayWidth
+    val totalWidth = dayWidth * daysToShow
     
     val startOfView = startOfToday + (startOffset * 24 * 60 * 60 * 1000L)
     val endOfView = startOfView + (daysToShow * 24 * 60 * 60 * 1000L)
@@ -140,6 +145,24 @@ fun GanttFullscreenView(
         taskStart < endOfView && taskEnd > startOfView
     }.sortedBy { it.task.startTime }
     
+    val horizontalScrollState = rememberScrollState()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    
+    LaunchedEffect(viewMode) {
+        val todayOffset = when (viewMode) {
+            GanttViewMode.SEVEN_DAY -> 2
+            GanttViewMode.ONE_MONTH -> 5
+            else -> 0
+        }
+        
+        if (todayOffset > 0 && dayWidth * daysToShow > screenWidth) {
+            val scrollToX = (todayOffset * with(density) { dayWidth.toPx() }).toInt()
+            horizontalScrollState.scrollTo(scrollToX)
+        } else {
+            horizontalScrollState.scrollTo(0)
+        }
+    }
+    
     // 全屏界面（无 TopBar，完全沉浸式）
     val extendedColors = LocalExtendedColors.current
     
@@ -148,10 +171,17 @@ fun GanttFullscreenView(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .horizontalScroll(horizontalScrollState)
         ) {
-            val verticalScrollState = rememberScrollState()
+            Column(
+                modifier = Modifier
+                    .width(totalWidth)
+                    .fillMaxHeight()
+            ) {
+                val verticalScrollState = rememberScrollState()
             
             // 日期头部
             Row(
@@ -227,6 +257,7 @@ fun GanttFullscreenView(
                 )
             }
         }
+        }
         
         // 返回按钮（左上角，小巧的 Material Design 3 风格）
         SmallFloatingActionButton(
@@ -290,6 +321,7 @@ fun GanttFullscreenView(
                                 GanttViewMode.TODAY -> stringResource(R.string.today)
                                 GanttViewMode.THREE_DAY -> stringResource(R.string.three_day_view)
                                 GanttViewMode.SEVEN_DAY -> stringResource(R.string.seven_day_view)
+                                GanttViewMode.ONE_MONTH -> stringResource(R.string.one_month_view)
                             },
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
@@ -333,6 +365,16 @@ fun GanttFullscreenView(
                         text = { Text(stringResource(R.string.seven_day_view), style = MaterialTheme.typography.bodyMedium) },
                         onClick = {
                             viewMode = GanttViewMode.SEVEN_DAY
+                            expanded = false
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.one_month_view), style = MaterialTheme.typography.bodyMedium) },
+                        onClick = {
+                            viewMode = GanttViewMode.ONE_MONTH
                             expanded = false
                         },
                         leadingIcon = {

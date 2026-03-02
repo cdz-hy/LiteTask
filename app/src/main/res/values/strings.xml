@@ -101,7 +101,7 @@
     <string name="today_view">今日视图</string>
     <string name="three_day_view">3日视图</string>
     <string name="seven_day_view">7日视图</string>
-    
+    <string name="one_month_view">1月视图</string>
     <!-- 按钮文字 -->
     <string name="create_task">创建任务</string>
     <string name="confirm_add">确认添加</string>

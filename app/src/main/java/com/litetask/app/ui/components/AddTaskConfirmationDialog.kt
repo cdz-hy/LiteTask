@@ -43,6 +43,8 @@ import com.litetask.app.data.model.TaskType
 import com.litetask.app.ui.theme.LocalExtendedColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.litetask.app.data.model.Category
+import com.litetask.app.ui.util.ColorUtils
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
@@ -84,6 +86,7 @@ fun TaskConfirmationSheet(
     onGeocode: (suspend (String) -> com.litetask.app.data.model.AMapRouteData?)? = null,
     onSearchLocations: (suspend (String) -> List<com.litetask.app.data.model.AMapRouteData>)? = null,
     onGetWeather: (suspend (String) -> Pair<String, String>?)? = null,
+    availableCategories: List<Category> = emptyList(),
     initialComponents: Map<Int, List<com.litetask.app.data.model.TaskComponent>> = emptyMap()
 ) {
     val extendedColors = LocalExtendedColors.current
@@ -253,6 +256,7 @@ fun TaskConfirmationSheet(
                                     SwipeableTaskCard(
                                         task = task,
                                         components = taskComponents[index] ?: emptyList(),
+                                        availableCategories = availableCategories,
                                         onEdit = {
                                             editingTaskIndex = index
                                             editingTask = task
@@ -291,6 +295,7 @@ fun TaskConfirmationSheet(
         AddTaskDialog(
             initialTask = editingTask,
             initialComponents = currentComponents,
+            availableCategories = availableCategories,
             // 暂时 AddTaskDialog 不支持 initialReminders (TODO: 需确认 AddTaskDialog 定义)
             // 检查 AddTaskDialog 定义发现支持 initialReminders (line 51 in viewed file)
             // 但这里为了保险起见，或者如果需要传递 ReminderConfig 转换回 Reminder... 暂不处理 Reminders 的回显，因为比较复杂
@@ -475,6 +480,7 @@ private fun OriginalVoiceCard(voiceText: String) {
 private fun SwipeableTaskCard(
     task: Task,
     components: List<com.litetask.app.data.model.TaskComponent> = emptyList(),
+    availableCategories: List<Category> = emptyList(),
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -535,7 +541,11 @@ private fun SwipeableTaskCard(
                     }
                 )
         ) {
-            AITaskCard(task = task, components = components)
+            AITaskCard(
+                task = task, 
+                components = components,
+                availableCategories = availableCategories
+            )
         }
     }
 }
@@ -557,9 +567,15 @@ private fun SwipeActionIcon(icon: ImageVector, color: Color, onClick: () -> Unit
 @Composable
 private fun AITaskCard(
     task: Task,
-    components: List<com.litetask.app.data.model.TaskComponent> = emptyList()
+    components: List<com.litetask.app.data.model.TaskComponent> = emptyList(),
+    availableCategories: List<Category> = emptyList()
 ) {
-    val primaryColor = ConfirmTaskColors.getPrimary(task.type)
+    val category = availableCategories.find { it.id == task.categoryId }
+    val primaryColor = if (category != null) {
+        ColorUtils.parseColor(category.colorHex)
+    } else {
+        ConfirmTaskColors.getPrimary(task.type)
+    }
     val extendedColors = LocalExtendedColors.current
 
     Surface(
@@ -605,7 +621,7 @@ private fun AITaskCard(
                         shape = RoundedCornerShape(6.dp)
                     ) {
                         Text(
-                            text = getTaskTypeName(task.type),
+                            text = category?.name ?: getTaskTypeName(task.type),
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 10.sp,
