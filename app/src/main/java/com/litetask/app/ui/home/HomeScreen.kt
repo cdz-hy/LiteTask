@@ -564,7 +564,9 @@ fun HomeScreen(
                         viewModel.analyzeTextInput(text)
                         // 不立即关闭，等分析完成后通过 LaunchedEffect 关闭
                     },
-                    isAnalyzing = uiState.isAnalyzing
+                    isAnalyzing = uiState.isAnalyzing,
+                    agentStatus = uiState.agentStatus,
+                    agentLogs = uiState.agentLogs
                 )
             }
             
@@ -705,7 +707,9 @@ fun HomeScreen(
                     recordingDuration = recordingDuration,
                     isPlaying = uiState.recordingState == com.litetask.app.util.RecordingState.PLAYING,
                     isRecording = uiState.recordingState == com.litetask.app.util.RecordingState.RECORDING,
-                    speechSourceName = speechSourceInfo.displayName
+                    speechSourceName = speechSourceInfo.displayName,
+                    agentStatus = uiState.agentStatus,
+                    agentLogs = uiState.agentLogs
                 )
             }
 
@@ -747,7 +751,9 @@ fun HomeScreen(
                         onAnalyze = { context ->
                             viewModel.generateSubTasksWithContext(currentTask, context)
                         },
-                        isAnalyzing = uiState.isAnalyzing
+                        isAnalyzing = uiState.isAnalyzing,
+                        agentStatus = uiState.agentStatus,
+                        agentLogs = uiState.agentLogs
                     )
                 }
             }

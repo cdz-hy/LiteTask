@@ -234,14 +234,52 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
     }
     
     override fun getProviderName(): String = "DeepSeek V3.2"
-    
+
+    override suspend fun chatWithTools(
+        apiKey: String,
+        messages: JSONArray,
+        tools: JSONArray?
+    ): Result<JSONObject> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val requestBody = JSONObject().apply {
+                    put("model", "deepseek-chat")
+                    put("messages", messages)
+                    if (tools != null && tools.length() > 0) {
+                        put("tools", tools)
+                    }
+                    put("temperature", 0.3) // 降低温度以提高精准度
+                    put("max_tokens", 4096)
+                }
+
+                val request = Request.Builder()
+                    .url(baseUrl)
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .addHeader("Content-Type", "application/json")
+                    .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string() ?: return@withContext Result.failure(Exception("响应为空"))
+                
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(Exception("API 请求失败: ${response.code} - $responseBody"))
+                }
+
+                Result.success(JSONObject(responseBody))
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
     /**
      * 根据任务信息生成子任务
      */
-    suspend fun generateSubTasks(
+    override suspend fun generateSubTasks(
         apiKey: String, 
         task: Task, 
-        additionalContext: String = ""
+        additionalContext: String
     ): Result<List<String>> {
         return withContext(Dispatchers.IO) {
             try {

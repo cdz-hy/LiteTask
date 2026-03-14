@@ -153,6 +153,7 @@ fun SettingsScreen(
     
     // ========== AI 智能目的地状态 ==========
     var isAiDestinationEnabled by remember { mutableStateOf(false) }
+    var isAiAgentEnabled by remember { mutableStateOf(false) }
     
     // ========== 分类管理状态 ==========
     var showCategoryDialog by remember { mutableStateOf(false) }
@@ -170,6 +171,7 @@ fun SettingsScreen(
         selectedSpeechProvider = viewModel.getSpeechProvider()
         amapKey = viewModel.getAMapKey() ?: ""
         isAiDestinationEnabled = viewModel.isAiDestinationEnabled()
+        isAiAgentEnabled = viewModel.isAiAgentEnabled()
         
         // 加载语音识别凭证
         val savedCredentials = viewModel.getSpeechCredentials(selectedSpeechProvider)
@@ -298,6 +300,37 @@ fun SettingsScreen(
                     ) {
                         Text(stringResource(R.string.test_connection))
                     }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Agent 模式开关
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.enable_ai_agent),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = stringResource(R.string.enable_ai_agent_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isAiAgentEnabled,
+                        onCheckedChange = { checked ->
+                            isAiAgentEnabled = checked
+                            viewModel.setAiAgentEnabled(checked)
+                        }
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))

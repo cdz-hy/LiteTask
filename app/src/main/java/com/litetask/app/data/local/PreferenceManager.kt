@@ -88,6 +88,18 @@ class PreferenceManager @Inject constructor(
         prefs.edit().putBoolean(KEY_ENABLE_AI_DESTINATION, enabled).apply()
     }
     
+    // ========== AI 智能助手 (Agent) ==========
+    
+    private val KEY_ENABLE_AI_AGENT = "enable_ai_agent"
+    
+    fun isAiAgentEnabled(): Boolean {
+        return prefs.getBoolean(KEY_ENABLE_AI_AGENT, false)
+    }
+    
+    fun setAiAgentEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ENABLE_AI_AGENT, enabled).apply()
+    }
+
     // ========== 语音识别配置 ==========
     
     /**

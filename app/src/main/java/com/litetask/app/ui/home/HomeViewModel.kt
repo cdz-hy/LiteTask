@@ -473,9 +473,18 @@ class HomeViewModel @Inject constructor(
 
     private fun processVoiceCommand(text: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isAnalyzing = true)
+            _uiState.value = _uiState.value.copy(
+                isAnalyzing = true,
+                agentStatus = "正在理解您的语音...",
+                agentLogs = listOf("语音识别完成: $text")
+            )
             
-            val result = aiRepository.parseTasksFromText("", text) // 空字符串让 Repository 使用存储的 Key
+            val result = aiRepository.parseTasksFromText("", text) { progress ->
+                _uiState.value = _uiState.value.copy(
+                    agentStatus = progress,
+                    agentLogs = _uiState.value.agentLogs + progress
+                )
+            }
             
             result.onSuccess { tasks ->
                 val tasksWithLocations = mutableMapOf<Int, List<com.litetask.app.data.model.TaskComponent>>()
@@ -574,9 +583,18 @@ class HomeViewModel @Inject constructor(
      */
     fun analyzeTextInput(text: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isAnalyzing = true)
+            _uiState.value = _uiState.value.copy(
+                isAnalyzing = true,
+                agentStatus = "正在分析文本...",
+                agentLogs = listOf("文本输入: $text")
+            )
             
-            val result = aiRepository.parseTasksFromText("", text)
+            val result = aiRepository.parseTasksFromText("", text) { progress ->
+                _uiState.value = _uiState.value.copy(
+                    agentStatus = progress,
+                    agentLogs = _uiState.value.agentLogs + progress
+                )
+            }
                         result.onSuccess { tasks ->
                     // 目的地解析逻辑
                     val tasksWithLocations = mutableMapOf<Int, List<com.litetask.app.data.model.TaskComponent>>()
@@ -623,7 +641,9 @@ class HomeViewModel @Inject constructor(
                         isAnalyzing = false,
                         showAiResult = true,
                         aiParsedTasks = tasks,
-                        aiParsedComponents = tasksWithLocations
+                        aiParsedComponents = tasksWithLocations,
+                        agentStatus = "",
+                        agentLogs = emptyList()
                     )
                 }.onFailure { error ->
                 // 记录失败历史
@@ -703,22 +723,30 @@ class HomeViewModel @Inject constructor(
                         } else null
                     }
                     
-                    // 2. 插入任务和提醒
-                    val newTaskId = taskRepository.insertTaskWithReminders(task, reminders)
+                    // 2. 插入或更新任务和提醒
+                    val finalTaskId = if (task.id != 0L) {
+                        taskRepository.updateTaskWithReminders(task, reminders)
+                        task.id
+                    } else {
+                        taskRepository.insertTaskWithReminders(task, reminders)
+                    }
                     
-                    // 3. 插入组件
+                    // 3. 插入/更新组件
+                    // 注意：如果是更新任务，这里简单起见目前是追加组件。
+                    // 理想情况下应该区分哪些是新组件。
                     components.forEach { component ->
                         val entity = when (component) {
                             is com.litetask.app.data.model.TaskComponent.AMapComponent -> 
-                                component.toEntity(newTaskId)
+                                component.toEntity(finalTaskId)
                             is com.litetask.app.data.model.TaskComponent.FileComponent -> 
-                                component.toEntity(newTaskId)
+                                component.toEntity(finalTaskId)
                         }
                         taskRepository.insertComponent(entity)
                     }
                 }
             }
-            _uiState.value = _uiState.value.copy(showAiResult = false, aiParsedTasks = emptyList())
+            _uiState.value = _uiState.value.copy(showAiResult = false, aiParsedTasks = emptyList(), aiParsedComponents = emptyMap())
+            WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
     
@@ -1082,37 +1110,20 @@ class HomeViewModel @Inject constructor(
      */
     fun generateSubTasksWithContext(task: Task, additionalContext: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isAnalyzing = true)
+            _uiState.value = _uiState.value.copy(
+                isAnalyzing = true,
+                agentStatus = "正在准备拆解子任务...",
+                agentLogs = listOf("主任务: ${task.title}")
+            )
             
-            val apiKey = preferenceManager.getApiKey()
-            if (apiKey.isNullOrBlank()) {
+            val result = aiRepository.generateSubTasks(task, additionalContext) { progress ->
                 _uiState.value = _uiState.value.copy(
-                    isAnalyzing = false,
-                    showAiError = true,
-                    aiErrorMessage = application.getString(R.string.error_api_key_not_set)
+                    agentStatus = progress,
+                    agentLogs = _uiState.value.agentLogs + progress
                 )
-                return@launch
             }
             
-            try {
-                // 获取用户配置的 AI 提供商
-                val providerId = preferenceManager.getAiProvider()
-                val deepSeekProvider = com.litetask.app.data.ai.DeepSeekProvider()
-                val providerFactory = com.litetask.app.data.ai.AIProviderFactory(deepSeekProvider)
-                val provider = providerFactory.getProvider(providerId) as? com.litetask.app.data.ai.DeepSeekProvider
-                
-                if (provider == null) {
-                    _uiState.value = _uiState.value.copy(
-                        isAnalyzing = false,
-                        showAiError = true,
-                        aiErrorMessage = "当前 AI 提供商不支持子任务生成"
-                    )
-                    return@launch
-                }
-                
-                val result = provider.generateSubTasks(apiKey, task, additionalContext)
-                
-                result.onSuccess { subTasks ->
+            result.onSuccess { subTasks ->
                     // 记录 AI 历史
                     viewModelScope.launch {
                         aiHistoryRepository.insertHistory(
@@ -1152,14 +1163,6 @@ class HomeViewModel @Inject constructor(
                         showSubTaskInput = false
                     )
                 }
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isAnalyzing = false,
-                    showAiError = true,
-                    aiErrorMessage = "子任务生成失败: ${e.message}",
-                    showSubTaskInput = false
-                )
-            }
         }
     }
     
@@ -1279,7 +1282,11 @@ data class HomeUiState(
     val showSubTaskInput: Boolean = false,  // 显示子任务详细输入对话框
     val showSubTaskResult: Boolean = false, // 显示子任务生成结果
     val generatedSubTasks: List<String> = emptyList(), // 生成的子任务列表
-    val currentTask: Task? = null           // 当前处理的任务
+    val currentTask: Task? = null,          // 当前处理的任务
+
+    // Agent 思考过程相关
+    val agentStatus: String = "",           // 当前 Agent 正在执行的操作
+    val agentLogs: List<String> = emptyList() // Agent 历史操作日志
 )
 
 // 检查 API Key 结果

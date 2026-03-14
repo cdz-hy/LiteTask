@@ -42,7 +42,9 @@ fun VoiceRecorderDialog(
     recordingDuration: Long = 0L,
     isPlaying: Boolean = false, // 复用作为 "AI 分析中" 的状态
     isRecording: Boolean = true, // 是否正在录音
-    speechSourceName: String = "Android STT" // 语音识别源名称
+    speechSourceName: String = "Android STT", // 语音识别源名称
+    agentStatus: String = "", // Agent 当前状态
+    agentLogs: List<String> = emptyList() // Agent 操作日志
 ) {
     // 可编辑的文本状态
     var editableText by remember { mutableStateOf(recognizedText) }
@@ -155,28 +157,32 @@ fun VoiceRecorderDialog(
 
 
                     // 核心可视化区域
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = isRecording || isPlaying,
-                        enter = fadeIn(),
-                        exit = fadeOut()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp), // 固定高度防止抖动
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.size(160.dp)
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = isRecording && !isPlaying,
+                            enter = fadeIn(),
+                            exit = fadeOut()
                         ) {
-                            when {
-                                isPlaying -> {
-                                    CircularProgressIndicator(
-                                        color = MaterialTheme.colorScheme.primary,
-                                        strokeWidth = 4.dp,
-                                        modifier = Modifier.size(64.dp)
-                                    )
-                                }
-                                else -> {
-                                    ActiveListeningVisualizer(MaterialTheme.colorScheme.primary)
-                                }
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.size(160.dp)
+                            ) {
+                                ActiveListeningVisualizer(MaterialTheme.colorScheme.primary)
                             }
                         }
+
+                        // Agent 思考过程覆盖层
+                        AgentThinkingOverlay(
+                            visible = isPlaying,
+                            status = agentStatus,
+                            logs = agentLogs,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
 
                     // 实时识别文本显示（录音中）

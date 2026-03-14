@@ -51,6 +51,9 @@ class SettingsViewModel @Inject constructor(
     
     fun isAiDestinationEnabled(): Boolean = preferenceManager.isAiDestinationEnabled()
     fun setAiDestinationEnabled(enabled: Boolean) = preferenceManager.setAiDestinationEnabled(enabled)
+    
+    fun isAiAgentEnabled(): Boolean = preferenceManager.isAiAgentEnabled()
+    fun setAiAgentEnabled(enabled: Boolean) = preferenceManager.setAiAgentEnabled(enabled)
 
     fun resetConnectionState() {
         _aiConnectionState.value = ConnectionState.Idle
