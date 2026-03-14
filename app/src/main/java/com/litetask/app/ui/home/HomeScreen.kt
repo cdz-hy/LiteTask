@@ -1100,6 +1100,19 @@ private fun checkMissingPermissions(
         )
     }
 
+    // 地理位置权限 (用于 AI 辅助地址解析)
+    if (!PermissionHelper.hasLocationPermission(context)) {
+        missing.add(
+            MissingPermission(
+                name = "地理位置权限",
+                description = "用于 AI 自动寻找附近的地点",
+                settingsIntent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = android.net.Uri.parse("package:${context.packageName}")
+                }
+            )
+        )
+    }
+
     return missing
 }
 

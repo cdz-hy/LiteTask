@@ -75,6 +75,19 @@ object PermissionHelper {
     }
 
     /**
+     * 检查是否有地理位置权限
+     */
+    fun hasLocationPermission(context: Context): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
      * 获取精确闹钟权限设置页面的 Intent
      */
     fun getExactAlarmSettingsIntent(context: Context): Intent {

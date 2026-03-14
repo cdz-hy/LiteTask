@@ -728,6 +728,40 @@ private fun AITaskCard(
                     )
                 }
 
+//                // 地理位置详情 (AI 识别或周边搜索结果)
+//                if (!task.parsedDestination.isNullOrBlank()) {
+//                    Spacer(modifier = Modifier.height(10.dp))
+//                    Surface(
+//                        color = primaryColor.copy(alpha = 0.05f),
+//                        shape = RoundedCornerShape(12.dp),
+//                        border = androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.15f)),
+//                        modifier = Modifier.fillMaxWidth()
+//                    ) {
+//                        Row(
+//                            verticalAlignment = Alignment.CenterVertically,
+//                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+//                        ) {
+//                            Icon(
+//                                imageVector = Icons.Rounded.Place,
+//                                contentDescription = null,
+//                                tint = primaryColor,
+//                                modifier = Modifier.size(16.dp)
+//                            )
+//                            Spacer(modifier = Modifier.width(8.dp))
+//                            Text(
+//                                text = task.parsedDestination!!,
+//                                style = MaterialTheme.typography.bodySmall.copy(
+//                                    fontWeight = FontWeight.Medium,
+//                                    letterSpacing = 0.2.sp
+//                                ),
+//                                color = extendedColors.textPrimary.copy(alpha = 0.9f),
+//                                maxLines = 1,
+//                                overflow = TextOverflow.Ellipsis
+//                            )
+//                        }
+//                    }
+//                }
+
                 // Task Components Tags (Newly added)
                 if (components.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))

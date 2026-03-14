@@ -97,11 +97,14 @@ class AIRepositoryImpl @Inject constructor(
                - 必须将“明天”、“下周”、“下午三点”等所有相对/模糊时间转换为 yyyy-MM-dd HH:mm 格式。
                - **严禁**直接返回用户原话。必须基于 context 里的 $currentDate 进行偏移计算。
                - 如果用户只说了一个点（如“下午3点”），通常设为 `endTime`，`startTime` 为当前。
-            3. **修改任务 (Modification)**:
-               - 必须先调用 `search_tasks` 获取 ID 和现有详情。
-               - **核心要求**: 在修改任务时，若用户未明确要求修改某项属性（如描述、分类），请务必**保留**工具返回的原始值。严禁随意改回默认。
-            4. **新增任务 (Insertion)**:
-               - 若判定为新日程，ID 设为 0。
+            3. **修改与干预 (Modification)**:
+               - 必须先调用 `search_tasks` 获取真实 ID。
+               - **核心要求**: 若用户未明确要求修改某项属性，必须**保留**工具返回的原始值。
+            4. **地理位置决策 (Location Intelligence)**:
+               - **模糊地址辨析**: “菜鸟驿站”、“超市”、“银行”、“药店”等通称必须视为**模糊地址**。
+               - **干预流程**: 识别到模糊地址 -> 调用 `search_nearby_location` -> 将结果填入 `destination`。
+               - **确切地址**: “XX大学”等专有名词直接填入，无需搜周边。
+            5. **新增任务**: 新增任务 ID 设为 0。最终 JSON 前需一句话概述行动。
             
             # JSON Schema (Final Response):
             必须先用一句话概述你的操作理由，然后紧跟 JSON 数组。
@@ -147,6 +150,7 @@ class AIRepositoryImpl @Inject constructor(
                         "search_tasks" -> "正在搜索关键词: ${arguments.optString("keyword")}..."
                         "get_categories" -> "正在同步任务分类配置..."
                         "get_user_location" -> "正在获取您的当前位置..."
+                        "search_nearby_location" -> "正在搜索附近的 ${arguments.optString("keyword")}..."
                         else -> "正在调用工具: $name..."
                     }
                     onProgress(progressMsg)

@@ -122,6 +122,52 @@ class AMapRepository @Inject constructor(
         return@withContext null
     }
 
+    /**
+     * 周边搜索 (POI 搜索)
+     * @param keyword 关键词
+     * @param location 中心点 "lng,lat"
+     * @param radius 半径 (米)，默认 5000
+     */
+    suspend fun searchNearby(keyword: String, location: String, radius: Int = 5000): List<AMapRouteData> = withContext(Dispatchers.IO) {
+        val key = preferenceManager.getAMapKey()
+        if (key.isNullOrBlank() || keyword.isBlank() || location.isBlank()) return@withContext emptyList()
+
+        try {
+            val encodedKeyword = URLEncoder.encode(keyword, "UTF-8")
+            val urlString = "https://restapi.amap.com/v3/place/around?key=$key&location=$location&keywords=$encodedKeyword&radius=$radius&output=JSON"
+            val response = makeGetRequest(urlString) ?: return@withContext emptyList()
+            val json = JSONObject(response)
+
+            if (json.optString("status") == "1") {
+                val pois = json.optJSONArray("pois") ?: return@withContext emptyList()
+                val result = mutableListOf<AMapRouteData>()
+
+                for (i in 0 until pois.length()) {
+                    val poi = pois.getJSONObject(i)
+                    val locStr = poi.optString("location")
+                    if (locStr.isNullOrBlank()) continue
+
+                    val parts = locStr.split(",")
+                    if (parts.size == 2) {
+                        result.add(AMapRouteData(
+                            startName = "我的位置",
+                            endName = poi.optString("name"),
+                            endAddress = poi.optString("address"),
+                            endLng = parts[0].toDoubleOrNull() ?: 0.0,
+                            endLat = parts[1].toDoubleOrNull() ?: 0.0,
+                            adcode = poi.optString("adcode")
+                        ))
+                    }
+                }
+                // 按距离自动排序（高德 API 默认已按距离排序）
+                return@withContext result
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext emptyList()
+    }
+
     private fun makeGetRequest(urlString: String): String? {
         return try {
             val url = URL(urlString)
