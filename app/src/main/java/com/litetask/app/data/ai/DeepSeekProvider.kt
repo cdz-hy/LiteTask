@@ -23,9 +23,9 @@ import javax.inject.Inject
 class DeepSeekProvider @Inject constructor() : AIProvider {
     
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(75, TimeUnit.SECONDS)
+        .readTimeout(75, TimeUnit.SECONDS)
+        .writeTimeout(75, TimeUnit.SECONDS)
         .build()
     
     private val baseUrl = "https://api.deepseek.com/v1/chat/completions"
@@ -88,7 +88,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                         })
                     })
                     put("temperature", 0.7)
-                    put("max_tokens", 1000)
+                    put("max_tokens", 3072)
                 }
                 
                 val request = Request.Builder()
@@ -224,10 +224,11 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                 tasks.add(task)
             }
         } catch (e: org.json.JSONException) {
-            e.printStackTrace()
-            // 在这里可以添加错误处理逻辑，比如记录错误或返回默认值
+            // JSON 解析失败，抛出异常让上层处理
+            throw Exception("AI 返回格式错误，请重试: ${e.message}", e)
         } catch (e: Exception) {
-            e.printStackTrace()
+            // 其他异常也抛出
+            throw Exception("任务解析失败: ${e.message}", e)
         }
         return tasks
     }
@@ -255,7 +256,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                 val systemPrompt = """
 # Role: LiteTask 智能日程规划师
 # Context: Now = $currentDate
-# Goal: 将复杂任务拆解为 3-6 个具体、可执行的子任务步骤，并以 JSON 数组格式返回。
+# Goal: 将复杂任务拆解为 3-6 个具体、可执行的子任务步骤(要注意以额外说明为主，不要过于死板于这些数量)，并以 JSON 数组格式返回。
 
 # Task Details
 - 标题: ${task.title}
@@ -267,7 +268,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
 $userInstruction
 
 # Rules
-1. **执行性**: 每个子任务必须是可直接执行的动作（"动词 + 名词"结构），如"撰写大纲"、"购买材料"。
+1. **执行性**: 每个子任务建议是可直接执行的动作（"动词 + 名词"结构），如"撰写大纲"、"购买材料"。
 2. **相关性**: 子任务必须服务于主任务的完成，如果用户提供了补充说明，请严格按照说明的方向进行拆解。
 3. **逻辑性**: 按时间先后顺序排列步骤。
 4. **简洁性**: 每个步骤不超过 15 个字。
