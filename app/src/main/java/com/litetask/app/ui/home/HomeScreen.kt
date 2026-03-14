@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
@@ -76,6 +77,7 @@ fun HomeScreen(
     onNavigateToAdd: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToPermissions: () -> Unit = {},
+    onNavigateToAbout: () -> Unit = {},
     onNavigateToHistory: () -> Unit,
     onNavigateToBackup: () -> Unit,
     onNavigateToSearch: () -> Unit,
@@ -283,6 +285,22 @@ fun HomeScreen(
                             drawerState.close()
                         }
                         onNavigateToPermissions()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 关于选项
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Info, contentDescription = null) },
+                    label = { Text("关于") },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                        onNavigateToAbout()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )

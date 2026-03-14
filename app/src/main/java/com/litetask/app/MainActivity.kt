@@ -205,6 +205,12 @@ fun AppContent(
             )
         }
         
+        composable("about") {
+            com.litetask.app.ui.about.AboutScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        
         composable("ai_history") {
             com.litetask.app.ui.history.AIHistoryScreen(
                 onBack = { navController.popBackStack() }
@@ -257,6 +263,7 @@ private fun HomeScreenWrapper(
         onNavigateToAdd = { /* 添加任务功能保持在 HomeScreen 内部 */ },
         onNavigateToSettings = { navController.navigate("settings") },
         onNavigateToPermissions = { navController.navigate("permissions") },
+        onNavigateToAbout = { navController.navigate("about") },
         onNavigateToHistory = onNavigateToHistory,
         onNavigateToBackup = { navController.navigate("backup") },
         onNavigateToSearch = { navController.navigate("search") },
