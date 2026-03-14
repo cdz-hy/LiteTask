@@ -88,6 +88,15 @@ object PermissionHelper {
     }
 
     /**
+     * 获取定位权限设置页面的 Intent
+     */
+    fun getLocationSettingsIntent(context: Context): Intent {
+        return Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:${context.packageName}")
+        }
+    }
+
+    /**
      * 获取精确闹钟权限设置页面的 Intent
      */
     fun getExactAlarmSettingsIntent(context: Context): Intent {

@@ -251,6 +251,26 @@ class SettingsViewModel @Inject constructor(
      */
     fun setDefaultHomeView(view: String) = preferenceManager.setDefaultHomeView(view)
     
+    /**
+     * 获取紧急任务时间范围（小时）
+     */
+    fun getDeadlineUrgentHours(): Int = preferenceManager.getDeadlineUrgentHours()
+    
+    /**
+     * 设置紧急任务时间范围（小时）
+     */
+    fun setDeadlineUrgentHours(hours: Int) = preferenceManager.setDeadlineUrgentHours(hours)
+    
+    /**
+     * 获取即将截止任务时间范围（小时）
+     */
+    fun getDeadlineSoonHours(): Int = preferenceManager.getDeadlineSoonHours()
+    
+    /**
+     * 设置即将截止任务时间范围（小时）
+     */
+    fun setDeadlineSoonHours(hours: Int) = preferenceManager.setDeadlineSoonHours(hours)
+    
     // ========== 分类管理 ==========
     
     val categories: Flow<List<Category>> = categoryRepository.getAllCategories()

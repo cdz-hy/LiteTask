@@ -52,22 +52,27 @@ fun DeadlineView(
     onPinClick: (Task) -> Unit,
     onEditClick: (Task) -> Unit,
     onToggleDone: (Task) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: com.litetask.app.ui.settings.SettingsViewModel = hiltViewModel()
 ) {
     val now = System.currentTimeMillis()
+    
+    // 从设置中获取时间范围（小时转毫秒）
+    val urgentThreshold = viewModel.getDeadlineUrgentHours() * 60 * 60 * 1000L
+    val soonThreshold = viewModel.getDeadlineSoonHours() * 60 * 60 * 1000L
     
     // Filter only active tasks (not done and not expired) with a deadline, sorted by deadline
     val deadlineTasks = tasks
         .filter { !it.task.isDone && !it.task.isExpired && it.task.deadline > 0 }
         .sortedBy { it.task.deadline }
 
-    // Group tasks
-    val urgentTasks = deadlineTasks.filter { (it.task.deadline - now) < 24 * 60 * 60 * 1000 }
+    // Group tasks using custom thresholds
+    val urgentTasks = deadlineTasks.filter { (it.task.deadline - now) < urgentThreshold }
     val soonTasks = deadlineTasks.filter { 
         val diff = it.task.deadline - now
-        diff >= 24 * 60 * 60 * 1000 && diff < 48 * 60 * 60 * 1000 
+        diff >= urgentThreshold && diff < soonThreshold 
     }
-    val futureTasks = deadlineTasks.filter { (it.task.deadline - now) >= 48 * 60 * 60 * 1000 }
+    val futureTasks = deadlineTasks.filter { (it.task.deadline - now) >= soonThreshold }
 
     Box(modifier = modifier.fillMaxSize()) {
         if (deadlineTasks.isEmpty()) {

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Warning
@@ -74,6 +75,7 @@ import java.util.Locale
 fun HomeScreen(
     onNavigateToAdd: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToPermissions: () -> Unit = {},
     onNavigateToHistory: () -> Unit,
     onNavigateToBackup: () -> Unit,
     onNavigateToSearch: () -> Unit,
@@ -265,6 +267,22 @@ fun HomeScreen(
                             drawerState.close()
                         }
                         onNavigateToSettings()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 应用权限选项
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Security, contentDescription = null) },
+                    label = { Text("应用权限") },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                        onNavigateToPermissions()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )

@@ -301,7 +301,22 @@ fun SettingsScreen(
                         Text(stringResource(R.string.test_connection))
                     }
                 }
-                
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = { 
+                        // 允许保存空值，空值表示不使用 AI 分析功能
+                        viewModel.saveApiKey(apiKey)
+                        viewModel.saveAiProvider(selectedAiProvider)
+                        Toast.makeText(context, context.getString(R.string.settings_saved), Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(stringResource(R.string.ai_save_settings))
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(12.dp))
@@ -331,21 +346,6 @@ fun SettingsScreen(
                             viewModel.setAiAgentEnabled(checked)
                         }
                     )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = { 
-                        // 允许保存空值，空值表示不使用 AI 分析功能
-                        viewModel.saveApiKey(apiKey)
-                        viewModel.saveAiProvider(selectedAiProvider)
-                        Toast.makeText(context, context.getString(R.string.settings_saved), Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(stringResource(R.string.ai_save_settings))
                 }
                 
             }
@@ -569,8 +569,8 @@ fun SettingsScreen(
                 onManageCategories = { showCategoryDialog = true }
             )
             
-            // ========== 提醒设置卡片 ==========
-            ReminderSettingsCard(context)
+            // ========== 提醒方式设置卡片 ==========
+            ReminderMethodsCard(viewModel)
             
             // ========== 用户偏好设置卡片 ==========
             UserPreferencesCard(viewModel)
@@ -599,6 +599,11 @@ private fun UserPreferencesCard(
     var selectedFabAction by remember { mutableStateOf(viewModel.getDefaultFabAction()) }
     // 默认首页视图
     var selectedHomeView by remember { mutableStateOf(viewModel.getDefaultHomeView()) }
+    // 截止视图时间范围
+    var urgentHours by remember { mutableStateOf(viewModel.getDeadlineUrgentHours()) }
+    var soonHours by remember { mutableStateOf(viewModel.getDeadlineSoonHours()) }
+    var showUrgentDialog by remember { mutableStateOf(false) }
+    var showSoonDialog by remember { mutableStateOf(false) }
     
     val fabOptions = listOf(
         Triple("voice", "语音添加", Icons.Default.Mic),
@@ -739,173 +744,276 @@ private fun UserPreferencesCard(
                 }
             }
         }
-    }
-}
-
-/**
- * 提醒设置卡片
- * 引导用户开启必要的系统权限，确保提醒功能正常工作
- */
-@Composable
-private fun ReminderSettingsCard(
-    context: android.content.Context,
-    viewModel: SettingsViewModel = hiltViewModel()
-) {
-    // 检查各项权限状态
-    var hasNotificationPermission by remember { mutableStateOf(true) }
-    var hasExactAlarmPermission by remember { mutableStateOf(true) }
-    var hasBackgroundActivityPermission by remember { mutableStateOf(true) }
-    var hasLockScreenPermission by remember { mutableStateOf(true) }
-    var hasOverlayPermission by remember { mutableStateOf(true) }
-    var hasAutoStartSettings by remember { mutableStateOf(false) }
-    
-    // 铃声和震动开关状态
-    var soundEnabled by remember { mutableStateOf(viewModel.isReminderSoundEnabled()) }
-    var vibrationEnabled by remember { mutableStateOf(viewModel.isReminderVibrationEnabled()) }
-    
-    // 用于触发权限状态刷新
-    var refreshTrigger by remember { mutableStateOf(0) }
-    
-    // 监听生命周期，当页面重新获得焦点时刷新权限状态
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                refreshTrigger++
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-    
-    // 刷新权限状态
-    LaunchedEffect(refreshTrigger) {
-        hasNotificationPermission = PermissionHelper.hasNotificationPermission(context)
-        hasExactAlarmPermission = PermissionHelper.canScheduleExactAlarms(context)
-        hasBackgroundActivityPermission = PermissionHelper.hasBackgroundActivityPermission(context)
-        hasLockScreenPermission = PermissionHelper.hasLockScreenPermission(context)
-        hasOverlayPermission = PermissionHelper.hasOverlayPermission(context)
-        hasAutoStartSettings = PermissionHelper.hasAutoStartSettings(context)
-    }
-    
-    SettingsCard(
-        title = "提醒设置",
-        icon = Icons.Default.Notifications
-    ) {
-        // 说明文字
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Text(
-                text = "部分手机系统需要手动开启以下权限，否则应用不在后台时提醒可能无法正常触发",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
         
-        // 权限状态列表
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // 通知权限
-            PermissionItem(
-                title = "通知权限",
-                description = "允许显示提醒通知",
-                isGranted = hasNotificationPermission,
-                onClick = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                        }
-                        context.startActivity(intent)
-                    }
-                }
-            )
-            
-            // 精确闹钟权限
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                PermissionItem(
-                    title = "精确闹钟权限",
-                    description = "允许设置精确的提醒时间",
-                    isGranted = hasExactAlarmPermission,
-                    onClick = {
-                        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                            data = Uri.parse("package:${context.packageName}")
-                        }
-                        context.startActivity(intent)
-                    }
-                )
-            }
-            
-            // 后台弹出界面权限（Android 10+）
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                PermissionItem(
-                    title = "后台弹出界面",
-                    description = "允许在后台弹出提醒界面",
-                    isGranted = hasBackgroundActivityPermission,
-                    onClick = {
-                        val intent = PermissionHelper.getBackgroundActivitySettingsIntent(context)
-                        context.startActivity(intent)
-                    }
-                )
-            }
-            
-            // 锁屏显示权限
-            PermissionItem(
-                title = "锁屏显示",
-                description = "允许在锁屏界面显示提醒",
-                isGranted = hasLockScreenPermission,
-                onClick = {
-                    val intent = PermissionHelper.getLockScreenSettingsIntent(context)
-                    context.startActivity(intent)
-                }
-            )
-            
-            // 悬浮窗权限（可选，用于增强提醒效果）
-            PermissionItem(
-                title = "悬浮窗权限（可选）",
-                description = "增强亮屏时的提醒效果",
-                isGranted = hasOverlayPermission,
-                onClick = {
-                    val intent = PermissionHelper.getOverlaySettingsIntent(context)
-                    context.startActivity(intent)
-                }
-            )
-            
-            // 自启动权限（仅在有可用设置页面时显示）
-            if (hasAutoStartSettings) {
-                PermissionItem(
-                    title = "自启动权限",
-                    description = "允许应用在后台被清理后自动重启",
-                    isGranted = false, // 无法检测，始终显示"去开启"
-                    onClick = {
-                        context.startActivity(PermissionHelper.getAutoStartSettingsIntent(context))
-                    }
-                )
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(20.dp))
         
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // 提醒方式设置
-        Text(
-            text = "提醒方式",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface
+        // 截止视图时间范围设置
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Flag,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "截止视图时间范围",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "自定义紧急和即将截止的时间阈值",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // 紧急任务时间范围
+            Surface(
+                onClick = { showUrgentDialog = true },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "紧急任务",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "距离截止时间",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "$urgentHours",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "小时内",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // 即将截止任务时间范围
+            Surface(
+                onClick = { showSoonDialog = true },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "即将截止",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "距离截止时间",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "$soonHours",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "小时内",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    // 紧急任务时间设置对话框
+    if (showUrgentDialog) {
+        DeadlineTimeDialog(
+            title = "紧急任务时间范围",
+            currentHours = urgentHours,
+            maxHours = soonHours - 1, // 必须小于即将截止的时间
+            onDismiss = { showUrgentDialog = false },
+            onConfirm = { hours ->
+                urgentHours = hours
+                viewModel.setDeadlineUrgentHours(hours)
+                showUrgentDialog = false
+            }
         )
-        
-        Spacer(modifier = Modifier.height(12.dp))
+    }
+    
+    // 即将截止任务时间设置对话框
+    if (showSoonDialog) {
+        DeadlineTimeDialog(
+            title = "即将截止时间范围",
+            currentHours = soonHours,
+            minHours = urgentHours + 1, // 必须大于紧急任务的时间
+            onDismiss = { showSoonDialog = false },
+            onConfirm = { hours ->
+                soonHours = hours
+                viewModel.setDeadlineSoonHours(hours)
+                showSoonDialog = false
+            }
+        )
+    }
+}
+
+/**
+ * 截止时间范围设置对话框
+ */
+@Composable
+private fun DeadlineTimeDialog(
+    title: String,
+    currentHours: Int,
+    minHours: Int = 1,
+    maxHours: Int = 168, // 默认最大7天
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    var hours by remember { mutableStateOf(currentHours.toString()) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Text(
+                    text = "设置时间范围（${minHours}-${maxHours}小时）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                OutlinedTextField(
+                    value = hours,
+                    onValueChange = { 
+                        hours = it
+                        errorMessage = null
+                    },
+                    label = { Text("小时数") },
+                    suffix = { Text("小时") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                    ),
+                    isError = errorMessage != null,
+                    supportingText = errorMessage?.let { { Text(it) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // 快捷选项
+                Text(
+                    text = "快捷选择",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val quickOptions = listOf(12, 24, 48, 72).filter { it in minHours..maxHours }
+                    quickOptions.forEach { option ->
+                        FilterChip(
+                            selected = hours == option.toString(),
+                            onClick = { 
+                                hours = option.toString()
+                                errorMessage = null
+                            },
+                            label = { Text("${option}h") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val hoursInt = hours.toIntOrNull()
+                    when {
+                        hoursInt == null -> errorMessage = "请输入有效的数字"
+                        hoursInt < minHours -> errorMessage = "不能小于 $minHours 小时"
+                        hoursInt > maxHours -> errorMessage = "不能大于 $maxHours 小时"
+                        else -> onConfirm(hoursInt)
+                    }
+                }
+            ) {
+                Text("确定")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+/**
+ * 提醒方式设置卡片
+ */
+@Composable
+private fun ReminderMethodsCard(
+    viewModel: SettingsViewModel
+) {
+    // 铃声和震动开关状态
+    var soundEnabled by remember { mutableStateOf(viewModel.isReminderSoundEnabled()) }
+    var vibrationEnabled by remember { mutableStateOf(viewModel.isReminderVibrationEnabled()) }
+    
+    SettingsCard(
+        title = "提醒方式",
+        icon = Icons.Default.Notifications
+    ) {
+        Text(
+            text = "自定义提醒时的声音和震动效果",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
         
         // 铃声开关
         SwitchItem(
@@ -932,44 +1040,6 @@ private fun ReminderSettingsCard(
                 viewModel.setReminderVibrationEnabled(it)
             }
         )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        
-        Spacer(modifier = Modifier.height(12.dp))
-        
-        // 跳转到应用详情设置
-        Text(
-            text = "如果提醒仍然无法正常工作，请在系统设置中：",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = FontWeight.Medium
-        )
-        
-        Spacer(modifier = Modifier.height(4.dp))
-        
-        Text(
-            text = "• 开启「自启动」权限\n• 将后台限制设为「无限制」\n• 关闭应用「电池优化」",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        
-        Spacer(modifier = Modifier.height(12.dp))
-        
-        Button(
-            onClick = {
-                // 跳转到应用详情设置页面
-                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.parse("package:${context.packageName}")
-                }
-                context.startActivity(intent)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text("打开应用设置")
-        }
     }
 }
 
@@ -1017,49 +1087,6 @@ private fun SwitchItem(
             checked = checked,
             onCheckedChange = onCheckedChange
         )
-    }
-}
-
-/**
- * 权限项组件
- */
-@Composable
-private fun PermissionItem(
-    title: String,
-    description: String,
-    isGranted: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        
-        if (isGranted) {
-            Icon(
-                Icons.Default.CheckCircle,
-                contentDescription = "已开启",
-                tint = Color(0xFF4CAF50),
-                modifier = Modifier.size(24.dp)
-            )
-        } else {
-            TextButton(onClick = onClick) {
-                Text("去开启")
-            }
-        }
     }
 }
 
