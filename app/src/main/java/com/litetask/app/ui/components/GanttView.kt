@@ -56,9 +56,10 @@ fun GanttView(
     taskComposites: List<TaskDetailComposite>,
     onTaskClick: (Task) -> Unit,
     onNavigateToFullscreen: (GanttViewMode) -> Unit,
+    defaultViewMode: GanttViewMode = GanttViewMode.THREE_DAY,
     modifier: Modifier = Modifier
 ) {
-    var viewMode by remember { mutableStateOf(GanttViewMode.THREE_DAY) }
+    var viewMode by remember { mutableStateOf(defaultViewMode) }
     val extendedColors = LocalExtendedColors.current
     
     // Time Configuration

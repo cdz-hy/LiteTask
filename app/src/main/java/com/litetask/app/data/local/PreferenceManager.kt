@@ -57,6 +57,10 @@ class PreferenceManager @Inject constructor(
         const val DEFAULT_URGENT_HOURS = 24  // 默认24小时内为紧急
         const val DEFAULT_SOON_HOURS = 48    // 默认48小时内为即将截止
         
+        // 甘特视图默认时间粒度
+        private const val KEY_GANTT_DEFAULT_MODE = "gantt_default_mode"
+        const val DEFAULT_GANTT_MODE = "THREE_DAY"  // TODAY, THREE_DAY, SEVEN_DAY, ONE_MONTH
+        
         // 高德地图相关
         private const val KEY_AMAP_KEY = "amap_key"
     }
@@ -265,6 +269,20 @@ class PreferenceManager @Inject constructor(
      */
     fun setDeadlineSoonHours(hours: Int) {
         prefs.edit().putInt(KEY_DEADLINE_SOON_HOURS, hours).apply()
+    }
+    
+    /**
+     * 获取甘特视图默认时间粒度
+     */
+    fun getGanttDefaultMode(): String {
+        return prefs.getString(KEY_GANTT_DEFAULT_MODE, DEFAULT_GANTT_MODE) ?: DEFAULT_GANTT_MODE
+    }
+    
+    /**
+     * 设置甘特视图默认时间粒度
+     */
+    fun setGanttDefaultMode(mode: String) {
+        prefs.edit().putString(KEY_GANTT_DEFAULT_MODE, mode).apply()
     }
     
     // ========== 高德地图配置 ==========

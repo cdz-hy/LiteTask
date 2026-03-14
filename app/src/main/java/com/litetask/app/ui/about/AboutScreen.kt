@@ -162,7 +162,7 @@ fun AboutScreen(
                 Spacer(modifier = Modifier.height(4.dp))
                 
                 Text(
-                    text = "感谢AI编码！",
+                    text = "感谢 LLM 编码！",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

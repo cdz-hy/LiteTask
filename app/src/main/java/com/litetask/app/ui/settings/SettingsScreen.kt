@@ -74,6 +74,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Delete
@@ -599,6 +600,8 @@ private fun UserPreferencesCard(
     var selectedFabAction by remember { mutableStateOf(viewModel.getDefaultFabAction()) }
     // 默认首页视图
     var selectedHomeView by remember { mutableStateOf(viewModel.getDefaultHomeView()) }
+    // 甘特视图默认时间粒度
+    var selectedGanttMode by remember { mutableStateOf(viewModel.getGanttDefaultMode()) }
     // 截止视图时间范围
     var urgentHours by remember { mutableStateOf(viewModel.getDeadlineUrgentHours()) }
     var soonHours by remember { mutableStateOf(viewModel.getDeadlineSoonHours()) }
@@ -615,6 +618,13 @@ private fun UserPreferencesCard(
         Triple("timeline", "列表", Icons.Default.List),
         Triple("gantt", "甘特图", Icons.Default.ViewTimeline),
         Triple("deadline", "截止日", Icons.Default.Flag)
+    )
+    
+    val ganttModeOptions = listOf(
+        Pair("TODAY", "今日"),
+        Pair("THREE_DAY", "3日"),
+        Pair("SEVEN_DAY", "7日"),
+        Pair("ONE_MONTH", "1月")
     )
     
     SettingsCard(
@@ -738,6 +748,63 @@ private fun UserPreferencesCard(
                             selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                             selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
                             selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(20.dp))
+        
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // 甘特视图默认时间粒度设置
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.DateRange,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "甘特视图默认时间粒度",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "打开甘特视图时的默认时间范围",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ganttModeOptions.forEach { (value, label) ->
+                    FilterChip(
+                        selected = selectedGanttMode == value,
+                        onClick = {
+                            selectedGanttMode = value
+                            viewModel.setGanttDefaultMode(value)
+                        },
+                        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
                         ),
                         modifier = Modifier.weight(1f)
                     )

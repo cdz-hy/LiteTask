@@ -271,6 +271,16 @@ class SettingsViewModel @Inject constructor(
      */
     fun setDeadlineSoonHours(hours: Int) = preferenceManager.setDeadlineSoonHours(hours)
     
+    /**
+     * 获取甘特视图默认时间粒度
+     */
+    fun getGanttDefaultMode(): String = preferenceManager.getGanttDefaultMode()
+    
+    /**
+     * 设置甘特视图默认时间粒度
+     */
+    fun setGanttDefaultMode(mode: String) = preferenceManager.setGanttDefaultMode(mode)
+    
     // ========== 分类管理 ==========
     
     val categories: Flow<List<Category>> = categoryRepository.getAllCategories()

@@ -323,6 +323,11 @@ class HomeViewModel @Inject constructor(
     fun getDefaultHomeView(): String = preferenceManager.getDefaultHomeView()
     
     /**
+     * 获取甘特视图默认时间粒度
+     */
+    fun getGanttDefaultMode(): String = preferenceManager.getGanttDefaultMode()
+    
+    /**
      * 获取当前语音识别源信息
      */
     fun getSpeechSourceInfo(): com.litetask.app.util.SpeechSourceInfo {

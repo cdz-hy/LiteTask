@@ -58,6 +58,7 @@ import com.litetask.app.reminder.PermissionHelper
 import com.litetask.app.ui.components.AddTaskDialog
 import com.litetask.app.ui.components.DeadlineView
 import com.litetask.app.ui.components.GanttView
+import com.litetask.app.ui.components.GanttViewMode
 import com.litetask.app.ui.components.TaskDetailSheet
 import com.litetask.app.ui.components.SubTaskInputDialog
 import com.litetask.app.ui.components.SubTaskConfirmationDialog
@@ -99,6 +100,17 @@ fun HomeScreen(
     val categories by viewModel.categories.collectAsState()
     var currentView by androidx.compose.runtime.saveable.rememberSaveable { 
         mutableStateOf(if (initialView == "timeline") viewModel.getDefaultHomeView() else initialView) 
+    }
+
+    // 转换字符串到 GanttViewMode
+    fun stringToGanttViewMode(mode: String): GanttViewMode {
+        return when (mode) {
+            "TODAY" -> GanttViewMode.TODAY
+            "THREE_DAY" -> GanttViewMode.THREE_DAY
+            "SEVEN_DAY" -> GanttViewMode.SEVEN_DAY
+            "ONE_MONTH" -> GanttViewMode.ONE_MONTH
+            else -> GanttViewMode.THREE_DAY
+        }
     }
 
     // 侧边栏状态
@@ -531,7 +543,8 @@ fun HomeScreen(
                     "gantt" -> GanttView(
                         taskComposites = ganttTasks,
                         onTaskClick = { selectedTaskId = it.id },
-                        onNavigateToFullscreen = { viewMode -> onNavigateToGanttFullscreen(viewMode) }
+                        onNavigateToFullscreen = { viewMode -> onNavigateToGanttFullscreen(viewMode) },
+                        defaultViewMode = stringToGanttViewMode(viewModel.getGanttDefaultMode())
                     )
                     "deadline" -> DeadlineView(
                         tasks = allLoadedTasks,
