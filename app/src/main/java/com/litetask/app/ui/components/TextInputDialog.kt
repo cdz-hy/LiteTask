@@ -136,7 +136,7 @@ fun TextInputDialog(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(220.dp) // 增大输入框高度
+                                .height(280.dp) // 增大输入框高度
                                 .focusRequester(focusRequester),
                             enabled = !isAnalyzing,
                             textStyle = MaterialTheme.typography.bodyLarge.copy(

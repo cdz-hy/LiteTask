@@ -105,7 +105,9 @@ fun SubTaskInputDialog(
 
                     // 任务信息卡片
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 120.dp), // 限制最大高度
                         color = MaterialTheme.colorScheme.surfaceContainer,
                         shape = RoundedCornerShape(16.dp)
                     ) {
@@ -122,7 +124,9 @@ fun SubTaskInputDialog(
                                 text = task.title,
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                             if (!task.description.isNullOrEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -130,7 +134,9 @@ fun SubTaskInputDialog(
                                     text = task.description,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    lineHeight = 18.sp
+                                    lineHeight = 18.sp,
+                                    maxLines = 3,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -172,7 +178,7 @@ fun SubTaskInputDialog(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(160.dp)
+                                .height(220.dp)
                                 .focusRequester(focusRequester),
                             enabled = !isAnalyzing,
                             textStyle = MaterialTheme.typography.bodyLarge.copy(

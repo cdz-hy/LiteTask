@@ -16,7 +16,8 @@ class AIAgentAssistant @Inject constructor(
     private val taskRepository: TaskRepositoryImpl,
     private val categoryRepository: com.litetask.app.data.repository.CategoryRepository,
     private val locationProvider: com.litetask.app.util.LocationProvider,
-    private val aMapRepository: com.litetask.app.data.repository.AMapRepository
+    private val aMapRepository: com.litetask.app.data.repository.AMapRepository,
+    private val preferenceManager: com.litetask.app.data.local.PreferenceManager
 ) {
     fun getToolsSchema(): JSONArray {
         val tools = JSONArray()
@@ -143,11 +144,22 @@ class AIAgentAssistant @Inject constructor(
                 if (location != null) {
                     "${location.longitude},${location.latitude}"
                 } else {
-                    "无法获取位置权限或GPS信号弱"
+                    if (!locationProvider.hasLocationPermission()) {
+                        "无法获取位置：缺少定位权限。请在应用权限设置中开启定位权限。"
+                    } else {
+                        "无法获取位置：定位服务可能未开启或信号较弱。请检查设备定位设置。"
+                    }
                 }
             }
             "search_nearby_location" -> {
                 val keyword = args.optString("keyword")
+                
+                // 检查高德地图API Key
+                val amapKey = preferenceManager.getAMapKey()
+                if (amapKey.isNullOrBlank()) {
+                    return "无法进行周边搜索：未配置高德地图API Key。请在设置中配置地图服务。"
+                }
+                
                 val location = locationProvider.getCurrentLocation()
                 if (location != null) {
                     val locStr = "${location.longitude},${location.latitude}"
@@ -159,7 +171,11 @@ class AIAgentAssistant @Inject constructor(
                         "在您附近 5000 米内未找到相关地点"
                     }
                 } else {
-                    "获取不到当前位置，无法进行周边搜索。建议用户手动输入详细地址。"
+                    if (!locationProvider.hasLocationPermission()) {
+                        "获取不到当前位置：缺少定位权限。请在应用权限设置中开启定位权限后重试。"
+                    } else {
+                        "获取不到当前位置：定位服务可能未开启或信号较弱。建议用户手动输入详细地址。"
+                    }
                 }
             }
             else -> "未知工具"

@@ -135,7 +135,7 @@ fun AgentThinkingOverlay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f, fill = false) // 允许根据内容高度收缩
-                        .maxHeight(120.dp) // 限制最大高度，防止挤占其他空间
+                        .maxHeight(240.dp) // 限制最大高度，防止挤占其他空间
                         .clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
                         .padding(horizontal = 12.dp, vertical = 8.dp)

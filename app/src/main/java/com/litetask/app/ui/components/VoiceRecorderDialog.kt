@@ -153,36 +153,47 @@ fun VoiceRecorderDialog(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    // 录音中或分析中才显示间距
+                    if (isRecording || isPlaying) {
+                        Spacer(modifier = Modifier.height(32.dp))
+                    } else {
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
 
 
-                    // 核心可视化区域
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(220.dp), // 固定高度防止抖动
-                        contentAlignment = Alignment.Center
+                    // 核心可视化区域 - 只在录音或分析时显示
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isRecording || isPlaying,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
                     ) {
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = isRecording && !isPlaying,
-                            enter = fadeIn(),
-                            exit = fadeOut()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(if (isPlaying) 320.dp else 220.dp), // 分析时增加高度
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.size(160.dp)
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = isRecording && !isPlaying,
+                                enter = fadeIn(),
+                                exit = fadeOut()
                             ) {
-                                ActiveListeningVisualizer(MaterialTheme.colorScheme.primary)
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.size(160.dp)
+                                ) {
+                                    ActiveListeningVisualizer(MaterialTheme.colorScheme.primary)
+                                }
                             }
-                        }
 
-                        // Agent 思考过程覆盖层
-                        AgentThinkingOverlay(
-                            visible = isPlaying,
-                            status = agentStatus,
-                            logs = agentLogs,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                            // Agent 思考过程覆盖层
+                            AgentThinkingOverlay(
+                                visible = isPlaying,
+                                status = agentStatus,
+                                logs = agentLogs,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
 
                     // 实时识别文本显示（录音中）
@@ -224,20 +235,10 @@ fun VoiceRecorderDialog(
                         enter = fadeIn() + slideInVertically { 50 },
                         exit = fadeOut()
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            // 完成图标
-                            Icon(
-                                imageVector = Icons.Rounded.Check,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
-                                    .padding(12.dp)
-                            )
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             // 可编辑文本框
                             OutlinedTextField(
                                 value = editableText,
@@ -247,7 +248,7 @@ fun VoiceRecorderDialog(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(min = 120.dp, max = 240.dp),
+                                    .heightIn(min = 140.dp, max = 280.dp),
                                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                                     color = MaterialTheme.colorScheme.onSurface,
                                     lineHeight = 24.sp
@@ -259,7 +260,7 @@ fun VoiceRecorderDialog(
                                     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
                                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
                                 ),
-                                shape = RoundedCornerShape(24.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 placeholder = {
                                     Text(
                                         stringResource(R.string.voice_edit_placeholder),
@@ -268,12 +269,13 @@ fun VoiceRecorderDialog(
                                 }
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
                             Text(
                                 text = stringResource(R.string.voice_edit_hint),
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                textAlign = TextAlign.Center
                             )
                         }
                     }

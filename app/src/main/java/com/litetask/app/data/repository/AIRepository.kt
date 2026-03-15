@@ -163,11 +163,13 @@ class AIRepositoryImpl @Inject constructor(
                         put("content", result)
                     })
                 }
-                onProgress("正在整理资料进行思考...")
+                // onProgress("正在整理资料进行思考...")
+                // 移除"正在整理资料进行思考..."，让用户看到最后一个工具调用的消息
                 retryCount++
             } else {
                 // 没有 tool_calls，说明是最终回答
-                onProgress("分析完成，正在生成最终建议...")
+                // onProgress("分析完成，正在生成最终建议...")
+                // 移除"分析完成，正在生成最终建议..."，直接解析结果
                 val finalContent = message.getString("content")
                 val tasks = agentAssistant.parseAgentOutput(finalContent, text, categories)
                 return Result.success(tasks)

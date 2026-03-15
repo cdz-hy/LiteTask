@@ -10,6 +10,10 @@ import android.location.LocationManager
 import android.os.Bundle
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -55,16 +59,24 @@ class LocationProvider @Inject constructor(
             }
         }
 
-        if (bestLocation != null && System.currentTimeMillis() - bestLocation.time < 5 * 60 * 1000) {
+        // 如果有近期的缓存（30分钟内），直接使用
+        if (bestLocation != null && System.currentTimeMillis() - bestLocation.time < 30 * 60 * 1000) {
             continuation.resume(bestLocation)
             return@suspendCancellableCoroutine
         }
 
-        // 如果没有近期的缓存，请求一次更新
+        // 如果缓存较旧但存在，先保存作为备用
+        val fallbackLocation = bestLocation
+
+        // 尝试请求一次新的位置更新（带超时）
+        var isResolved = false
         val listener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
                 locationManager.removeUpdates(this)
-                if (continuation.isActive) continuation.resume(location)
+                if (continuation.isActive && !isResolved) {
+                    isResolved = true
+                    continuation.resume(location)
+                }
             }
             override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
             override fun onProviderEnabled(provider: String) {}
@@ -72,14 +84,38 @@ class LocationProvider @Inject constructor(
         }
 
         try {
+            // 优先使用网络定位（更快）
             val provider = if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                 LocationManager.NETWORK_PROVIDER
-            } else {
+            } else if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 LocationManager.GPS_PROVIDER
+            } else {
+                // 没有可用的定位提供者，使用备用位置
+                if (continuation.isActive && !isResolved) {
+                    isResolved = true
+                    continuation.resume(fallbackLocation)
+                }
+                return@suspendCancellableCoroutine
             }
+            
             locationManager.requestSingleUpdate(provider, listener, null)
+            
+            // 设置超时：3秒后如果还没有获取到新位置，使用备用位置
+            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                kotlinx.coroutines.delay(3000)
+                if (continuation.isActive && !isResolved) {
+                    isResolved = true
+                    locationManager.removeUpdates(listener)
+                    // 使用备用位置（即使较旧也比没有好）
+                    continuation.resume(fallbackLocation)
+                }
+            }
         } catch (e: Exception) {
-            if (continuation.isActive) continuation.resume(null)
+            if (continuation.isActive && !isResolved) {
+                isResolved = true
+                // 发生异常时，使用备用位置
+                continuation.resume(fallbackLocation)
+            }
         }
 
         continuation.invokeOnCancellation {
