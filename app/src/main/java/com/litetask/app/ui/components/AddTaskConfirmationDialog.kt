@@ -616,18 +616,36 @@ private fun AITaskCard(
                     )
 
                     // 类型标签
-                    Surface(
-                        color = primaryColor.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Text(
-                            text = category?.name ?: getTaskTypeName(task.type),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
-                            color = primaryColor,
-                            fontWeight = FontWeight.Bold
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (task.id != 0L) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.padding(end = 4.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.modify),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Surface(
+                            color = primaryColor.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = category?.name ?: getTaskTypeName(task.type),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                color = primaryColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
 
@@ -709,6 +727,40 @@ private fun AITaskCard(
                         color = extendedColors.textTertiary
                     )
                 }
+
+//                // 地理位置详情 (AI 识别或周边搜索结果)
+//                if (!task.parsedDestination.isNullOrBlank()) {
+//                    Spacer(modifier = Modifier.height(10.dp))
+//                    Surface(
+//                        color = primaryColor.copy(alpha = 0.05f),
+//                        shape = RoundedCornerShape(12.dp),
+//                        border = androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.15f)),
+//                        modifier = Modifier.fillMaxWidth()
+//                    ) {
+//                        Row(
+//                            verticalAlignment = Alignment.CenterVertically,
+//                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+//                        ) {
+//                            Icon(
+//                                imageVector = Icons.Rounded.Place,
+//                                contentDescription = null,
+//                                tint = primaryColor,
+//                                modifier = Modifier.size(16.dp)
+//                            )
+//                            Spacer(modifier = Modifier.width(8.dp))
+//                            Text(
+//                                text = task.parsedDestination!!,
+//                                style = MaterialTheme.typography.bodySmall.copy(
+//                                    fontWeight = FontWeight.Medium,
+//                                    letterSpacing = 0.2.sp
+//                                ),
+//                                color = extendedColors.textPrimary.copy(alpha = 0.9f),
+//                                maxLines = 1,
+//                                overflow = TextOverflow.Ellipsis
+//                            )
+//                        }
+//                    }
+//                }
 
                 // Task Components Tags (Newly added)
                 if (components.isNotEmpty()) {

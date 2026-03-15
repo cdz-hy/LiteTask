@@ -28,4 +28,22 @@ interface AIProvider {
      * 获取提供商名称
      */
     fun getProviderName(): String
+
+    /**
+     * 带工具调用的对话 (用于 Agent 模式)
+     */
+    suspend fun chatWithTools(
+        apiKey: String,
+        messages: org.json.JSONArray,
+        tools: org.json.JSONArray? = null
+    ): Result<org.json.JSONObject>
+
+    /**
+     * 生成子任务
+     */
+    suspend fun generateSubTasks(
+        apiKey: String,
+        task: Task,
+        additionalContext: String = ""
+    ): Result<List<String>>
 }

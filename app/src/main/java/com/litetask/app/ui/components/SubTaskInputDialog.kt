@@ -32,7 +32,9 @@ fun SubTaskInputDialog(
     task: Task,
     onDismiss: () -> Unit,
     onAnalyze: (String) -> Unit,
-    isAnalyzing: Boolean = false
+    isAnalyzing: Boolean = false,
+    agentStatus: String = "",
+    agentLogs: List<String> = emptyList()
 ) {
     var inputText by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
@@ -103,7 +105,9 @@ fun SubTaskInputDialog(
 
                     // 任务信息卡片
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 120.dp), // 限制最大高度
                         color = MaterialTheme.colorScheme.surfaceContainer,
                         shape = RoundedCornerShape(16.dp)
                     ) {
@@ -120,7 +124,9 @@ fun SubTaskInputDialog(
                                 text = task.title,
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                             if (!task.description.isNullOrEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -128,7 +134,9 @@ fun SubTaskInputDialog(
                                     text = task.description,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    lineHeight = 18.sp
+                                    lineHeight = 18.sp,
+                                    maxLines = 3,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -170,7 +178,7 @@ fun SubTaskInputDialog(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(160.dp)
+                                .height(220.dp)
                                 .focusRequester(focusRequester),
                             enabled = !isAnalyzing,
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
@@ -204,6 +212,14 @@ fun SubTaskInputDialog(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(end = 16.dp, bottom = 16.dp)
+                        )
+
+                        // --- Agent 思考过程覆盖层 ---
+                        AgentThinkingOverlay(
+                            visible = isAnalyzing,
+                            status = agentStatus,
+                            logs = agentLogs,
+                            modifier = Modifier.matchParentSize()
                         )
                     }
                 }

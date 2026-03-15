@@ -51,6 +51,9 @@ class SettingsViewModel @Inject constructor(
     
     fun isAiDestinationEnabled(): Boolean = preferenceManager.isAiDestinationEnabled()
     fun setAiDestinationEnabled(enabled: Boolean) = preferenceManager.setAiDestinationEnabled(enabled)
+    
+    fun isAiAgentEnabled(): Boolean = preferenceManager.isAiAgentEnabled()
+    fun setAiAgentEnabled(enabled: Boolean) = preferenceManager.setAiAgentEnabled(enabled)
 
     fun resetConnectionState() {
         _aiConnectionState.value = ConnectionState.Idle
@@ -247,6 +250,36 @@ class SettingsViewModel @Inject constructor(
      * 设置默认首页视图
      */
     fun setDefaultHomeView(view: String) = preferenceManager.setDefaultHomeView(view)
+    
+    /**
+     * 获取紧急任务时间范围（小时）
+     */
+    fun getDeadlineUrgentHours(): Int = preferenceManager.getDeadlineUrgentHours()
+    
+    /**
+     * 设置紧急任务时间范围（小时）
+     */
+    fun setDeadlineUrgentHours(hours: Int) = preferenceManager.setDeadlineUrgentHours(hours)
+    
+    /**
+     * 获取即将截止任务时间范围（小时）
+     */
+    fun getDeadlineSoonHours(): Int = preferenceManager.getDeadlineSoonHours()
+    
+    /**
+     * 设置即将截止任务时间范围（小时）
+     */
+    fun setDeadlineSoonHours(hours: Int) = preferenceManager.setDeadlineSoonHours(hours)
+    
+    /**
+     * 获取甘特视图默认时间粒度
+     */
+    fun getGanttDefaultMode(): String = preferenceManager.getGanttDefaultMode()
+    
+    /**
+     * 设置甘特视图默认时间粒度
+     */
+    fun setGanttDefaultMode(mode: String) = preferenceManager.setGanttDefaultMode(mode)
     
     // ========== 分类管理 ==========
     

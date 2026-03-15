@@ -51,6 +51,16 @@ class PreferenceManager @Inject constructor(
         const val DEFAULT_FAB_ACTION = "voice"  // voice, text, manual
         const val DEFAULT_HOME_VIEW = "timeline"  // timeline, gantt, deadline
         
+        // 截止视图时间范围配置（单位：小时）
+        private const val KEY_DEADLINE_URGENT_HOURS = "deadline_urgent_hours"
+        private const val KEY_DEADLINE_SOON_HOURS = "deadline_soon_hours"
+        const val DEFAULT_URGENT_HOURS = 24  // 默认24小时内为紧急
+        const val DEFAULT_SOON_HOURS = 48    // 默认48小时内为即将截止
+        
+        // 甘特视图默认时间粒度
+        private const val KEY_GANTT_DEFAULT_MODE = "gantt_default_mode"
+        const val DEFAULT_GANTT_MODE = "THREE_DAY"  // TODAY, THREE_DAY, SEVEN_DAY, ONE_MONTH
+        
         // 高德地图相关
         private const val KEY_AMAP_KEY = "amap_key"
     }
@@ -88,6 +98,18 @@ class PreferenceManager @Inject constructor(
         prefs.edit().putBoolean(KEY_ENABLE_AI_DESTINATION, enabled).apply()
     }
     
+    // ========== AI 智能助手 (Agent) ==========
+    
+    private val KEY_ENABLE_AI_AGENT = "enable_ai_agent"
+    
+    fun isAiAgentEnabled(): Boolean {
+        return prefs.getBoolean(KEY_ENABLE_AI_AGENT, false)
+    }
+    
+    fun setAiAgentEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ENABLE_AI_AGENT, enabled).apply()
+    }
+
     // ========== 语音识别配置 ==========
     
     /**
@@ -219,6 +241,48 @@ class PreferenceManager @Inject constructor(
      */
     fun setDefaultHomeView(view: String) {
         prefs.edit().putString(KEY_DEFAULT_HOME_VIEW, view).apply()
+    }
+    
+    /**
+     * 获取紧急任务时间范围（小时）
+     */
+    fun getDeadlineUrgentHours(): Int {
+        return prefs.getInt(KEY_DEADLINE_URGENT_HOURS, DEFAULT_URGENT_HOURS)
+    }
+    
+    /**
+     * 设置紧急任务时间范围（小时）
+     */
+    fun setDeadlineUrgentHours(hours: Int) {
+        prefs.edit().putInt(KEY_DEADLINE_URGENT_HOURS, hours).apply()
+    }
+    
+    /**
+     * 获取即将截止任务时间范围（小时）
+     */
+    fun getDeadlineSoonHours(): Int {
+        return prefs.getInt(KEY_DEADLINE_SOON_HOURS, DEFAULT_SOON_HOURS)
+    }
+    
+    /**
+     * 设置即将截止任务时间范围（小时）
+     */
+    fun setDeadlineSoonHours(hours: Int) {
+        prefs.edit().putInt(KEY_DEADLINE_SOON_HOURS, hours).apply()
+    }
+    
+    /**
+     * 获取甘特视图默认时间粒度
+     */
+    fun getGanttDefaultMode(): String {
+        return prefs.getString(KEY_GANTT_DEFAULT_MODE, DEFAULT_GANTT_MODE) ?: DEFAULT_GANTT_MODE
+    }
+    
+    /**
+     * 设置甘特视图默认时间粒度
+     */
+    fun setGanttDefaultMode(mode: String) {
+        prefs.edit().putString(KEY_GANTT_DEFAULT_MODE, mode).apply()
     }
     
     // ========== 高德地图配置 ==========

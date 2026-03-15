@@ -31,7 +31,9 @@ import com.litetask.app.R
 fun TextInputDialog(
     onDismiss: () -> Unit,
     onAnalyze: (String) -> Unit,
-    isAnalyzing: Boolean = false
+    isAnalyzing: Boolean = false,
+    agentStatus: String = "",
+    agentLogs: List<String> = emptyList()
 ) {
     var inputText by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
@@ -134,7 +136,7 @@ fun TextInputDialog(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(220.dp) // 增大输入框高度
+                                .height(280.dp) // 增大输入框高度
                                 .focusRequester(focusRequester),
                             enabled = !isAnalyzing,
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
@@ -168,6 +170,14 @@ fun TextInputDialog(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(end = 16.dp, bottom = 16.dp)
+                        )
+
+                        // --- Agent 思考过程覆盖层 ---
+                        AgentThinkingOverlay(
+                            visible = isAnalyzing,
+                            status = agentStatus,
+                            logs = agentLogs,
+                            modifier = Modifier.matchParentSize()
                         )
                     }
                 }

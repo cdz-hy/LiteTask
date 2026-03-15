@@ -356,4 +356,24 @@ class TaskRepositoryImpl @Inject constructor(
             }
         }
     }
+
+    // --- Agent 模式支持 ---
+    
+    suspend fun getRecentTasksWithLimit(status: String): List<TaskDetailComposite> {
+        val (isDone, isExpired) = when (status.lowercase()) {
+            "completed" -> true to false
+            "expired" -> false to true
+            else -> false to false // incomplete
+        }
+        
+        val totalCount = taskDao.getTaskCountByStatus(isDone, isExpired)
+        // N 不能超过 30%，至少 1 个，最多 20 个
+        val limit = (totalCount * 0.3).toInt().coerceIn(1, 20)
+        
+        return taskDao.getRecentTasksByStatus(isDone, isExpired, limit)
+    }
+
+    suspend fun searchTasksSync(query: String): List<TaskDetailComposite> {
+        return taskDao.searchTasksSync(query)
+    }
 }

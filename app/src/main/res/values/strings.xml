@@ -94,6 +94,8 @@
     <string name="ai_recognition_result">AI 识别结果</string>
     <string name="parsed_key_information">已解析关键信息</string>
     <string name="parsed_tasks_count">识别到 %1$d 个任务</string>
+    <string name="modify">修改</string>
+    <string name="new_task">新增</string>
     <string name="confirm_add_count">确认添加 (%1$d)</string>
     <string name="gantt_chart_title">甘特图</string>
     <string name="fullscreen">全屏显示</string>
@@ -213,6 +215,8 @@
     
     <!-- 设置界面新增 -->
     <string name="ai_config">AI 配置</string>
+    <string name="enable_ai_agent">开启 Agent 智能模式</string>
+    <string name="enable_ai_agent_desc">允许 AI 自动查阅和修改您的任务记录</string>
     <string name="verifying_connection">正在验证连通性...</string>
     <string name="key_stored_locally">Key 仅存储在本地</string>
     

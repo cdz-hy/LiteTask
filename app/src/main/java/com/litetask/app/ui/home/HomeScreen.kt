@@ -15,10 +15,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Warning
@@ -56,6 +58,7 @@ import com.litetask.app.reminder.PermissionHelper
 import com.litetask.app.ui.components.AddTaskDialog
 import com.litetask.app.ui.components.DeadlineView
 import com.litetask.app.ui.components.GanttView
+import com.litetask.app.ui.components.GanttViewMode
 import com.litetask.app.ui.components.TaskDetailSheet
 import com.litetask.app.ui.components.SubTaskInputDialog
 import com.litetask.app.ui.components.SubTaskConfirmationDialog
@@ -74,6 +77,8 @@ import java.util.Locale
 fun HomeScreen(
     onNavigateToAdd: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToPermissions: () -> Unit = {},
+    onNavigateToAbout: () -> Unit = {},
     onNavigateToHistory: () -> Unit,
     onNavigateToBackup: () -> Unit,
     onNavigateToSearch: () -> Unit,
@@ -95,6 +100,17 @@ fun HomeScreen(
     val categories by viewModel.categories.collectAsState()
     var currentView by androidx.compose.runtime.saveable.rememberSaveable { 
         mutableStateOf(if (initialView == "timeline") viewModel.getDefaultHomeView() else initialView) 
+    }
+
+    // 转换字符串到 GanttViewMode
+    fun stringToGanttViewMode(mode: String): GanttViewMode {
+        return when (mode) {
+            "TODAY" -> GanttViewMode.TODAY
+            "THREE_DAY" -> GanttViewMode.THREE_DAY
+            "SEVEN_DAY" -> GanttViewMode.SEVEN_DAY
+            "ONE_MONTH" -> GanttViewMode.ONE_MONTH
+            else -> GanttViewMode.THREE_DAY
+        }
     }
 
     // 侧边栏状态
@@ -265,6 +281,38 @@ fun HomeScreen(
                             drawerState.close()
                         }
                         onNavigateToSettings()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 应用权限选项
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Security, contentDescription = null) },
+                    label = { Text("应用权限") },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                        onNavigateToPermissions()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 关于选项
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Info, contentDescription = null) },
+                    label = { Text("关于") },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                        onNavigateToAbout()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -495,7 +543,8 @@ fun HomeScreen(
                     "gantt" -> GanttView(
                         taskComposites = ganttTasks,
                         onTaskClick = { selectedTaskId = it.id },
-                        onNavigateToFullscreen = { viewMode -> onNavigateToGanttFullscreen(viewMode) }
+                        onNavigateToFullscreen = { viewMode -> onNavigateToGanttFullscreen(viewMode) },
+                        defaultViewMode = stringToGanttViewMode(viewModel.getGanttDefaultMode())
                     )
                     "deadline" -> DeadlineView(
                         tasks = allLoadedTasks,
@@ -564,7 +613,9 @@ fun HomeScreen(
                         viewModel.analyzeTextInput(text)
                         // 不立即关闭，等分析完成后通过 LaunchedEffect 关闭
                     },
-                    isAnalyzing = uiState.isAnalyzing
+                    isAnalyzing = uiState.isAnalyzing,
+                    agentStatus = uiState.agentStatus,
+                    agentLogs = uiState.agentLogs
                 )
             }
             
@@ -705,7 +756,9 @@ fun HomeScreen(
                     recordingDuration = recordingDuration,
                     isPlaying = uiState.recordingState == com.litetask.app.util.RecordingState.PLAYING,
                     isRecording = uiState.recordingState == com.litetask.app.util.RecordingState.RECORDING,
-                    speechSourceName = speechSourceInfo.displayName
+                    speechSourceName = speechSourceInfo.displayName,
+                    agentStatus = uiState.agentStatus,
+                    agentLogs = uiState.agentLogs
                 )
             }
 
@@ -747,7 +800,9 @@ fun HomeScreen(
                         onAnalyze = { context ->
                             viewModel.generateSubTasksWithContext(currentTask, context)
                         },
-                        isAnalyzing = uiState.isAnalyzing
+                        isAnalyzing = uiState.isAnalyzing,
+                        agentStatus = uiState.agentStatus,
+                        agentLogs = uiState.agentLogs
                     )
                 }
             }
@@ -1090,6 +1145,19 @@ private fun checkMissingPermissions(
                 name = "自启动权限",
                 description = "后台被清理后仍能收到提醒",
                 settingsIntent = PermissionHelper.getAutoStartSettingsIntent(context)
+            )
+        )
+    }
+
+    // 地理位置权限 (用于 AI 辅助地址解析)
+    if (!PermissionHelper.hasLocationPermission(context)) {
+        missing.add(
+            MissingPermission(
+                name = "地理位置权限",
+                description = "用于 AI 自动寻找附近的地点",
+                settingsIntent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = android.net.Uri.parse("package:${context.packageName}")
+                }
             )
         )
     }

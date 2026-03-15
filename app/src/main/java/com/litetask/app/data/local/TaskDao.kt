@@ -179,6 +179,21 @@ abstract class TaskDao {
             endDate
         )
     }
+
+    @Transaction
+    @Query("""
+        SELECT DISTINCT t.* FROM tasks t
+        LEFT JOIN sub_tasks st ON t.id = st.task_id
+        WHERE (
+            :query = '' OR
+            t.title LIKE '%' || :query || '%' OR
+            t.description LIKE '%' || :query || '%' OR
+            st.content LIKE '%' || :query || '%'
+        )
+        ORDER BY t.is_done ASC, t.deadline ASC
+        LIMIT 50
+    """)
+    abstract suspend fun searchTasksSync(query: String): List<TaskDetailComposite>
     
     // --- 兼容性保留 ---
     
@@ -466,4 +481,18 @@ abstract class TaskDao {
     @Transaction
     @Query("SELECT * FROM tasks")
     abstract suspend fun getAllTaskDetailsSync(): List<TaskDetailComposite>
+
+    // --- Agent 模式专用查询 ---
+    
+    @Query("SELECT COUNT(*) FROM tasks WHERE is_done = :isDone AND is_expired = :isExpired")
+    abstract suspend fun getTaskCountByStatus(isDone: Boolean, isExpired: Boolean): Int
+
+    @Transaction
+    @Query("""
+        SELECT * FROM tasks 
+        WHERE is_done = :isDone AND is_expired = :isExpired
+        ORDER BY deadline DESC
+        LIMIT :limit
+    """)
+    abstract suspend fun getRecentTasksByStatus(isDone: Boolean, isExpired: Boolean, limit: Int): List<TaskDetailComposite>
 }
