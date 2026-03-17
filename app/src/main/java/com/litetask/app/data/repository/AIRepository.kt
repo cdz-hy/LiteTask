@@ -101,9 +101,9 @@ class AIRepositoryImpl @Inject constructor(
                - 必须先调用 `search_tasks` 获取真实 ID。
                - **核心要求**: 若用户未明确要求修改某项属性，必须**保留**工具返回的原始值。
             4. **地理位置决策 (Location Intelligence)**:
-               - **模糊地址辨析**: “菜鸟驿站”、“超市”、“银行”、“药店”等通称必须视为**模糊地址**。
-               - **干预流程**: 识别到模糊地址 -> 调用 `search_nearby_location` -> 将结果填入 `destination`。
-               - **确切地址**: “XX大学”等专有名词直接填入，无需搜周边。
+               - 如果用户同时提及多个模糊地址（如“去超市或驿站”），**必须**多次(多轮)或并发调用 `search_nearby_location` 分别查询。
+               - **模糊地址分析**: 收到候选列表后，**必须分析**地点类型是否符合常理并且距离合理。如果不符合（如搜‘火车站’出现‘售票处’、或距离异常远且不是用户想要的），必须重新提纯关键词并再次调用; 若未找到或候选为空，必须尝试增大 `radius` 重新查。若多次尝试（含最大范围）均未找到，说明可能为生僻地址，请直接将用户原话填入 `destination`。分析通过后将选定结果填入 `destination`。
+               - **确切地址**: “XX大学”、“XX市”等专有名词直接填入，无需搜周边。
             5. **新增任务**: 新增任务 ID 设为 0。最终 JSON 前需一句话概述行动。
             
             # JSON Schema (Final Response):
@@ -121,7 +121,7 @@ class AIRepositoryImpl @Inject constructor(
         
         onProgress("Agent 正在深度思考中...")
 
-        while (retryCount < 5) {
+        while (retryCount < 10) {
             val response = provider.chatWithTools(apiKey, messages, tools)
             if (response.isFailure) return Result.failure(response.exceptionOrNull()!!)
             

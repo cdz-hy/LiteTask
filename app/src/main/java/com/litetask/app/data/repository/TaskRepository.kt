@@ -359,7 +359,7 @@ class TaskRepositoryImpl @Inject constructor(
 
     // --- Agent 模式支持 ---
     
-    suspend fun getRecentTasksWithLimit(status: String): List<TaskDetailComposite> {
+    suspend fun getRecentTasksWithLimit(status: String, requestedLimit: Int = 10): List<TaskDetailComposite> {
         val (isDone, isExpired) = when (status.lowercase()) {
             "completed" -> true to false
             "expired" -> false to true
@@ -367,10 +367,15 @@ class TaskRepositoryImpl @Inject constructor(
         }
         
         val totalCount = taskDao.getTaskCountByStatus(isDone, isExpired)
-        // N 不能超过 30%，至少 1 个，最多 20 个
-        val limit = (totalCount * 0.3).toInt().coerceIn(1, 20)
+        if (totalCount == 0) return emptyList()
         
-        return taskDao.getRecentTasksByStatus(isDone, isExpired, limit)
+        // 动态计算最大值：不能超过 80%，最多 50 个
+        val maxAllowed = (totalCount * 0.8).toInt().coerceIn(1, 50)
+        
+        // 将 Agent 传来的 requestedLimit 限制在这两个值之间
+        val finalLimit = requestedLimit.coerceIn(1, maxAllowed)
+        
+        return taskDao.getRecentTasksByStatus(isDone, isExpired, finalLimit)
     }
 
     suspend fun searchTasksSync(query: String): List<TaskDetailComposite> {

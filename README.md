@@ -103,6 +103,37 @@ EncryptedSharedPreferences - 安全存储
 - 地理辅助，集成高德地图周边搜索 (POI)，实现从“语义”到“坐标”的转换
 - **注意**：AI功能需要在应用「设置」界面中配置您自己的 API Key（如 DeepSeek）。
 
+#### Agent 调用结构
+
+```mermaid
+sequenceDiagram
+    participant UI as UI层
+    participant Repo as AIRepository
+    participant Provider as AIProvider
+    participant Agent as AIAgentAssistant
+    participant DB as 数据库/地图API
+
+    UI->>Repo: 用户输入文本
+    Repo->>Provider: 调用 LLM
+    
+    loop Agent 思考循环
+        Provider-->>Repo: 需要调用工具
+        Repo->>Agent: 执行工具调用
+        Agent->>DB: 查询数据/搜索地点
+        DB-->>Agent: 返回结果
+        Agent-->>Repo: 工具执行结果
+        Repo->>Provider: 继续对话
+    end
+    
+    Provider-->>Repo: 返回最终任务列表
+    Repo-->>UI: 展示结果
+```
+
+**核心组件**：
+- **AIRepository**：协调 AI 调用流程
+- **AIProvider**：对接 LLM API（DeepSeek 等）
+- **AIAgentAssistant**：提供工具定义和执行（查询任务、搜索地点等）
+- **工具集**：get_recent_tasks、search_tasks、get_categories、get_user_location、search_nearby_location
 
 ### 数据模型
 ```kotlin

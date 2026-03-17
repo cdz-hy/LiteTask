@@ -27,7 +27,7 @@ class AIAgentAssistant @Inject constructor(
             put("type", "function")
             put("function", JSONObject().apply {
                 put("name", "get_recent_tasks")
-                put("description", "[必读]获取最近的任务列表。仅当用户提及‘最近’、‘刚才’或未指明具体任务但意图涉及现有日程时使用。严禁在处理明确的新增指令时盲目调用。")
+                put("description", "[必读]获取最近的任务列表。仅当用户提及‘最近’、‘刚才’或未指明具体任务但意图涉及现有日程时使用。你可以通过 limit 决定查几条(最大50)。如果没有找到想要的，请扩大 limit 再次(多次)调用或改用 search_tasks 工具。")
                 put("parameters", JSONObject().apply {
                     put("type", "object")
                     put("properties", JSONObject().apply {
@@ -35,6 +35,10 @@ class AIAgentAssistant @Inject constructor(
                             put("type", "string")
                             put("enum", JSONArray(listOf("completed", "incomplete", "expired")))
                             put("description", "限选：completed, incomplete, expired。默认查询待办事项。")
+                        })
+                        put("limit", JSONObject().apply {
+                            put("type", "integer")
+                            put("description", "需要查询返回的条数，范围 1 到 50。如果没有找到相关的，你可以重新调用此参数。")
                         })
                     })
                 })
@@ -85,13 +89,17 @@ class AIAgentAssistant @Inject constructor(
             put("type", "function")
             put("function", JSONObject().apply {
                 put("name", "search_nearby_location")
-                put("description", "[地点模糊时必用]根据关键词（如“菜鸟驿站”）在用户周边搜索最近的真实地址。")
+                put("description", "[地点模糊时必用]根据关键词在周边搜索真实地址。如果用户提及多个地点，必须多次(多轮)或并发调用此工具分别查询。由于返回多个候选，请自行分析最符合意图的地点并采纳。若均不合适请换词重搜。")
                 put("parameters", JSONObject().apply {
                     put("type", "object")
                     put("properties", JSONObject().apply {
                         put("keyword", JSONObject().apply {
                             put("type", "string")
                             put("description", "用户想要寻找的地标或店铺名，如‘菜鸟驿站’、‘超市’")
+                        })
+                        put("radius", JSONObject().apply {
+                            put("type", "integer")
+                            put("description", "搜索半径(米)，如果用户要找的地方在跨市/远距离，可适当配置到最大 50000")
                         })
                     })
                     put("required", JSONArray(listOf("keyword")))
@@ -106,7 +114,13 @@ class AIAgentAssistant @Inject constructor(
         return when (name) {
             "get_recent_tasks" -> {
                 val status = args.optString("status")
-                val tasks = taskRepository.getRecentTasksWithLimit(status)
+                val requestedLimit = args.optInt("limit", 10)
+                val tasks = taskRepository.getRecentTasksWithLimit(status, requestedLimit)
+                
+                if (tasks.isEmpty()) {
+                    return "当前分类下未找到任何任务。如果确信有任务存在，请扩大 limit 参数数量再次尝试，或考虑更换 status 状态。"
+                }
+                
                 val array = JSONArray()
                 tasks.forEach { composite ->
                     array.put(JSONObject().apply {
@@ -118,7 +132,12 @@ class AIAgentAssistant @Inject constructor(
                         put("description", if (composite.task.description?.length ?: 0 > 20) composite.task.description?.substring(0, 20) + "..." else composite.task.description)
                     })
                 }
-                array.toString()
+                
+                if (tasks.size < requestedLimit) {
+                    "成功查找到 ${tasks.size} 条数据（已返回该分类下所有历史数据，无更多数据可查）:\n" + array.toString()
+                } else {
+                    "成功查找到最近的 ${tasks.size} 条数据。如果还需要看更早的数据，请在下一次调用时扩大 limit (\n" + array.toString() + ")"
+                }
             }
             "search_tasks" -> {
                 val keyword = args.optString("keyword")
@@ -153,6 +172,7 @@ class AIAgentAssistant @Inject constructor(
             }
             "search_nearby_location" -> {
                 val keyword = args.optString("keyword")
+                val radiusMap = args.optInt("radius", 50000)
                 
                 // 检查高德地图API Key
                 val amapKey = preferenceManager.getAMapKey()
@@ -163,12 +183,19 @@ class AIAgentAssistant @Inject constructor(
                 val location = locationProvider.getCurrentLocation()
                 if (location != null) {
                     val locStr = "${location.longitude},${location.latitude}"
-                    val results = aMapRepository.searchNearby(keyword, locStr)
+                    val results = aMapRepository.searchNearby(keyword, locStr, radiusMap)
                     if (results.isNotEmpty()) {
-                        val first = results[0]
-                        "已为您找到最近的 ${first.endName}，位于：${first.endAddress}。坐标：${first.endLng},${first.endLat}"
+                        val limit = minOf(3, results.size)
+                        val sb = StringBuilder("已找到以下候选地点，请自行分析最合适的一个(考虑类型匹配和距离)：\n")
+                        for (i in 0 until limit) {
+                            val r = results[i]
+                            val distInfo = if (r.distance != null) "距离: ${r.distance}米" else ""
+                            val typeInfo = if (!r.type.isNullOrBlank()) "类型: ${r.type}" else ""
+                            sb.append("- 候选${i+1}: ${r.name}，${r.address}。$typeInfo $distInfo (坐标: ${r.lng},${r.lat})\n")
+                        }
+                        sb.toString()
                     } else {
-                        "在您附近 5000 米内未找到相关地点"
+                        "在附近 $radiusMap 米内未找到关于 '$keyword' 的地点。如果该地点可能在更远的地方，请尝试增大 radius 再次搜索（最大50000）；如果这确实是一个生僻或未收录的地点，请停止搜索，直接将该地名的原话作为目的地填入返回值即可。"
                     }
                 } else {
                     if (!locationProvider.hasLocationPermission()) {
