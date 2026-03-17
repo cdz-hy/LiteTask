@@ -88,7 +88,7 @@ class XiaoMiProvider @Inject constructor() : AIProvider {
                         })
                     })
                     put("temperature", 0.7)
-                    put("max_tokens", 3072)
+                    put("max_completion_tokens", 3072)
                 }
                 
                 val request = Request.Builder()
@@ -249,7 +249,8 @@ class XiaoMiProvider @Inject constructor() : AIProvider {
                         put("tools", tools)
                     }
                     put("temperature", 0.3) // 降低温度以提高精准度
-                    put("max_tokens", 4096)
+                    put("max_completion_tokens", 4096)
+                    put("tool_choice", "auto")
                 }
 
                 val request = Request.Builder()
@@ -330,7 +331,7 @@ $userInstruction
                         })
                     })
                     put("temperature", 0.7)
-                    put("max_tokens", 800)
+                    put("max_completion_tokens", 800)
                     // 强制 JSON 模式（如果模型支持）
                     put("response_format", JSONObject().apply { put("type", "json_object") }) 
                 }

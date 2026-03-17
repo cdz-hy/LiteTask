@@ -50,13 +50,13 @@ class AIAgentAssistant @Inject constructor(
             put("type", "function")
             put("function", JSONObject().apply {
                 put("name", "search_tasks")
-                put("description", "[关键]精准检索任务。当你判定用户意图是‘修改’、‘延期’、‘重命名’或‘标记完成’某项特定任务时，必须调用此工具定位 ID。调用前需从用户话语中提取核心关键词。")
+                put("description", "[关键]精准检索任务简报。当你判定用户意图涉及特定任务时使用。仅返回 ID、标题等核心信息以节省 token。若需完整详情请调用 get_task_details。")
                 put("parameters", JSONObject().apply {
                     put("type", "object")
                     put("properties", JSONObject().apply {
                         put("keyword", JSONObject().apply {
                             put("type", "string")
-                            put("description", "从用户输入中提取的实体词，如‘会议’、‘报告’等")
+                            put("description", "关键词，如‘会议’、‘报告’等")
                         })
                     })
                     put("required", JSONArray(listOf("keyword")))
@@ -64,7 +64,26 @@ class AIAgentAssistant @Inject constructor(
             })
         })
 
-        // 3. get_categories
+        // 3. get_task_details
+        tools.put(JSONObject().apply {
+            put("type", "function")
+            put("function", JSONObject().apply {
+                put("name", "get_task_details")
+                put("description", "获取单个任务的完整详细信息（包括完整描述等）。仅在 search_tasks 或 get_recent_tasks 获得的简报不足以支持决策时调用。")
+                put("parameters", JSONObject().apply {
+                    put("type", "object")
+                    put("properties", JSONObject().apply {
+                        put("taskId", JSONObject().apply {
+                            put("type", "integer")
+                            put("description", "任务的唯一 ID")
+                        })
+                    })
+                    put("required", JSONArray(listOf("taskId")))
+                })
+            })
+        })
+
+        // 4. get_categories
         tools.put(JSONObject().apply {
             put("type", "function")
             put("function", JSONObject().apply {
@@ -84,7 +103,7 @@ class AIAgentAssistant @Inject constructor(
             })
         })
 
-        // 5. search_nearby_location
+        // 6. search_nearby_location
         tools.put(JSONObject().apply {
             put("type", "function")
             put("function", JSONObject().apply {
@@ -127,9 +146,8 @@ class AIAgentAssistant @Inject constructor(
                         put("id", composite.task.id)
                         put("title", composite.task.title)
                         put("category", composite.category?.name ?: "默认")
-                        put("deadline", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(composite.task.deadline)))
-                        put("is_done", composite.task.isDone)
-                        put("description", if (composite.task.description?.length ?: 0 > 20) composite.task.description?.substring(0, 20) + "..." else composite.task.description)
+                        put("deadline", SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(composite.task.deadline)))
+                        // 移除 description 和 is_done 以节省 token
                     })
                 }
                 
@@ -148,11 +166,27 @@ class AIAgentAssistant @Inject constructor(
                         put("id", composite.task.id)
                         put("title", composite.task.title)
                         put("category", composite.category?.name ?: "默认")
-                        put("deadline", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(composite.task.deadline)))
-                        put("description", if (composite.task.description?.length ?: 0 > 20) composite.task.description?.substring(0, 20) + "..." else composite.task.description)
+                        put("deadline", SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(composite.task.deadline)))
                     })
                 }
                 array.toString()
+            }
+            "get_task_details" -> {
+                val taskId = args.optLong("taskId")
+                val tasks = taskRepository.getTaskByIdSync(taskId)
+                if (tasks != null) {
+                    JSONObject().apply {
+                        put("id", tasks.task.id)
+                        put("title", tasks.task.title)
+                        put("description", tasks.task.description) // 只有这里返回完整描述
+                        put("category", tasks.category?.name ?: "默认")
+                        put("startTime", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(tasks.task.startTime)))
+                        put("endTime", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(tasks.task.deadline)))
+                        put("is_done", tasks.task.isDone)
+                    }.toString()
+                } else {
+                    "任务 ID 为 $taskId 的任务不存在。"
+                }
             }
             "get_categories" -> {
                 val categories = categoryRepository.getAllCategoriesSync()

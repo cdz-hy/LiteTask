@@ -86,28 +86,21 @@ class AIRepositoryImpl @Inject constructor(
         val defaultCategory = categories.firstOrNull { it.isDefault }?.name ?: "工作"
 
         val systemPrompt = """
-            # Role: LiteTask 智能日程核心 Agent
-            # Context: Current Time = ${currentDate}
+            # Role: LiteTask 核心 Agent (Now: ${currentDate})
             
-            # Logic & Rules (MUST FOLLOW):
-            1. **分类 (Categories)**: 
-               - 必须严格从以下列表中选择一个：[$categoryPrompt]。
-               - 严禁创造新分类。如果不确定，请使用默认分类：$defaultCategory。
-            2. **时间处理 (Time Precision)**:
-               - 必须将“明天”、“下周”、“下午三点”等所有相对/模糊时间转换为 yyyy-MM-dd HH:mm 格式。
-               - **严禁**直接返回用户原话。必须基于 context 里的 $currentDate 进行偏移计算。
-               - 如果用户只说了一个点（如“下午3点”），通常设为 `endTime`，`startTime` 为当前。
-            3. **修改与干预 (Modification)**:
-               - 必须先调用 `search_tasks` 获取真实 ID。
-               - **核心要求**: 若用户未明确要求修改某项属性，必须**保留**工具返回的原始值。
-            4. **地理位置决策 (Location Intelligence)**:
-               - 如果用户同时提及多个模糊地址（如“去超市或驿站”），**必须**多次(多轮)或并发调用 `search_nearby_location` 分别查询。
-               - **模糊地址分析**: 收到候选列表后，**必须分析**地点类型是否符合常理并且距离合理。如果不符合（如搜‘火车站’出现‘售票处’、或距离异常远且不是用户想要的），必须重新提纯关键词并再次调用; 若未找到或候选为空，必须尝试增大 `radius` 重新查。若多次尝试（含最大范围）均未找到，说明可能为生僻地址，请直接将用户原话填入 `destination`。分析通过后将选定结果填入 `destination`。
-               - **确切地址**: “XX大学”、“XX市”等专有名词直接填入，无需搜周边。
-            5. **新增任务**: 新增任务 ID 设为 0。最终 JSON 前需一句话概述行动。
+            # Logic & Rules:
+            1. **分类**: 严禁自创，必须选一：[$categoryPrompt] (默认: $defaultCategory)。
+            2. **时间**: 必须解析相对时间为 yyyy-MM-dd HH:mm。禁直接复读用户原话。
+            3. **查询与修改**: 
+               - 必须先通过 `search_tasks` 或 `get_recent_tasks` 定位 ID（仅返回简报）。
+               - **Token 优化**: 简报不含描述。若必须了解任务详情（如对比描述或确认具体内容），必须调用 `get_task_details`。未变属性须保留原值。
+            4. **地理位置**: 模糊地址必须多次(或并发)调用 `search_nearby_location`。
+               - 分析候选列表类型及距离是否合理；若不符或为空，尝试增大 `radius` 重搜。
+               - 若多次不中，直接将地名填入 `destination`。确认后填入。
+            5. **新增**: ID=0。回复前一句话概述行动，后跟 JSON 数组。
             
-            # JSON Schema (Final Response):
-            必须先用一句话概述你的操作理由，然后紧跟 JSON 数组。
+            # JSON Schema:
+            概述行动...
             [{"id": 123, "title": "...", "startTime": "yyyy-MM-dd HH:mm", "endTime": "yyyy-MM-dd HH:mm", "type": "分类名", "description": "...", "destination": "..."}]
         """.trimIndent()
 
@@ -131,8 +124,13 @@ class AIRepositoryImpl @Inject constructor(
             if (message.has("tool_calls") && !message.isNull("tool_calls")) {
                 messages.put(message) // 把 AI 的回复存入历史
                 
-                // 展示 AI 的前置思考
-                val reasoning = message.optString("content")
+                // 展示 AI 的前置思考：优先尝试 reasoning_content 字段（某些模型如 MiMo, DeepSeek R1 会把思考过程放这里）
+                val reasoning = if (message.has("reasoning_content") && !message.isNull("reasoning_content")) {
+                    message.optString("reasoning_content")
+                } else {
+                    message.optString("content")
+                }
+                
                 if (reasoning.isNotBlank()) {
                     onProgress(reasoning)
                 }
@@ -147,7 +145,8 @@ class AIRepositoryImpl @Inject constructor(
                     
                     val progressMsg = when(name) {
                         "get_recent_tasks" -> "正在查阅您的最近任务列表..."
-                        "search_tasks" -> "正在搜索关键词: ${arguments.optString("keyword")}..."
+                        "search_tasks" -> "正在检索相关任务简报..."
+                        "get_task_details" -> "正在获取任务的具体详情..."
                         "get_categories" -> "正在同步任务分类配置..."
                         "get_user_location" -> "正在获取您的当前位置..."
                         "search_nearby_location" -> "正在搜索附近的 ${arguments.optString("keyword")}..."

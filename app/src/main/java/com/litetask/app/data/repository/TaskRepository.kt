@@ -377,6 +377,10 @@ class TaskRepositoryImpl @Inject constructor(
         
         return taskDao.getRecentTasksByStatus(isDone, isExpired, finalLimit)
     }
+    
+    suspend fun getTaskByIdSync(taskId: Long): TaskDetailComposite? {
+        return taskDao.getTaskDetailCompositeSync(taskId)
+    }
 
     suspend fun searchTasksSync(query: String): List<TaskDetailComposite> {
         return taskDao.searchTasksSync(query)
