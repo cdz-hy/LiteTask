@@ -140,7 +140,7 @@ fun SettingsScreen(
     var aiProviderExpanded by remember { mutableStateOf(false) }
     val aiConnectionState by viewModel.aiConnectionState.collectAsState()
     
-    val aiProviders = listOf("deepseek-v3.2" to "DeepSeek V3.2")
+    val aiProviders = viewModel.getSupportedAiProviders()
     
     // ========== 语音识别配置状态 ==========
     var selectedSpeechProvider by remember { mutableStateOf("xunfei-rtasr") }

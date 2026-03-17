@@ -128,7 +128,7 @@ class AIRepositoryImpl @Inject constructor(
             val choice = response.getOrNull()?.getJSONArray("choices")?.getJSONObject(0)
             val message = choice?.getJSONObject("message") ?: break
             
-            if (message.has("tool_calls")) {
+            if (message.has("tool_calls") && !message.isNull("tool_calls")) {
                 messages.put(message) // 把 AI 的回复存入历史
                 
                 // 展示 AI 的前置思考

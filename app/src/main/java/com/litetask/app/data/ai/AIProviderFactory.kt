@@ -9,7 +9,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class AIProviderFactory @Inject constructor(
-    private val deepSeekProvider: DeepSeekProvider
+    private val deepSeekProvider: DeepSeekProvider,
+    private val xiaoMiProvider: XiaoMiProvider
 ) {
     /**
      * 根据提供商标识获取对应的 AI 提供商
@@ -19,6 +20,7 @@ class AIProviderFactory @Inject constructor(
     fun getProvider(providerId: String): AIProvider {
         return when (providerId.lowercase()) {
             "deepseek-v3.2", "deepseek" -> deepSeekProvider
+            "xiaomi-mimo-v2" -> xiaoMiProvider
             // 未来可以添加更多提供商
             // "openai-gpt4" -> openAIProvider
             // "claude" -> claudeProvider
@@ -31,7 +33,8 @@ class AIProviderFactory @Inject constructor(
      */
     fun getSupportedProviders(): List<Pair<String, String>> {
         return listOf(
-            "deepseek-v3.2" to "DeepSeek V3.2"
+            "deepseek-v3.2" to "DeepSeek V3.2",
+            "xiaomi-mimo-v2" to "小米 MiMo-V2-Flash"
             // 未来添加更多
         )
     }

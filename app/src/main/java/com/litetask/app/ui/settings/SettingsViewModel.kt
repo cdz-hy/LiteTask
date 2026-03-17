@@ -54,6 +54,10 @@ class SettingsViewModel @Inject constructor(
     
     fun isAiAgentEnabled(): Boolean = preferenceManager.isAiAgentEnabled()
     fun setAiAgentEnabled(enabled: Boolean) = preferenceManager.setAiAgentEnabled(enabled)
+    
+    fun getSupportedAiProviders(): List<Pair<String, String>> {
+        return aiProviderFactory.getSupportedProviders()
+    }
 
     fun resetConnectionState() {
         _aiConnectionState.value = ConnectionState.Idle
