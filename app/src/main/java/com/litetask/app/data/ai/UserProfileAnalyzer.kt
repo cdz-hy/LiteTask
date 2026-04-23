@@ -122,6 +122,9 @@ $previousContext
 
 # 工具调用核心原则
 - **拒绝主观臆断**: 所有的推断必须有工具返回的数据支撑。
+- **极简主义 & 针对性调用**: 严禁无差别地调用所有工具。
+  - 仅在分析维度（如出行偏好、身份推断）确实需要具体底层数据支撑时才调用对应工具。
+  - **地理位置限制**: 在调用地理位置或路线偏好工具前，必须确认任务文本或地点记录中包含明显的位移语义（如“去”、“出差”、“打车”、“导航”）。若近期任务多为静态事务（如“看书”、“写代码”），严禁调用地点相关工具。
 - **按需调用**: 遇到信息不足的维度，务必调用对应工具补充数据，不要为了调用而调用。
 
 # 最终输出格式约束
@@ -212,6 +215,8 @@ $previousContext
                 Result.failure(Exception("AI画像推演未能返回有效结果（可能超过最大轮次）"))
             }
 
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             onStep(AnalysisStep.Error(e.message ?: "未知错误"))
             Result.failure(Exception("用户画像分析失败: ${e.message}", e))

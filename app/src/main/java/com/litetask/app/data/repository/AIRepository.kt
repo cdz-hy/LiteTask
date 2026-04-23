@@ -79,6 +79,8 @@ class AIRepositoryImpl @Inject constructor(
                     onProgress("AI 正在分析任务内容...")
                     provider.parseTasksFromText(finalKey, text, categories)
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(Exception("AI 解析失败: ${e.message}", e))
             }
@@ -106,10 +108,12 @@ class AIRepositoryImpl @Inject constructor(
             3. **查询与修改**: 
                - 必须先通过 `search_tasks` 或 `get_recent_tasks` 定位 ID（仅返回简报）。
                - **Token 优化**: 简报不含描述。若必须了解任务详情（如对比描述或确认具体内容），必须调用 `get_task_details`。未变属性须保留原值。
-            4. **地理位置**: 模糊地址必须多次(或并发)调用 `search_nearby_location`。
+            4. **地理位置**: 仅在任务内容确实包含位移语义（如“去”、“在”、“到”、“附近”）时调用 `get_user_location` 或 `search_nearby_location`。严禁在解析常规静态任务（如“写文档”、“开会”）时盲目调用位置工具。
+               - 多个模糊地址时可多次(或并发)调用 `search_nearby_location`。
                - 分析候选列表类型及距离是否合理；若不符或为空，尝试增大 `radius` 重搜。
                - 若多次不中，直接将地名填入 `destination`。确认后填入。
-            5. **新增**: ID=0。回复前一句话概述行动，后跟 JSON 数组。
+            5. **极简调用**: 严禁无目的调用工具。如果当前已有足够信息支持解析，不要为了查询而查询。
+            6. **新增**: ID=0。回复前一句话概述行动，后跟 JSON 数组。
             
             # JSON Schema:
             概述行动...
@@ -207,6 +211,8 @@ class AIRepositoryImpl @Inject constructor(
             try {
                 onProgress("AI 正在根据您的要求拆解子任务...")
                 provider.generateSubTasks(apiKey, task, additionalContext)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(Exception("子任务生成失败: ${e.message}", e))
             }

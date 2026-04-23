@@ -94,7 +94,13 @@ fun UserDataScreen(
     // 画像分析悬浮窗（类似AI任务分析）
     AnalysisProgressDialog(
         visible = uiState.showAnalysisOverlay,
-        onDismiss = { viewModel.dismissAnalysisOverlay() },
+        onDismiss = { 
+            if (uiState.isAnalyzing) {
+                viewModel.cancelAnalysis()
+            } else {
+                viewModel.dismissAnalysisOverlay()
+            }
+        },
         isAnalyzing = uiState.isAnalyzing,
         status = uiState.agentStatus,
         logs = uiState.agentLogs
@@ -127,7 +133,7 @@ fun AnalysisProgressDialog(
     if (!visible) return
     
     androidx.compose.ui.window.Dialog(
-        onDismissRequest = { if (!isAnalyzing) onDismiss() },
+        onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false
@@ -140,7 +146,7 @@ fun AnalysisProgressDialog(
             Box(modifier = Modifier.fillMaxSize()) {
                 // 顶部关闭按钮
                 IconButton(
-                    onClick = { if (!isAnalyzing) onDismiss() },
+                    onClick = onDismiss,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 48.dp, end = 24.dp)
@@ -661,35 +667,50 @@ fun UserProfileCard(
             }
         }
     ) {
-        if (isEditing) {
-            // 编辑模式
-            ProfileEditFields(
-                profile = editedProfile,
-                onProfileChange = { editedProfile = it }
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
-            ) {
-                TextButton(onClick = { isEditing = false }) {
-                    Text("取消")
+        androidx.compose.animation.Crossfade(
+            targetState = isEditing,
+            animationSpec = androidx.compose.animation.core.tween(500),
+            label = "ProfileEditTransition"
+        ) { editing ->
+            if (editing) {
+                Column {
+                    // 编辑模式
+                    ProfileEditFields(
+                        profile = editedProfile,
+                        onProfileChange = { editedProfile = it }
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { isEditing = false },
+                            modifier = Modifier.weight(1f),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                        ) {
+                            Text("取消")
+                        }
+                        Button(
+                            onClick = {
+                                onProfileUpdate(editedProfile)
+                                isEditing = false
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("保存修改")
+                        }
+                    }
                 }
-                Button(
-                    onClick = {
-                        onProfileUpdate(editedProfile)
-                        isEditing = false
-                    },
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
-                ) {
-                    Text("保存")
-                }
+            } else {
+                // 显示模式
+                ProfileDisplayFields(profile = profile)
             }
-        } else {
-            // 显示模式
-            ProfileDisplayFields(profile = profile)
         }
     }
 }
@@ -699,66 +720,98 @@ fun ProfileEditFields(
     profile: UserProfileHistoryEntity,
     onProfileChange: (UserProfileHistoryEntity) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        OutlinedTextField(
-            value = profile.identity ?: "",
-            onValueChange = { onProfileChange(profile.copy(identity = it)) },
-            label = { Text("身份") },
-            placeholder = { Text("学生、职员、自由职业者等") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-        
-        OutlinedTextField(
-            value = profile.industry ?: "",
-            onValueChange = { onProfileChange(profile.copy(industry = it)) },
-            label = { Text("行业") },
-            placeholder = { Text("教育、IT、金融、医疗等") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-        
-        OutlinedTextField(
-            value = profile.personality ?: "",
-            onValueChange = { onProfileChange(profile.copy(personality = it)) },
-            label = { Text("综合性格特点") },
-            placeholder = { Text("如完美主义、实干派") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-        
-        OutlinedTextField(
-            value = profile.travelPreference ?: "",
-            onValueChange = { onProfileChange(profile.copy(travelPreference = it)) },
-            label = { Text("出行偏好") },
-            placeholder = { Text("地铁、自驾、骑行") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-        
-        OutlinedTextField(
-            value = profile.executionRhythm ?: "",
-            onValueChange = { onProfileChange(profile.copy(executionRhythm = it)) },
-            label = { Text("执行节奏") },
-            placeholder = { Text("提前解决、稳步推进、极限踩点等") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        // 第一组：基本身份信息
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                "基本身份",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = profile.identity ?: "",
+                    onValueChange = { onProfileChange(profile.copy(identity = it)) },
+                    label = { Text("身份") },
+                    placeholder = { Text("学生...") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                )
+                OutlinedTextField(
+                    value = profile.industry ?: "",
+                    onValueChange = { onProfileChange(profile.copy(industry = it)) },
+                    label = { Text("行业") },
+                    placeholder = { Text("IT...") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                )
+            }
+        }
 
-        OutlinedTextField(
-            value = profile.aiTone ?: "",
-            onValueChange = { onProfileChange(profile.copy(aiTone = it)) },
-            label = { Text("AI反馈语气偏好") },
-            placeholder = { Text("温和、严厉、极简干练") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
+        // 第二组：行为与偏好
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                "行为偏好",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            OutlinedTextField(
+                value = profile.personality ?: "",
+                onValueChange = { onProfileChange(profile.copy(personality = it)) },
+                label = { Text("综合性格特点") },
+                placeholder = { Text("如完美主义、实干派") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+            )
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = profile.travelPreference ?: "",
+                    onValueChange = { onProfileChange(profile.copy(travelPreference = it)) },
+                    label = { Text("出行偏好") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                )
+                OutlinedTextField(
+                    value = profile.executionRhythm ?: "",
+                    onValueChange = { onProfileChange(profile.copy(executionRhythm = it)) },
+                    label = { Text("执行节奏") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                )
+            }
+
+            OutlinedTextField(
+                value = profile.aiTone ?: "",
+                onValueChange = { onProfileChange(profile.copy(aiTone = it)) },
+                label = { Text("AI 反馈语气偏好") },
+                placeholder = { Text("温和、严厉、极简干练") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+            )
+        }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.5f))
 
-        ProfileSliderField("规划能力级别 (1-5)", profile.planAbility) { onProfileChange(profile.copy(planAbility = it)) }
-        ProfileSliderField("抗压级别 (1-5)", profile.stressLevel) { onProfileChange(profile.copy(stressLevel = it)) }
-        ProfileSliderField("拖延指数级别 (1-5)", profile.delayIndex) { onProfileChange(profile.copy(delayIndex = it)) }
+        // 第三组：能力分值
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(
+                "能力与倾向指标",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            ProfileSliderField("规划能力级别 (1-5)", profile.planAbility) { onProfileChange(profile.copy(planAbility = it)) }
+            ProfileSliderField("抗压级别 (1-5)", profile.stressLevel) { onProfileChange(profile.copy(stressLevel = it)) }
+            ProfileSliderField("拖延指数级别 (1-5)", profile.delayIndex) { onProfileChange(profile.copy(delayIndex = it)) }
+        }
     }
 }
 

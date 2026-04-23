@@ -98,7 +98,7 @@ class AIAgentAssistant @Inject constructor(
             put("type", "function")
             put("function", JSONObject().apply {
                 put("name", "get_user_location")
-                put("description", "获取设备当前经纬度坐标。用于所有位置相关的辅助计算。输出格式: 'lng,lat'。")
+                put("description", "[谨慎使用]获取设备当前经纬度坐标。用于所有位置相关的辅助计算。输出格式: 'lng,lat'。")
                 put("parameters", JSONObject().apply { put("type", "object"); put("properties", JSONObject()) })
             })
         })
@@ -108,7 +108,7 @@ class AIAgentAssistant @Inject constructor(
             put("type", "function")
             put("function", JSONObject().apply {
                 put("name", "search_nearby_location")
-                put("description", "[地点模糊时必用]根据关键词在周边搜索真实地址。如果用户提及多个地点，必须多次(多轮)或并发调用此工具分别查询。由于返回多个候选，请自行分析最符合意图的地点并采纳。若均不合适请换词重搜。")
+                put("description", "[地点模糊时使用，谨慎使用]根据关键词在周边搜索真实地址。如果用户提及多个地点，必须多次(多轮)或并发调用此工具分别查询。由于返回多个候选，请自行分析最符合意图的地点并采纳。若均不合适请换词重搜。")
                 put("parameters", JSONObject().apply {
                     put("type", "object")
                     put("properties", JSONObject().apply {

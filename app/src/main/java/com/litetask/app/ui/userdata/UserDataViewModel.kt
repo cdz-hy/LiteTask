@@ -85,6 +85,8 @@ class UserDataViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(UserDataUiState())
     val uiState: StateFlow<UserDataUiState> = _uiState.asStateFlow()
     
+    private var analysisJob: kotlinx.coroutines.Job? = null
+    
     init {
         loadData()
     }
@@ -250,7 +252,8 @@ class UserDataViewModel @Inject constructor(
     }
     
     fun triggerAnalysis() {
-        viewModelScope.launch {
+        analysisJob?.cancel()
+        analysisJob = viewModelScope.launch {
             if (!preferenceManager.isAiAgentEnabled()) {
                 _uiState.value = _uiState.value.copy(error = "AI Agent 未开启，请先在设置中启用 AI Agent 助手。")
                 return@launch
@@ -323,6 +326,9 @@ class UserDataViewModel @Inject constructor(
                         showAnalysisOverlay = false
                     )
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // 忽略主动取消产生的异常
+                throw e
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     error = e.message,
@@ -340,5 +346,18 @@ class UserDataViewModel @Inject constructor(
     
     fun dismissAnalysisOverlay() {
         _uiState.value = _uiState.value.copy(showAnalysisOverlay = false)
+    }
+
+    /**
+     * 中断并取消当前的画像分析
+     */
+    fun cancelAnalysis() {
+        analysisJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            isAnalyzing = false,
+            showAnalysisOverlay = false,
+            agentStatus = "分析已取消",
+            agentLogs = _uiState.value.agentLogs + "[系统] 用户中断了分析过程"
+        )
     }
 }
