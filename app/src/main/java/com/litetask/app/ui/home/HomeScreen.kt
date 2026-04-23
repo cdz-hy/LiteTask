@@ -14,11 +14,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -81,6 +84,7 @@ fun HomeScreen(
     onNavigateToAbout: () -> Unit = {},
     onNavigateToHistory: () -> Unit,
     onNavigateToBackup: () -> Unit,
+    onNavigateToUserData: () -> Unit = {},
     onNavigateToSearch: () -> Unit,
     onNavigateToGanttFullscreen: (com.litetask.app.ui.components.GanttViewMode) -> Unit,
     initialView: String = "timeline",
@@ -254,6 +258,22 @@ fun HomeScreen(
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
+                
+                // 用户数据选项
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    label = { Text("用户数据") },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                        onNavigateToUserData()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // 数据管理
                 NavigationDrawerItem(
@@ -361,6 +381,35 @@ fun HomeScreen(
                                 }
                             }) {
                                 Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.menu), tint = MaterialTheme.colorScheme.onSurface)
+                            }
+                        },
+                        actions = {
+                            if (uiState.isAnalyzingSchedule) {
+                                val infiniteTransition = rememberInfiniteTransition(label = "analyze")
+                                val alpha by infiniteTransition.animateFloat(
+                                    initialValue = 0.3f,
+                                    targetValue = 1f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(1000),
+                                        repeatMode = RepeatMode.Reverse
+                                    ),
+                                    label = "analyzeAlpha"
+                                )
+                                IconButton(onClick = { Toast.makeText(context, "为您进行全面日程分析中", Toast.LENGTH_SHORT).show() }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Analytics,
+                                        contentDescription = "日程分析中",
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = alpha)
+                                    )
+                                }
+                            } else if (uiState.scheduleAnalysisResult != null) {
+                                IconButton(onClick = { viewModel.toggleScheduleSheet(true) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Description,
+                                        contentDescription = "查看日程建议",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -775,6 +824,15 @@ fun HomeScreen(
                     onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) },
                     availableCategories = categories,
                     initialComponents = uiState.aiParsedComponents
+                )
+            }
+
+            val schedulePlan = uiState.scheduleAnalysisResult
+            if (uiState.showScheduleSheet && schedulePlan != null) {
+                com.litetask.app.ui.components.PlanSuggestionSheet(
+                    plan = schedulePlan,
+                    suggestions = uiState.scheduleSuggestions,
+                    onDismiss = { viewModel.toggleScheduleSheet(false) }
                 )
             }
 

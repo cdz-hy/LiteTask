@@ -243,6 +243,12 @@ fun AppContent(
                 onNavigateBack = { navController.popBackStack() }
             )
         }
+        
+        composable("user_data") {
+            com.litetask.app.ui.userdata.UserDataScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
     }
 }
 
@@ -266,6 +272,7 @@ private fun HomeScreenWrapper(
         onNavigateToAbout = { navController.navigate("about") },
         onNavigateToHistory = onNavigateToHistory,
         onNavigateToBackup = { navController.navigate("backup") },
+        onNavigateToUserData = { navController.navigate("user_data") },
         onNavigateToSearch = { navController.navigate("search") },
         onNavigateToGanttFullscreen = { viewMode ->
             // 通过 savedStateHandle 传递参数

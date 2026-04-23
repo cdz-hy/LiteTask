@@ -40,7 +40,8 @@ class HomeViewModel @Inject constructor(
     private val aiHistoryRepository: com.litetask.app.data.repository.AIHistoryRepository,
     private val speechHelper: com.litetask.app.util.SpeechRecognizerHelper,
     private val preferenceManager: com.litetask.app.data.local.PreferenceManager,
-    private val aMapRepository: com.litetask.app.data.repository.AMapRepository
+    private val aMapRepository: com.litetask.app.data.repository.AMapRepository,
+    private val userProfileDao: com.litetask.app.data.local.UserProfileDao
 ) : ViewModel() {
 
     // ==================== 数据加载配置 ====================
@@ -68,6 +69,9 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             // 懒更新 - 标记过期任务和提醒
             markOverdueTasksAsExpired()
+            
+            // 懒更新 - 触发每日智能规划建议
+            triggerDailyAnalysisIfNeeded()
         }
     }
 
@@ -245,6 +249,18 @@ class HomeViewModel @Inject constructor(
                 _isLoadingHistory.value = false
             }
         }
+    }
+    
+    private suspend fun triggerDailyAnalysisIfNeeded() {
+        // V6 Planner features removed in favor of V5 rollback
+    }
+
+    fun triggerDailyAnalysis() {
+        // V6 Planner features removed in favor of V5 rollback
+    }
+
+    fun toggleScheduleSheet(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showScheduleSheet = show)
     }
     
     /**
@@ -1292,7 +1308,13 @@ data class HomeUiState(
 
     // Agent 思考过程相关
     val agentStatus: String = "",           // 当前 Agent 正在执行的操作
-    val agentLogs: List<String> = emptyList() // Agent 历史操作日志
+    val agentLogs: List<String> = emptyList(), // Agent 历史操作日志
+    
+    // 日程建议相关
+    val isAnalyzingSchedule: Boolean = false, // 是否正在分析日程
+    val scheduleAnalysisResult: com.litetask.app.data.model.DailyPlanEntity? = null, // 日程分析结果
+    val scheduleSuggestions: List<com.litetask.app.data.model.PlanSuggestionEntity> = emptyList(), // 具体的日程建议
+    val showScheduleSheet: Boolean = false // 是否显示日程建议底部面板
 )
 
 // 检查 API Key 结果
