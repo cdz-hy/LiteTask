@@ -120,6 +120,9 @@ fun HomeScreen(
     // 侧边栏状态
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    
+    // 防抖状态：防止快速连续点击导致状态混乱
+    var isDrawerAnimating by remember { mutableStateOf(false) }
 
     // 视图切换时的处理（数据已在 ViewModel 初始化时加载，无需额外操作）
     LaunchedEffect(currentView) {
@@ -249,10 +252,17 @@ fun HomeScreen(
                     label = { Text(stringResource(R.string.ai_history)) },
                     selected = false,
                     onClick = {
-                        scope.launch {
-                            drawerState.close()
+                        if (!isDrawerAnimating) {
+                            isDrawerAnimating = true
+                            scope.launch {
+                                try {
+                                    drawerState.close()
+                                    onNavigateToHistory()
+                                } finally {
+                                    isDrawerAnimating = false
+                                }
+                            }
                         }
-                        onNavigateToHistory()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -265,10 +275,17 @@ fun HomeScreen(
                     label = { Text("用户数据") },
                     selected = false,
                     onClick = {
-                        scope.launch {
-                            drawerState.close()
+                        if (!isDrawerAnimating) {
+                            isDrawerAnimating = true
+                            scope.launch {
+                                try {
+                                    drawerState.close()
+                                    onNavigateToUserData()
+                                } finally {
+                                    isDrawerAnimating = false
+                                }
+                            }
                         }
-                        onNavigateToUserData()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -281,10 +298,17 @@ fun HomeScreen(
                     label = { Text(stringResource(R.string.data_backup)) },
                     selected = false,
                     onClick = {
-                        scope.launch {
-                            drawerState.close()
+                        if (!isDrawerAnimating) {
+                            isDrawerAnimating = true
+                            scope.launch {
+                                try {
+                                    drawerState.close()
+                                    onNavigateToBackup()
+                                } finally {
+                                    isDrawerAnimating = false
+                                }
+                            }
                         }
-                        onNavigateToBackup()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -297,10 +321,17 @@ fun HomeScreen(
                     label = { Text(stringResource(R.string.settings)) },
                     selected = false,
                     onClick = {
-                        scope.launch {
-                            drawerState.close()
+                        if (!isDrawerAnimating) {
+                            isDrawerAnimating = true
+                            scope.launch {
+                                try {
+                                    drawerState.close()
+                                    onNavigateToSettings()
+                                } finally {
+                                    isDrawerAnimating = false
+                                }
+                            }
                         }
-                        onNavigateToSettings()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -313,10 +344,17 @@ fun HomeScreen(
                     label = { Text("应用权限") },
                     selected = false,
                     onClick = {
-                        scope.launch {
-                            drawerState.close()
+                        if (!isDrawerAnimating) {
+                            isDrawerAnimating = true
+                            scope.launch {
+                                try {
+                                    drawerState.close()
+                                    onNavigateToPermissions()
+                                } finally {
+                                    isDrawerAnimating = false
+                                }
+                            }
                         }
-                        onNavigateToPermissions()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -329,10 +367,17 @@ fun HomeScreen(
                     label = { Text("关于") },
                     selected = false,
                     onClick = {
-                        scope.launch {
-                            drawerState.close()
+                        if (!isDrawerAnimating) {
+                            isDrawerAnimating = true
+                            scope.launch {
+                                try {
+                                    drawerState.close()
+                                    onNavigateToAbout()
+                                } finally {
+                                    isDrawerAnimating = false
+                                }
+                            }
                         }
-                        onNavigateToAbout()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -375,11 +420,21 @@ fun HomeScreen(
                             }
                         },
                         navigationIcon = {
-                            IconButton(onClick = {
-                                scope.launch {
-                                    drawerState.open()
-                                }
-                            }) {
+                            IconButton(
+                                onClick = {
+                                    if (!isDrawerAnimating) {
+                                        isDrawerAnimating = true
+                                        scope.launch {
+                                            try {
+                                                drawerState.open()
+                                            } finally {
+                                                isDrawerAnimating = false
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !isDrawerAnimating
+                            ) {
                                 Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.menu), tint = MaterialTheme.colorScheme.onSurface)
                             }
                         },

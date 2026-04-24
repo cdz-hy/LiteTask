@@ -49,6 +49,9 @@ fun SearchScreen(
     val dateRange by viewModel.dateRange.collectAsState()
     var showFilterSheet by remember { mutableStateOf(false) }
     val extendedColors = LocalExtendedColors.current
+    
+    // 防抖状态
+    var isNavigating by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -56,7 +59,15 @@ fun SearchScreen(
             TopAppBar(
                 title = { },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = {
+                            if (!isNavigating) {
+                                isNavigating = true
+                                onBack()
+                            }
+                        },
+                        enabled = !isNavigating
+                    ) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },

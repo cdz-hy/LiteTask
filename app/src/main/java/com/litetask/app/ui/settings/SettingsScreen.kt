@@ -131,6 +131,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     
+    // 防抖状态
+    var isNavigating by remember { mutableStateOf(false) }
+    
     // ========== 加载状态 ==========
     var isDataLoaded by remember { mutableStateOf(false) }
     
@@ -210,7 +213,15 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.settings)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = {
+                            if (!isNavigating) {
+                                isNavigating = true
+                                onBack()
+                            }
+                        },
+                        enabled = !isNavigating
+                    ) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 }

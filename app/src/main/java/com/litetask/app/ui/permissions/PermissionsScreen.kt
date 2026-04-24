@@ -78,12 +78,23 @@ fun PermissionsScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     
+    // 防抖状态
+    var isNavigating by remember { mutableStateOf(false) }
+    
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("应用权限") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = {
+                            if (!isNavigating) {
+                                isNavigating = true
+                                onBack()
+                            }
+                        },
+                        enabled = !isNavigating
+                    ) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
                     }
                 }

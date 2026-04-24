@@ -48,7 +48,8 @@ class AIRepositoryImpl @Inject constructor(
     private val aiProviderFactory: com.litetask.app.data.ai.AIProviderFactory,
     private val categoryRepository: CategoryRepository,
     private val taskRepository: TaskRepositoryImpl,
-    private val agentAssistant: com.litetask.app.data.ai.AIAgentAssistant
+    private val agentAssistant: com.litetask.app.data.ai.AIAgentAssistant,
+    private val locationTracker: LocationTracker
 ) : AIRepository {
 
     override suspend fun parseTasksFromText(
@@ -128,6 +129,11 @@ class AIRepositoryImpl @Inject constructor(
         val tools = agentAssistant.getToolsSchema()
         var retryCount = 0
         
+        // 用于追踪出发地信息
+        var currentOriginLng: Double? = null
+        var currentOriginLat: Double? = null
+        var currentOriginName: String? = null
+        
         onProgress("Agent 正在深度思考中...")
 
         while (retryCount < 10) {
@@ -172,6 +178,25 @@ class AIRepositoryImpl @Inject constructor(
                     
                     val result = agentAssistant.handleToolCall(name, arguments)
                     
+                    // 如果是获取用户位置，进行逆地理编码并保存出发地
+                    if (name == "get_user_location" && result.contains(",")) {
+                        try {
+                            val coords = result.split(",")
+                            if (coords.size == 2) {
+                                val lng = coords[0].toDoubleOrNull()
+                                val lat = coords[1].toDoubleOrNull()
+                                if (lng != null && lat != null) {
+                                    currentOriginLng = lng
+                                    currentOriginLat = lat
+                                    // 进行逆地理编码获取真实地名
+                                    currentOriginName = locationTracker.reverseGeocode(lng, lat)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    
                     messages.put(JSONObject().apply {
                         put("role", "tool")
                         put("tool_call_id", call.getString("id"))
@@ -187,6 +212,25 @@ class AIRepositoryImpl @Inject constructor(
                 // 移除"分析完成，正在生成最终建议..."，直接解析结果
                 val finalContent = message.getString("content")
                 val tasks = agentAssistant.parseAgentOutput(finalContent, text, categories)
+                
+                // 保存出发地数据（如果获取到了位置信息）
+                if (currentOriginLng != null && currentOriginLat != null && !currentOriginName.isNullOrBlank()) {
+                    try {
+                        locationTracker.saveOriginLocation(currentOriginName!!, currentOriginLng!!, currentOriginLat!!)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                
+                // 保存目的地数据（只保存 Agent 最终确定的目的地）
+                if (tasks.isNotEmpty()) {
+                    try {
+                        locationTracker.saveDestinationFromTasks(tasks)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                
                 return Result.success(tasks)
             }
         }

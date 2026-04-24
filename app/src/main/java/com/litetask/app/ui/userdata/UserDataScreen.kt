@@ -35,12 +35,23 @@ fun UserDataScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     
+    // 防抖状态
+    var isNavigating by remember { mutableStateOf(false) }
+    
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("数据分析") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(
+                        onClick = {
+                            if (!isNavigating) {
+                                isNavigating = true
+                                onNavigateBack()
+                            }
+                        },
+                        enabled = !isNavigating
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
@@ -423,13 +434,13 @@ fun LocationStatsCard(locationStats: LocationStats) {
                     )
                     LocationStatItem(
                         label = "常在地",
-                        value = locationStats.topOrigins.size.toString(),
+                        value = locationStats.topOrigins.firstOrNull()?.name ?: "暂无数据",
                         icon = Icons.Default.Home,
                         color = MaterialTheme.colorScheme.primary
                     )
                     LocationStatItem(
                         label = "常去地",
-                        value = locationStats.topDestinations.size.toString(),
+                        value = locationStats.topDestinations.firstOrNull()?.name ?: "暂无数据",
                         icon = Icons.Default.Flag,
                         color = MaterialTheme.colorScheme.secondary
                     )
@@ -508,19 +519,23 @@ fun LocationStatItem(
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.width(100.dp) // 限制宽度
     ) {
         Icon(
             icon,
             contentDescription = null,
             tint = color,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(20.dp) // 减小图标尺寸
         )
         Text(
             value,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = color
+            style = MaterialTheme.typography.bodyMedium, // 从 titleMedium 改为 bodyMedium
+            fontWeight = FontWeight.SemiBold, // 从 Bold 改为 SemiBold
+            color = color,
+            maxLines = 1, // 限制为单行
+            overflow = TextOverflow.Ellipsis, // 超出部分显示省略号
+            textAlign = TextAlign.Center // 居中对齐
         )
         Text(
             label,

@@ -218,17 +218,17 @@ class UserDataViewModel @Inject constructor(
     private fun calculateLocationStats(locations: List<UserLocationEntity>): LocationStats {
         if (locations.isEmpty()) return LocationStats()
         
-        // 按出发次数排序，取前5个常在地
+        // 按出发次数排序，取前3个常在地
         val topOrigins = locations
             .filter { it.originCount > 0 }
             .sortedByDescending { it.originCount }
-            .take(5)
+            .take(3)
         
-        // 按目的地次数排序，取前5个常去地
+        // 按目的地次数排序，取前3个常去地
         val topDestinations = locations
             .filter { it.destinationCount > 0 }
             .sortedByDescending { it.destinationCount }
-            .take(5)
+            .take(3)
         
         return LocationStats(
             topOrigins = topOrigins,

@@ -48,6 +48,9 @@ fun AIHistoryScreen(
     
     var showClearConfirm by remember { mutableStateOf(false) }
     var itemToDelete by remember { mutableStateOf<AIHistory?>(null) }
+    
+    // 防抖状态
+    var isNavigating by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -62,7 +65,15 @@ fun AIHistoryScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = {
+                            if (!isNavigating) {
+                                isNavigating = true
+                                onBack()
+                            }
+                        },
+                        enabled = !isNavigating
+                    ) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
