@@ -56,6 +56,7 @@ class UserProfileAnalyzer @Inject constructor(
         }
 
         val providerId = preferenceManager.getAiProvider()
+        val modelId = preferenceManager.getAiModel()
         val provider = aiProviderFactory.getProvider(providerId)
 
         return try {
@@ -124,7 +125,7 @@ $previousContext
 - **拒绝主观臆断**: 所有的推断必须有工具返回的数据支撑。
 - **极简主义 & 针对性调用**: 严禁无差别地调用所有工具。
   - 仅在分析维度（如出行偏好、身份推断）确实需要具体底层数据支撑时才调用对应工具。
-  - **地理位置限制**: 在调用地理位置或路线偏好工具前，必须确认任务文本或地点记录中包含明显的位移语义（如“去”、“出差”、“打车”、“导航”）。若近期任务多为静态事务（如“看书”、“写代码”），严禁调用地点相关工具。
+  - **地理位置限制**: 在调用地理位置或路线偏好工具前，必须确认任务文本或地点记录中包含明显的位移语义（如“去”、“出差”、“打车”、“导航”）。若近期任务多为静态事务（如“看书”、“写代码”），严禁调用地点相关工具。同时请注意，为了保护隐私，地点数据（常在地）已做了模糊化处理（通常为标志性区域而非详细门牌号），请结合这一特性进行区域性的身份与偏好推断。
 - **按需调用**: 遇到信息不足的维度，务必调用对应工具补充数据，不要为了调用而调用。
 
 # 最终输出格式约束
@@ -154,7 +155,7 @@ $previousContext
             var finalJson: String? = null
             
             while (retryCount < maxRetries) {
-                val response = provider.chatWithTools(apiKey, messages, tools)
+                val response = provider.chatWithTools(apiKey, modelId, messages, tools)
                 if (response.isFailure) return Result.failure(response.exceptionOrNull()!!)
                 
                 val choice = response.getOrNull()?.getJSONArray("choices")?.getJSONObject(0)

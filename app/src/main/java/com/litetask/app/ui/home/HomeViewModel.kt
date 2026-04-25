@@ -1063,6 +1063,7 @@ class HomeViewModel @Inject constructor(
             try {
                 // 获取用户配置的 AI 提供商
                 val providerId = preferenceManager.getAiProvider()
+                val modelId = preferenceManager.getAiModel()
                 val deepSeekProvider = com.litetask.app.data.ai.DeepSeekProvider()
                 val xiaoMiProvider = com.litetask.app.data.ai.XiaoMiProvider()
                 val providerFactory = com.litetask.app.data.ai.AIProviderFactory(deepSeekProvider, xiaoMiProvider)
@@ -1077,7 +1078,7 @@ class HomeViewModel @Inject constructor(
                     return@launch
                 }
                 
-                val result = provider.generateSubTasks(apiKey, task, "")
+                val result = provider.generateSubTasks(apiKey, modelId, task, "")
                 
                 result.onSuccess { subTasks ->
                     // 记录 AI 历史

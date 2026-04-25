@@ -19,12 +19,9 @@ class AIProviderFactory @Inject constructor(
      */
     fun getProvider(providerId: String): AIProvider {
         return when (providerId.lowercase()) {
-            "deepseek-v3.2", "deepseek" -> deepSeekProvider
-            "xiaomi-mimo-v2" -> xiaoMiProvider
-            // 未来可以添加更多提供商
-            // "openai-gpt4" -> openAIProvider
-            // "claude" -> claudeProvider
-            else -> deepSeekProvider // 默认使用 DeepSeek
+            "deepseek" -> deepSeekProvider
+            "xiaomi" -> xiaoMiProvider
+            else -> deepSeekProvider
         }
     }
     
@@ -33,9 +30,28 @@ class AIProviderFactory @Inject constructor(
      */
     fun getSupportedProviders(): List<Pair<String, String>> {
         return listOf(
-            "deepseek-v3.2" to "DeepSeek V3.2",
-            "xiaomi-mimo-v2" to "小米 MiMo-V2-Flash"
-            // 未来添加更多
+            "deepseek" to "DeepSeek",
+            "xiaomi" to "小米 MIMO"
         )
+    }
+
+    /**
+     * 获取指定提供商支持的模型列表
+     */
+    fun getSupportedModels(providerId: String): List<Pair<String, String>> {
+        return when (providerId.lowercase()) {
+            "deepseek" -> listOf(
+                "deepseek-v4-pro" to "DeepSeek V4 Pro",
+                "deepseek-v4-flash" to "DeepSeek V4 Flash"
+            )
+            "xiaomi" -> listOf(
+                "mimo-v2.5-pro" to "MIMO v2.5 Pro",
+                "mimo-v2.5" to "MIMO v2.5",
+                "mimo-v2-flash" to "MIMO v2 Flash",
+                "mimo-v2-pro" to "MIMO v2 Pro",
+                "mimo-v2-omni" to "MIMO v2 Omni"
+            )
+            else -> emptyList()
+        }
     }
 }

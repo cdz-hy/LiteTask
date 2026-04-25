@@ -33,22 +33,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.TouchApp
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -71,7 +65,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.DateRange
@@ -139,11 +132,16 @@ fun SettingsScreen(
     
     // ========== AI 配置状态 ==========
     var apiKey by remember { mutableStateOf("") }
-    var selectedAiProvider by remember { mutableStateOf("deepseek-v3.2") }
+    var selectedAiProvider by remember { mutableStateOf("deepseek") }
+    var selectedAiModel by remember { mutableStateOf("deepseek-chat") }
     var aiProviderExpanded by remember { mutableStateOf(false) }
+    var aiModelExpanded by remember { mutableStateOf(false) }
+    var showCustomModelDialog by remember { mutableStateOf(false) }
+    var customModelInput by remember { mutableStateOf("") }
     val aiConnectionState by viewModel.aiConnectionState.collectAsState()
     
     val aiProviders = viewModel.getSupportedAiProviders()
+    val aiModels = remember(selectedAiProvider) { viewModel.getSupportedAiModels(selectedAiProvider) }
     
     // ========== 语音识别配置状态 ==========
     var selectedSpeechProvider by remember { mutableStateOf("xunfei-rtasr") }
@@ -171,6 +169,7 @@ fun SettingsScreen(
     LaunchedEffect(Unit) {
         apiKey = viewModel.getApiKey() ?: ""
         selectedAiProvider = viewModel.getAiProvider()
+        selectedAiModel = viewModel.getAiModel()
         selectedSpeechProvider = viewModel.getSpeechProvider()
         selectedSpeechProvider = viewModel.getSpeechProvider()
         amapKey = viewModel.getAMapKey() ?: ""
@@ -194,10 +193,16 @@ fun SettingsScreen(
         viewModel.resetSpeechConnectionState()
     }
 
-    // 当 AI Key 改变时，重置测试状态
-    LaunchedEffect(apiKey, selectedAiProvider) {
+    // 当 AI Key 或 Provider/Model 改变时，重置测试状态
+    LaunchedEffect(apiKey, selectedAiProvider, selectedAiModel) {
         if (aiConnectionState !is SettingsViewModel.ConnectionState.Idle) {
             viewModel.resetConnectionState()
+        }
+        
+        // 如果当前选中的模型不在新提供商支持列表中，则默认选中第一个
+        val models = viewModel.getSupportedAiModels(selectedAiProvider)
+        if (models.none { it.first == selectedAiModel }) {
+            selectedAiModel = models.firstOrNull()?.first ?: ""
         }
     }
 
@@ -222,7 +227,7 @@ fun SettingsScreen(
                         },
                         enabled = !isNavigating
                     ) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 }
             )
@@ -278,6 +283,55 @@ fun SettingsScreen(
                 }
                 
                 Spacer(modifier = Modifier.height(12.dp))
+
+                // AI 模型选择
+                ExposedDropdownMenuBox(
+                    expanded = aiModelExpanded,
+                    onExpandedChange = { aiModelExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = aiModels.find { it.first == selectedAiModel }?.second ?: selectedAiModel,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("AI 模型") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = aiModelExpanded) },
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    
+                    ExposedDropdownMenu(
+                        expanded = aiModelExpanded,
+                        onDismissRequest = { aiModelExpanded = false }
+                    ) {
+                        aiModels.forEach { (value, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    selectedAiModel = value
+                                    aiModelExpanded = false
+                                }
+                            )
+                        }
+                        
+                        // 所有提供商都支持自定义模型名称
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("自定义模型...") },
+                            onClick = {
+                                aiModelExpanded = false
+                                // 预填充当前模型名称（如果不在预定义列表中）
+                                customModelInput = if (aiModels.none { it.first == selectedAiModel }) {
+                                    selectedAiModel
+                                } else {
+                                    ""
+                                }
+                                showCustomModelDialog = true
+                            }
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
                 
                 // API Key 输入框
                 OutlinedTextField(
@@ -307,7 +361,7 @@ fun SettingsScreen(
                     )
                     
                     TextButton(
-                        onClick = { viewModel.testConnection(apiKey, selectedAiProvider) },
+                        onClick = { viewModel.testConnection(apiKey, selectedAiProvider, selectedAiModel) },
                         enabled = apiKey.isNotBlank() && aiConnectionState !is SettingsViewModel.ConnectionState.Testing
                     ) {
                         Text(stringResource(R.string.test_connection))
@@ -321,6 +375,7 @@ fun SettingsScreen(
                         // 允许保存空值，空值表示不使用 AI 分析功能
                         viewModel.saveApiKey(apiKey)
                         viewModel.saveAiProvider(selectedAiProvider)
+                        viewModel.saveAiModel(selectedAiModel)
                         Toast.makeText(context, context.getString(R.string.settings_saved), Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -597,6 +652,65 @@ fun SettingsScreen(
             onDismiss = { showCategoryDialog = false }
         )
     }
+    
+    // 自定义模型输入对话框
+    if (showCustomModelDialog) {
+        val providerName = aiProviders.find { it.first == selectedAiProvider }?.second ?: "AI"
+        val placeholderText = when (selectedAiProvider) {
+            "deepseek" -> "deepseek-v4-pro"
+            "xiaomi" -> "mimo-v2.5-pro"
+            else -> "model-name"
+        }
+        
+        AlertDialog(
+            onDismissRequest = { 
+                showCustomModelDialog = false
+                customModelInput = ""
+            },
+            title = { Text("自定义模型名称") },
+            text = {
+                Column {
+                    Text(
+                        text = "请输入 $providerName 的模型名称",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    OutlinedTextField(
+                        value = customModelInput,
+                        onValueChange = { customModelInput = it },
+                        label = { Text("模型名称") },
+                        placeholder = { Text(placeholderText) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (customModelInput.isNotBlank()) {
+                            selectedAiModel = customModelInput.trim()
+                            showCustomModelDialog = false
+                            customModelInput = ""
+                        }
+                    },
+                    enabled = customModelInput.isNotBlank()
+                ) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showCustomModelDialog = false
+                        customModelInput = ""
+                    }
+                ) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 }
 
 /**
@@ -626,7 +740,7 @@ private fun UserPreferencesCard(
     )
     
     val viewOptions = listOf(
-        Triple("timeline", "列表", Icons.Default.List),
+        Triple("timeline", "列表", Icons.AutoMirrored.Filled.List),
         Triple("gantt", "甘特图", Icons.Default.ViewTimeline),
         Triple("deadline", "截止日", Icons.Default.Flag)
     )
@@ -1093,9 +1207,8 @@ private fun ReminderMethodsCard(
             modifier = Modifier.padding(bottom = 12.dp)
         )
         
-        // 铃声开关
         SwitchItem(
-            icon = Icons.Default.VolumeUp,
+            icon = Icons.AutoMirrored.Filled.VolumeUp,
             title = "提醒铃声",
             description = "悬浮提醒时播放闹钟铃声",
             checked = soundEnabled,

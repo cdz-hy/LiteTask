@@ -34,7 +34,9 @@ class PreferenceManager @Inject constructor(
         // AI 相关
         private const val KEY_API_KEY = "api_key"
         private const val KEY_AI_PROVIDER = "ai_provider"
-        const val DEFAULT_AI_PROVIDER = "deepseek-v3.2"
+        private const val KEY_AI_MODEL = "ai_model"
+        const val DEFAULT_AI_PROVIDER = "deepseek"
+        const val DEFAULT_AI_MODEL = "deepseek-chat"
         
         // 语音识别相关
         private const val KEY_SPEECH_PROVIDER = "speech_provider"
@@ -81,6 +83,14 @@ class PreferenceManager @Inject constructor(
     
     fun saveAiProvider(provider: String) {
         prefs.edit().putString(KEY_AI_PROVIDER, provider).apply()
+    }
+
+    fun getAiModel(): String {
+        return prefs.getString(KEY_AI_MODEL, DEFAULT_AI_MODEL) ?: DEFAULT_AI_MODEL
+    }
+
+    fun saveAiModel(model: String) {
+        prefs.edit().putString(KEY_AI_MODEL, model).apply()
     }
     
     // ========== AI 智能目的地 ==========

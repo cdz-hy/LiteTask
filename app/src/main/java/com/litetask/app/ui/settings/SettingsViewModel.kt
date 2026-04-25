@@ -48,6 +48,8 @@ class SettingsViewModel @Inject constructor(
     fun saveApiKey(key: String) = preferenceManager.saveApiKey(key)
     fun getAiProvider(): String = preferenceManager.getAiProvider()
     fun saveAiProvider(provider: String) = preferenceManager.saveAiProvider(provider)
+    fun getAiModel(): String = preferenceManager.getAiModel()
+    fun saveAiModel(model: String) = preferenceManager.saveAiModel(model)
     
     fun isAiDestinationEnabled(): Boolean = preferenceManager.isAiDestinationEnabled()
     fun setAiDestinationEnabled(enabled: Boolean) = preferenceManager.setAiDestinationEnabled(enabled)
@@ -58,12 +60,16 @@ class SettingsViewModel @Inject constructor(
     fun getSupportedAiProviders(): List<Pair<String, String>> {
         return aiProviderFactory.getSupportedProviders()
     }
+    
+    fun getSupportedAiModels(providerId: String): List<Pair<String, String>> {
+        return aiProviderFactory.getSupportedModels(providerId)
+    }
 
     fun resetConnectionState() {
         _aiConnectionState.value = ConnectionState.Idle
     }
 
-    fun testConnection(apiKey: String, providerId: String) {
+    fun testConnection(apiKey: String, providerId: String, modelId: String) {
         if (apiKey.isBlank()) {
             _aiConnectionState.value = ConnectionState.Error(application.getString(R.string.please_enter_api_key))
             return
@@ -72,7 +78,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _aiConnectionState.value = ConnectionState.Testing
             val provider = aiProviderFactory.getProvider(providerId)
-            val result = provider.testConnection(apiKey)
+            val result = provider.testConnection(apiKey, modelId)
             
             result.onSuccess {
                 _aiConnectionState.value = ConnectionState.Success

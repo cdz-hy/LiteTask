@@ -110,6 +110,7 @@ class LocationTracker @Inject constructor(
             }
             
             val providerId = preferenceManager.getAiProvider()
+            val modelId = preferenceManager.getAiModel()
             val provider = aiProviderFactory.getProvider(providerId)
             
             val prompt = """
@@ -119,10 +120,10 @@ class LocationTracker @Inject constructor(
                 ${candidates.joinToString("\n") { "- $it" }}
                 
                 选择规则：
-                1. 优先选择具体的建筑物、小区、学校、公司等有明确标识的地点
-                2. 避免选择过于宽泛的街道或区域名称
-                3. 如果有多个 POI，选择最可能是居住或工作场所的（如大学、小区、写字楼、学校等）
-                4. 只返回地点名称本身，不要包含类型说明
+                1. 优先选择较大范围的标志性地点（如：某某大学、某某园区、某某商圈、某某小区），而不是极其具体的门牌号、楼栋或房间号。
+                2. 这样做的目的是为了保护用户隐私，并让"常在地"的统计更具代表性。
+                3. 如果有多个 POI，选择最能代表该区域的名称。
+                4. 只返回地点名称本身，不要包含类型说明。
                 
                 直接返回最合适的地点名称，不要有任何解释或额外文字。
             """.trimIndent()
@@ -134,7 +135,7 @@ class LocationTracker @Inject constructor(
                 })
             }
             
-            val result = provider.chatWithTools(apiKey, messages, JSONArray())
+            val result = provider.chatWithTools(apiKey, modelId, messages, JSONArray())
             if (result.isSuccess) {
                 val responseJson = result.getOrNull()
                 val choice = responseJson?.optJSONArray("choices")?.optJSONObject(0)

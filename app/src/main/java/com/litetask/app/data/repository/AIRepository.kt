@@ -68,6 +68,7 @@ class AIRepositoryImpl @Inject constructor(
         }
         
         val providerId = preferenceManager.getAiProvider()
+        val modelId = preferenceManager.getAiModel()
         val categories = categoryRepository.getAllCategoriesSync()
         val provider = aiProviderFactory.getProvider(providerId)
 
@@ -75,10 +76,10 @@ class AIRepositoryImpl @Inject constructor(
             try {
                 if (preferenceManager.isAiAgentEnabled()) {
                     onProgress("准备启动 Agent 模式...")
-                    runAgentProcess(provider, finalKey, text, categories, onProgress)
+                    runAgentProcess(provider, finalKey, modelId, text, categories, onProgress)
                 } else {
                     onProgress("AI 正在分析任务内容...")
-                    provider.parseTasksFromText(finalKey, text, categories)
+                    provider.parseTasksFromText(finalKey, modelId, text, categories)
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -91,6 +92,7 @@ class AIRepositoryImpl @Inject constructor(
     private suspend fun runAgentProcess(
         provider: com.litetask.app.data.ai.AIProvider,
         apiKey: String,
+        modelId: String,
         text: String,
         categories: List<Category>,
         onProgress: (String) -> Unit
@@ -137,7 +139,7 @@ class AIRepositoryImpl @Inject constructor(
         onProgress("Agent 正在深度思考中...")
 
         while (retryCount < 10) {
-            val response = provider.chatWithTools(apiKey, messages, tools)
+            val response = provider.chatWithTools(apiKey, modelId, messages, tools)
             if (response.isFailure) return Result.failure(response.exceptionOrNull()!!)
             
             val choice = response.getOrNull()?.getJSONArray("choices")?.getJSONObject(0)
@@ -216,7 +218,7 @@ class AIRepositoryImpl @Inject constructor(
                 // 保存出发地数据（如果获取到了位置信息）
                 if (currentOriginLng != null && currentOriginLat != null && !currentOriginName.isNullOrBlank()) {
                     try {
-                        locationTracker.saveOriginLocation(currentOriginName!!, currentOriginLng!!, currentOriginLat!!)
+                        locationTracker.saveOriginLocation(currentOriginName, currentOriginLng, currentOriginLat)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -249,12 +251,13 @@ class AIRepositoryImpl @Inject constructor(
         }
 
         val providerId = preferenceManager.getAiProvider()
+        val modelId = preferenceManager.getAiModel()
         val provider = aiProviderFactory.getProvider(providerId)
 
         return withContext(Dispatchers.IO) {
             try {
                 onProgress("AI 正在根据您的要求拆解子任务...")
-                provider.generateSubTasks(apiKey, task, additionalContext)
+                provider.generateSubTasks(apiKey, modelId, task, additionalContext)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {

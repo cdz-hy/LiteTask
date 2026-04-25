@@ -30,7 +30,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
     
     private val baseUrl = "https://api.deepseek.com/v1/chat/completions"
     
-    override suspend fun parseTasksFromText(apiKey: String, text: String, categories: List<Category>): Result<List<Task>> {
+    override suspend fun parseTasksFromText(apiKey: String, model: String, text: String, categories: List<Category>): Result<List<Task>> {
         return withContext(Dispatchers.IO) {
             try {
                 val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
@@ -76,7 +76,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                 """.trimIndent()
                 
                 val requestBody = JSONObject().apply {
-                    put("model", "deepseek-chat")
+                    put("model", model)
                     put("messages", JSONArray().apply {
                         put(JSONObject().apply {
                             put("role", "system")
@@ -89,6 +89,12 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                     })
                     put("temperature", 0.7)
                     put("max_tokens", 3072)
+                    // 禁用思考模式（非思考模式）
+                    put("extra_body", JSONObject().apply {
+                        put("thinking", JSONObject().apply {
+                            put("type", "disabled")
+                        })
+                    })
                 }
                 
                 val request = Request.Builder()
@@ -138,7 +144,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
         }
     }
 
-    override suspend fun testConnection(apiKey: String): Result<Boolean> {
+    override suspend fun testConnection(apiKey: String, model: String): Result<Boolean> {
         return withContext(Dispatchers.IO) {
             try {
                 // 使用 /models 端点验证 API Key，不消耗 token
@@ -233,23 +239,30 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
         return tasks
     }
     
-    override fun getProviderName(): String = "DeepSeek V3.2"
+    override fun getProviderName(): String = "DeepSeek"
 
     override suspend fun chatWithTools(
         apiKey: String,
+        model: String,
         messages: JSONArray,
         tools: JSONArray?
     ): Result<JSONObject> {
         return withContext(Dispatchers.IO) {
             try {
                 val requestBody = JSONObject().apply {
-                    put("model", "deepseek-chat")
+                    put("model", model)
                     put("messages", messages)
                     if (tools != null && tools.length() > 0) {
                         put("tools", tools)
                     }
                     put("temperature", 0.3) // 降低温度以提高精准度
                     put("max_tokens", 4096)
+                    // 禁用思考模式（非思考模式）
+                    put("extra_body", JSONObject().apply {
+                        put("thinking", JSONObject().apply {
+                            put("type", "disabled")
+                        })
+                    })
                 }
 
                 val request = Request.Builder()
@@ -278,6 +291,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
      */
     override suspend fun generateSubTasks(
         apiKey: String, 
+        model: String,
         task: Task, 
         additionalContext: String
     ): Result<List<String>> {
@@ -299,7 +313,6 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
 # Task Details
 - 标题: ${task.title}
 - 描述: ${task.description?.ifBlank { "无" } ?: "无"}
-- 类型: ${task.type.name}
 - 时间: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(task.startTime))} 至 ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(task.deadline))}
 
 # User Instruction
@@ -318,7 +331,7 @@ $userInstruction
                 """.trimIndent()
                 
                 val requestBody = JSONObject().apply {
-                    put("model", "deepseek-chat")
+                    put("model", model)
                     put("messages", JSONArray().apply {
                         put(JSONObject().apply {
                             put("role", "system")
@@ -327,13 +340,13 @@ $userInstruction
                     })
                     put("temperature", 0.7)
                     put("max_tokens", 800)
-                    // 强制 JSON 模式（如果模型支持）
-                    put("response_format", JSONObject().apply { put("type", "json_object") }) 
-                }
-                
-                // DeepSeek V3 可能还不完全支持 response_format json_object，所以我们在 Prompt 里也强调了 JSON
-                // 为了兼容性，我们暂时移除 response_format 参数，完全依赖 Prompt 约束
-                requestBody.remove("response_format") 
+                    // 禁用思考模式（非思考模式）
+                    put("extra_body", JSONObject().apply {
+                        put("thinking", JSONObject().apply {
+                            put("type", "disabled")
+                        })
+                    })
+                } 
 
                 val request = Request.Builder()
                     .url(baseUrl)
