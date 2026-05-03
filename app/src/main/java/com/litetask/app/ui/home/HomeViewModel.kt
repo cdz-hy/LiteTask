@@ -1066,7 +1066,7 @@ class HomeViewModel @Inject constructor(
                 val modelId = preferenceManager.getAiModel()
                 val deepSeekProvider = com.litetask.app.data.ai.DeepSeekProvider()
                 val xiaoMiProvider = com.litetask.app.data.ai.XiaoMiProvider()
-                val providerFactory = com.litetask.app.data.ai.AIProviderFactory(deepSeekProvider, xiaoMiProvider)
+                val providerFactory = com.litetask.app.data.ai.AIProviderFactory(deepSeekProvider, xiaoMiProvider, preferenceManager)
                 val provider = providerFactory.getProvider(providerId)
                 
                 if (provider == null) {

@@ -138,10 +138,10 @@ class XiaoMiProvider @Inject constructor() : AIProvider {
         }
     }
 
-    override suspend fun testConnection(apiKey: String, model: String): Result<Boolean> {
+    override suspend fun testConnection(apiKey: String, model: String): Result<List<Pair<String, String>>> {
         return withContext(Dispatchers.IO) {
             try {
-                // 使用 /models 端点验证 API Key，不消耗 token
+                // 使用 /models 端点验证 API Key
                 val request = Request.Builder()
                     .url("https://api.xiaomimimo.com/v1/models")
                     .addHeader("Authorization", "Bearer $apiKey")
@@ -150,12 +150,27 @@ class XiaoMiProvider @Inject constructor() : AIProvider {
 
                 val response = client.newCall(request).execute()
                 
-                when (response.code) {
-                    200 -> Result.success(true)
-                    401 -> Result.failure(Exception("API Key 无效"))
-                    403 -> Result.failure(Exception("API Key 权限不足"))
-                    429 -> Result.failure(Exception("请求过于频繁"))
-                    else -> Result.failure(Exception("服务器错误: ${response.code}"))
+                if (response.isSuccessful) {
+                    val responseBody = response.body?.string() ?: return@withContext Result.success(emptyList())
+                    val jsonResponse = JSONObject(responseBody)
+                    val dataArray = jsonResponse.optJSONArray("data") ?: JSONArray()
+                    
+                    val models = mutableListOf<Pair<String, String>>()
+                    for (i in 0 until dataArray.length()) {
+                        val obj = dataArray.getJSONObject(i)
+                        val id = obj.optString("id")
+                        if (id.isNotBlank()) {
+                            models.add(id to id)
+                        }
+                    }
+                    Result.success(models)
+                } else {
+                    when (response.code) {
+                        401 -> Result.failure(Exception("API Key 无效"))
+                        403 -> Result.failure(Exception("API Key 权限不足"))
+                        429 -> Result.failure(Exception("请求过于频繁"))
+                        else -> Result.failure(Exception("服务器错误: ${response.code}"))
+                    }
                 }
             } catch (e: java.net.UnknownHostException) {
                 Result.failure(Exception("无法连接服务器，请检查网络"))

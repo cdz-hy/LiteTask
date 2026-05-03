@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -118,7 +119,6 @@ import com.litetask.app.reminder.PermissionHelper
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onSave: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -139,9 +139,18 @@ fun SettingsScreen(
     var showCustomModelDialog by remember { mutableStateOf(false) }
     var customModelInput by remember { mutableStateOf("") }
     val aiConnectionState by viewModel.aiConnectionState.collectAsState()
+    // 触发模型列表刷新的状态
+    var modelsRefreshTrigger by remember { mutableStateOf(0) }
     
+    // 当连接测试成功时，重新加载模型列表（可能拉取到了新模型）
+    LaunchedEffect(aiConnectionState) {
+        if (aiConnectionState is SettingsViewModel.ConnectionState.Success) {
+            modelsRefreshTrigger++
+        }
+    }
+
     val aiProviders = viewModel.getSupportedAiProviders()
-    val aiModels = remember(selectedAiProvider) { viewModel.getSupportedAiModels(selectedAiProvider) }
+    val aiModels = remember(selectedAiProvider, modelsRefreshTrigger) { viewModel.getSupportedAiModels(selectedAiProvider) }
     
     // ========== 语音识别配置状态 ==========
     var selectedSpeechProvider by remember { mutableStateOf("xunfei-rtasr") }
@@ -198,8 +207,10 @@ fun SettingsScreen(
         if (aiConnectionState !is SettingsViewModel.ConnectionState.Idle) {
             viewModel.resetConnectionState()
         }
-        
-        // 如果当前选中的模型不在新提供商支持列表中，则默认选中第一个
+    }
+
+    // 当 Provider 改变时，如果当前选中的模型不在新提供商支持列表中，则默认选中第一个
+    LaunchedEffect(selectedAiProvider) {
         val models = viewModel.getSupportedAiModels(selectedAiProvider)
         if (models.none { it.first == selectedAiModel }) {
             selectedAiModel = models.firstOrNull()?.first ?: ""
@@ -301,20 +312,49 @@ fun SettingsScreen(
                     
                     ExposedDropdownMenu(
                         expanded = aiModelExpanded,
-                        onDismissRequest = { aiModelExpanded = false }
+                        onDismissRequest = { aiModelExpanded = false },
+                        modifier = Modifier.heightIn(max = 320.dp)
                     ) {
+                        // 自定义模型（如果在预设列表里，也会带 (自定义) 后缀，由 AIProviderFactory 处理）
                         aiModels.forEach { (value, label) ->
                             DropdownMenuItem(
                                 text = { Text(label) },
                                 onClick = {
                                     selectedAiModel = value
                                     aiModelExpanded = false
-                                }
+                                },
+                                trailingIcon = if (label.endsWith("(自定义)")) {
+                                    {
+                                        IconButton(onClick = {
+                                            viewModel.deleteCustomModel(selectedAiProvider)
+                                            if (selectedAiModel == value) {
+                                                selectedAiModel = aiModels.firstOrNull { !it.second.endsWith("(自定义)") }?.first ?: ""
+                                            }
+                                            modelsRefreshTrigger++
+                                        }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "删除自定义模型", tint = MaterialTheme.colorScheme.error)
+                                        }
+                                    }
+                                } else null
                             )
                         }
                         
-                        // 所有提供商都支持自定义模型名称
                         HorizontalDivider()
+                        
+                        // 恢复预设模型
+                        DropdownMenuItem(
+                            text = { Text("恢复预设模型列表", color = MaterialTheme.colorScheme.primary) },
+                            onClick = {
+                                viewModel.clearFetchedModels(selectedAiProvider)
+                                modelsRefreshTrigger++
+                                aiModelExpanded = false
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Refresh, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            }
+                        )
+                        
+                        // 所有提供商都支持自定义模型名称
                         DropdownMenuItem(
                             text = { Text("自定义模型...") },
                             onClick = {
@@ -689,7 +729,10 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         if (customModelInput.isNotBlank()) {
-                            selectedAiModel = customModelInput.trim()
+                            val newModel = customModelInput.trim()
+                            selectedAiModel = newModel
+                            viewModel.saveCustomModel(selectedAiProvider, newModel)
+                            modelsRefreshTrigger++
                             showCustomModelDialog = false
                             customModelInput = ""
                         }

@@ -80,12 +80,27 @@ class SettingsViewModel @Inject constructor(
             val provider = aiProviderFactory.getProvider(providerId)
             val result = provider.testConnection(apiKey, modelId)
             
-            result.onSuccess {
+            result.onSuccess { models ->
                 _aiConnectionState.value = ConnectionState.Success
+                if (models.isNotEmpty()) {
+                    preferenceManager.saveFetchedModels(providerId, models)
+                }
             }.onFailure {
                 _aiConnectionState.value = ConnectionState.Error(it.message ?: application.getString(R.string.error_connection_failed))
             }
         }
+    }
+    
+    fun saveCustomModel(providerId: String, modelId: String) {
+        preferenceManager.saveCustomModel(providerId, modelId)
+    }
+    
+    fun deleteCustomModel(providerId: String) {
+        preferenceManager.saveCustomModel(providerId, null)
+    }
+    
+    fun clearFetchedModels(providerId: String) {
+        preferenceManager.clearFetchedModels(providerId)
     }
     
     // ========== 提醒方式配置 ==========

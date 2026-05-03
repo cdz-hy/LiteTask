@@ -18,11 +18,11 @@ interface AIProvider {
     suspend fun parseTasksFromText(apiKey: String, model: String, text: String, categories: List<Category>): Result<List<Task>>
 
     /**
-     * 测试 API 连通性
+     * 测试 API 连通性并获取模型列表
      * @param apiKey API 密钥
-     * @return true 表示连接成功，false 表示失败
+     * @return 成功时返回模型列表
      */
-    suspend fun testConnection(apiKey: String, model: String): Result<Boolean>
+    suspend fun testConnection(apiKey: String, model: String): Result<List<Pair<String, String>>>
     
     /**
      * 获取提供商名称
