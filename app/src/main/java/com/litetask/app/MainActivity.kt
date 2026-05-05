@@ -421,10 +421,13 @@ private fun SearchScreenWrapper(
             SubTaskInputDialog(
                 task = currentTask,
                 onDismiss = { homeViewModel.dismissSubTaskInput() },
-                onAnalyze = { context ->
-                    homeViewModel.generateSubTasksWithContext(currentTask, context)
+                onAnalyze = { contextText, imageUri ->
+                    homeViewModel.generateSubTasksWithContext(currentTask, contextText, imageUri)
                 },
-                isAnalyzing = uiState.isAnalyzing
+                isAnalyzing = uiState.isAnalyzing,
+                agentStatus = uiState.agentStatus,
+                agentLogs = uiState.agentLogs,
+                isMultimodalModel = homeViewModel.isMultimodalModel()
             )
         }
     }

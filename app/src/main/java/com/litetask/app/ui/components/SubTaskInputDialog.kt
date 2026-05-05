@@ -25,20 +25,42 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
-import com.litetask.app.ui.components.AISparkle
+import androidx.compose.ui.draw.clip
+import coil.compose.AsyncImage
+import androidx.compose.material.icons.filled.Image
 
 @Composable
 fun SubTaskInputDialog(
     task: Task,
     onDismiss: () -> Unit,
-    onAnalyze: (String) -> Unit,
+    onAnalyze: (String, android.net.Uri?) -> Unit,
     isAnalyzing: Boolean = false,
     agentStatus: String = "",
-    agentLogs: List<String> = emptyList()
+    agentLogs: List<String> = emptyList(),
+    isMultimodalModel: Boolean = false
 ) {
     var inputText by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
-    val maxCharCount = 300
+    val maxCharCount = 500
+    
+    var selectedImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val pickMedia = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            val sizeIndex = cursor?.getColumnIndex(android.provider.OpenableColumns.SIZE)
+            cursor?.moveToFirst()
+            val size = sizeIndex?.let { cursor.getLong(it) } ?: 0L
+            cursor?.close()
+            if (size > 5 * 1024 * 1024) {
+                android.widget.Toast.makeText(context, "图片大小不能超过 5MB", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                selectedImageUri = uri
+            }
+        }
+    }
     
     // 自动聚焦输入框
     LaunchedEffect(Unit) {
@@ -204,15 +226,76 @@ fun SubTaskInputDialog(
                             shape = RoundedCornerShape(24.dp)
                         )
 
-                        // 字符计数
-                        Text(
-                            text = "${inputText.length}/$maxCharCount",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        // 左下角：图片预览
+                        if (selectedImageUri != null) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(start = 16.dp, bottom = 12.dp)
+                                    .size(60.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                coil.compose.AsyncImage(
+                                    model = selectedImageUri,
+                                    contentDescription = "Selected Image",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                )
+                                IconButton(
+                                    onClick = { selectedImageUri = null },
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .size(20.dp)
+                                        .padding(2.dp)
+                                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Remove Image",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // 右下角：功能区（字符计数与图片上传）
+                        Row(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(end = 16.dp, bottom = 16.dp)
-                        )
+                                .padding(end = 12.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isMultimodalModel && selectedImageUri == null) {
+                                IconButton(
+                                    onClick = {
+                                        pickMedia.launch(
+                                            androidx.activity.result.PickVisualMediaRequest(
+                                                androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                                            )
+                                        )
+                                    },
+                                    enabled = !isAnalyzing,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = androidx.compose.material.icons.Icons.Default.Image,
+                                        contentDescription = "Upload Image",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            
+                            Text(
+                                text = "${inputText.length}/$maxCharCount",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
+                        }
 
                         // --- Agent 思考过程覆盖层 ---
                         AgentThinkingOverlay(
@@ -238,7 +321,7 @@ fun SubTaskInputDialog(
                     Button(
                         onClick = { 
                             if (!isAnalyzing) {
-                                onAnalyze(inputText.trim())
+                                onAnalyze(inputText.trim(), selectedImageUri)
                             }
                         },
                         modifier = Modifier

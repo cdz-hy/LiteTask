@@ -713,13 +713,14 @@ fun HomeScreen(
                             showTextInputDialog = false 
                         }
                     },
-                    onAnalyze = { text ->
-                        viewModel.analyzeTextInput(text)
+                    onAnalyze = { text, uri ->
+                        viewModel.analyzeTextInput(text, uri)
                         // 不立即关闭，等分析完成后通过 LaunchedEffect 关闭
                     },
                     isAnalyzing = uiState.isAnalyzing,
                     agentStatus = uiState.agentStatus,
-                    agentLogs = uiState.agentLogs
+                    agentLogs = uiState.agentLogs,
+                    isMultimodalModel = viewModel.isMultimodalModel()
                 )
             }
             
@@ -910,12 +911,13 @@ fun HomeScreen(
                     SubTaskInputDialog(
                         task = currentTask,
                         onDismiss = { viewModel.dismissSubTaskInput() },
-                        onAnalyze = { context ->
-                            viewModel.generateSubTasksWithContext(currentTask, context)
+                        onAnalyze = { contextText, imageUri ->
+                            viewModel.generateSubTasksWithContext(currentTask, contextText, imageUri)
                         },
                         isAnalyzing = uiState.isAnalyzing,
                         agentStatus = uiState.agentStatus,
-                        agentLogs = uiState.agentLogs
+                        agentLogs = uiState.agentLogs,
+                        isMultimodalModel = viewModel.isMultimodalModel()
                     )
                 }
             }

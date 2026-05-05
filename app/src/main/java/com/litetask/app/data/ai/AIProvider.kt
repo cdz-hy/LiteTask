@@ -15,7 +15,7 @@ interface AIProvider {
      * @param categories 可用的分类列表
      * @return 解析出的任务列表
      */
-    suspend fun parseTasksFromText(apiKey: String, model: String, text: String, categories: List<Category>): Result<List<Task>>
+    suspend fun parseTasksFromText(apiKey: String, model: String, text: String, categories: List<Category>, imageBase64: String? = null): Result<List<Task>>
 
     /**
      * 测试 API 连通性并获取模型列表
@@ -46,6 +46,7 @@ interface AIProvider {
         apiKey: String,
         model: String,
         task: Task,
-        additionalContext: String = ""
+        additionalContext: String = "",
+        imageBase64: String? = null
     ): Result<List<String>>
 }

@@ -24,12 +24,14 @@ interface AIRepository {
     suspend fun parseTasksFromText(
         apiKey: String, 
         text: String,
+        imageBase64: String? = null,
         onProgress: (String) -> Unit = {}
     ): Result<List<Task>>
 
     suspend fun generateSubTasks(
         task: Task,
         additionalContext: String = "",
+        imageBase64: String? = null,
         onProgress: (String) -> Unit = {}
     ): Result<List<String>>
 
@@ -55,6 +57,7 @@ class AIRepositoryImpl @Inject constructor(
     override suspend fun parseTasksFromText(
         apiKey: String, 
         text: String,
+        imageBase64: String?,
         onProgress: (String) -> Unit
     ): Result<List<Task>> {
         val finalKey = if (apiKey.isNotBlank() && apiKey != "DEMO_KEY") {
@@ -76,10 +79,10 @@ class AIRepositoryImpl @Inject constructor(
             try {
                 if (preferenceManager.isAiAgentEnabled()) {
                     onProgress("准备启动 Agent 模式...")
-                    runAgentProcess(provider, finalKey, modelId, text, categories, onProgress)
+                    runAgentProcess(provider, finalKey, modelId, text, categories, imageBase64, onProgress)
                 } else {
                     onProgress("AI 正在分析任务内容...")
-                    provider.parseTasksFromText(finalKey, modelId, text, categories)
+                    provider.parseTasksFromText(finalKey, modelId, text, categories, imageBase64)
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -95,6 +98,7 @@ class AIRepositoryImpl @Inject constructor(
         modelId: String,
         text: String,
         categories: List<Category>,
+        imageBase64: String?,
         onProgress: (String) -> Unit
     ): Result<List<Task>> {
         val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
@@ -125,7 +129,25 @@ class AIRepositoryImpl @Inject constructor(
 
         val messages = JSONArray().apply {
             put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
-            put(JSONObject().apply { put("role", "user"); put("content", text) })
+            put(JSONObject().apply {
+                put("role", "user")
+                if (imageBase64 != null) {
+                    put("content", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("type", "text")
+                            put("text", text)
+                        })
+                        put(JSONObject().apply {
+                            put("type", "image_url")
+                            put("image_url", JSONObject().apply {
+                                put("url", "data:image/jpeg;base64,$imageBase64")
+                            })
+                        })
+                    })
+                } else {
+                    put("content", text)
+                }
+            })
         }
 
         val tools = agentAssistant.getToolsSchema()
@@ -243,6 +265,7 @@ class AIRepositoryImpl @Inject constructor(
     override suspend fun generateSubTasks(
         task: Task,
         additionalContext: String,
+        imageBase64: String?,
         onProgress: (String) -> Unit
     ): Result<List<String>> {
         val apiKey = preferenceManager.getApiKey()
@@ -257,7 +280,7 @@ class AIRepositoryImpl @Inject constructor(
         return withContext(Dispatchers.IO) {
             try {
                 onProgress("AI 正在根据您的要求拆解子任务...")
-                provider.generateSubTasks(apiKey, modelId, task, additionalContext)
+                provider.generateSubTasks(apiKey, modelId, task, additionalContext, imageBase64)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {

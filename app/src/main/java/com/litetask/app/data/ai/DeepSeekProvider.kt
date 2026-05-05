@@ -30,7 +30,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
     
     private val baseUrl = "https://api.deepseek.com/v1/chat/completions"
     
-    override suspend fun parseTasksFromText(apiKey: String, model: String, text: String, categories: List<Category>): Result<List<Task>> {
+    override suspend fun parseTasksFromText(apiKey: String, model: String, text: String, categories: List<Category>, imageBase64: String?): Result<List<Task>> {
         return withContext(Dispatchers.IO) {
             try {
                 val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
@@ -88,7 +88,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                         })
                     })
                     put("temperature", 0.7)
-                    put("max_tokens", 3072)
+                    put("max_tokens", 4096)
                     // 禁用思考模式（非思考模式）
                     put("extra_body", JSONObject().apply {
                         put("thinking", JSONObject().apply {
@@ -308,7 +308,8 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
         apiKey: String, 
         model: String,
         task: Task, 
-        additionalContext: String
+        additionalContext: String,
+        imageBase64: String?
     ): Result<List<String>> {
         return withContext(Dispatchers.IO) {
             try {
@@ -354,7 +355,7 @@ $userInstruction
                         })
                     })
                     put("temperature", 0.7)
-                    put("max_tokens", 800)
+                    put("max_tokens", 1024)
                     // 禁用思考模式（非思考模式）
                     put("extra_body", JSONObject().apply {
                         put("thinking", JSONObject().apply {

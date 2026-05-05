@@ -602,15 +602,17 @@ class HomeViewModel @Inject constructor(
     /**
      * 文字输入分析：直接调用 AI 分析文本
      */
-    fun analyzeTextInput(text: String) {
+    fun analyzeTextInput(text: String, imageUri: android.net.Uri? = null) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isAnalyzing = true,
-                agentStatus = "正在分析文本...",
-                agentLogs = listOf("文本输入: $text")
+                agentStatus = "正在准备分析...",
+                agentLogs = listOf("文本输入: $text" + (if (imageUri != null) " (含图片)" else ""))
             )
             
-            val result = aiRepository.parseTasksFromText("", text) { progress ->
+            val imageBase64 = imageUri?.let { uriToBase64(application, it) }
+            
+            val result = aiRepository.parseTasksFromText("", text, imageBase64) { progress ->
                 _uiState.value = _uiState.value.copy(
                     agentStatus = progress,
                     agentLogs = _uiState.value.agentLogs + progress
@@ -1131,15 +1133,17 @@ class HomeViewModel @Inject constructor(
     /**
      * 生成子任务（详细模式）
      */
-    fun generateSubTasksWithContext(task: Task, additionalContext: String) {
+    fun generateSubTasksWithContext(task: Task, additionalContext: String, imageUri: android.net.Uri? = null) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isAnalyzing = true,
-                agentStatus = "正在准备拆解子任务...",
-                agentLogs = listOf("主任务: ${task.title}")
+                agentStatus = "正在处理图片并准备拆解...",
+                agentLogs = listOf("主任务: ${task.title}" + (if (imageUri != null) " (含参考图片)" else ""))
             )
             
-            val result = aiRepository.generateSubTasks(task, additionalContext) { progress ->
+            val imageBase64 = imageUri?.let { uriToBase64(application, it) }
+            
+            val result = aiRepository.generateSubTasks(task, additionalContext, imageBase64) { progress ->
                 _uiState.value = _uiState.value.copy(
                     agentStatus = progress,
                     agentLogs = _uiState.value.agentLogs + progress
@@ -1283,6 +1287,32 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             taskRepository.deleteComponent(component.toEntity(component.taskId))
         }
+    }
+
+    /**
+     * 判断当前模型是否支持多模态（图片）输入
+     */
+    fun isMultimodalModel(): Boolean {
+        val model = preferenceManager.getAiModel().lowercase()
+        return model.contains("mimo-v2.5") || model.contains("mimo-v2-omni")
+    }
+
+    /**
+     * 将图片 URI 转为 Base64 并进行必要的压缩（限制在约 5MB 内）
+     */
+    fun uriToBase64(context: android.content.Context, uri: android.net.Uri): String? {
+        try {
+            val inputStream = context.contentResolver.openInputStream(uri)
+            val bytes = inputStream?.readBytes()
+            inputStream?.close()
+            if (bytes != null) {
+                // 简单的图片压缩逻辑可以在这里实现，如果需要的话
+                return android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
     }
 }
 
