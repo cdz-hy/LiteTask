@@ -30,7 +30,7 @@ class XiaoMiProvider @Inject constructor() : AIProvider {
     
     private val baseUrl = "https://api.xiaomimimo.com/v1/chat/completions"
     
-    override suspend fun parseTasksFromText(apiKey: String, model: String, text: String, categories: List<Category>, imageBase64: String?): Result<List<Task>> {
+    override suspend fun parseTasksFromText(apiKey: String, model: String, text: String, categories: List<Category>, imageBases64: List<String>?): Result<List<Task>> {
         return withContext(Dispatchers.IO) {
             try {
                 val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
@@ -84,18 +84,20 @@ class XiaoMiProvider @Inject constructor() : AIProvider {
                         })
                         put(JSONObject().apply {
                             put("role", "user")
-                            if (imageBase64 != null) {
+                            if (!imageBases64.isNullOrEmpty()) {
                                 put("content", JSONArray().apply {
                                     put(JSONObject().apply {
                                         put("type", "text")
                                         put("text", text)
                                     })
-                                    put(JSONObject().apply {
-                                        put("type", "image_url")
-                                        put("image_url", JSONObject().apply {
-                                            put("url", "data:image/jpeg;base64,$imageBase64")
+                                    imageBases64.forEach { base64 ->
+                                        put(JSONObject().apply {
+                                            put("type", "image_url")
+                                            put("image_url", JSONObject().apply {
+                                                put("url", "data:image/jpeg;base64,$base64")
+                                            })
                                         })
-                                    })
+                                    }
                                 })
                             } else {
                                 put("content", text)
@@ -313,7 +315,7 @@ class XiaoMiProvider @Inject constructor() : AIProvider {
         model: String,
         task: Task, 
         additionalContext: String,
-        imageBase64: String?
+        imageBases64: List<String>?
     ): Result<List<String>> {
         return withContext(Dispatchers.IO) {
             try {
@@ -360,18 +362,20 @@ $userInstruction
                         put(JSONObject().apply {
                             put("role", "user")
                             val promptText = "请帮我将按上述任务详情进行子任务拆解。"
-                            if (imageBase64 != null) {
+                            if (!imageBases64.isNullOrEmpty()) {
                                 put("content", JSONArray().apply {
                                     put(JSONObject().apply {
                                         put("type", "text")
                                         put("text", promptText)
                                     })
-                                    put(JSONObject().apply {
-                                        put("type", "image_url")
-                                        put("image_url", JSONObject().apply {
-                                            put("url", "data:image/jpeg;base64,$imageBase64")
+                                    imageBases64.forEach { base64 ->
+                                        put(JSONObject().apply {
+                                            put("type", "image_url")
+                                            put("image_url", JSONObject().apply {
+                                                put("url", "data:image/jpeg;base64,$base64")
+                                            })
                                         })
-                                    })
+                                    }
                                 })
                             } else {
                                 put("content", promptText)

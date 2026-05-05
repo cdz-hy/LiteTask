@@ -30,7 +30,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
     
     private val baseUrl = "https://api.deepseek.com/v1/chat/completions"
     
-    override suspend fun parseTasksFromText(apiKey: String, model: String, text: String, categories: List<Category>, imageBase64: String?): Result<List<Task>> {
+    override suspend fun parseTasksFromText(apiKey: String, model: String, text: String, categories: List<Category>, imageBases64: List<String>?): Result<List<Task>> {
         return withContext(Dispatchers.IO) {
             try {
                 val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
@@ -309,7 +309,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
         model: String,
         task: Task, 
         additionalContext: String,
-        imageBase64: String?
+        imageBases64: List<String>?
     ): Result<List<String>> {
         return withContext(Dispatchers.IO) {
             try {

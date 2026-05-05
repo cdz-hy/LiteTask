@@ -602,17 +602,17 @@ class HomeViewModel @Inject constructor(
     /**
      * 文字输入分析：直接调用 AI 分析文本
      */
-    fun analyzeTextInput(text: String, imageUri: android.net.Uri? = null) {
+    fun analyzeTextInput(text: String, imageUris: List<android.net.Uri> = emptyList()) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isAnalyzing = true,
                 agentStatus = "正在准备分析...",
-                agentLogs = listOf("文本输入: $text" + (if (imageUri != null) " (含图片)" else ""))
+                agentLogs = listOf("文本输入: $text" + (if (imageUris.isNotEmpty()) " (含${imageUris.size}张图片)" else ""))
             )
             
-            val imageBase64 = imageUri?.let { uriToBase64(application, it) }
+            val imageBases64 = imageUris.mapNotNull { uriToBase64(application, it) }.takeIf { it.isNotEmpty() }
             
-            val result = aiRepository.parseTasksFromText("", text, imageBase64) { progress ->
+            val result = aiRepository.parseTasksFromText("", text, imageBases64) { progress ->
                 _uiState.value = _uiState.value.copy(
                     agentStatus = progress,
                     agentLogs = _uiState.value.agentLogs + progress
@@ -1133,17 +1133,17 @@ class HomeViewModel @Inject constructor(
     /**
      * 生成子任务（详细模式）
      */
-    fun generateSubTasksWithContext(task: Task, additionalContext: String, imageUri: android.net.Uri? = null) {
+    fun generateSubTasksWithContext(task: Task, additionalContext: String, imageUris: List<android.net.Uri> = emptyList()) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isAnalyzing = true,
                 agentStatus = "正在处理图片并准备拆解...",
-                agentLogs = listOf("主任务: ${task.title}" + (if (imageUri != null) " (含参考图片)" else ""))
+                agentLogs = listOf("主任务: ${task.title}" + (if (imageUris.isNotEmpty()) " (含${imageUris.size}张参考图片)" else ""))
             )
             
-            val imageBase64 = imageUri?.let { uriToBase64(application, it) }
+            val imageBases64 = imageUris.mapNotNull { uriToBase64(application, it) }.takeIf { it.isNotEmpty() }
             
-            val result = aiRepository.generateSubTasks(task, additionalContext, imageBase64) { progress ->
+            val result = aiRepository.generateSubTasks(task, additionalContext, imageBases64) { progress ->
                 _uiState.value = _uiState.value.copy(
                     agentStatus = progress,
                     agentLogs = _uiState.value.agentLogs + progress

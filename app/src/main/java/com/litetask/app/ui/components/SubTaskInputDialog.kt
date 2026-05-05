@@ -4,6 +4,8 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,7 +35,7 @@ import androidx.compose.material.icons.filled.Image
 fun SubTaskInputDialog(
     task: Task,
     onDismiss: () -> Unit,
-    onAnalyze: (String, android.net.Uri?) -> Unit,
+    onAnalyze: (String, List<android.net.Uri>) -> Unit,
     isAnalyzing: Boolean = false,
     agentStatus: String = "",
     agentLogs: List<String> = emptyList(),
@@ -43,21 +45,29 @@ fun SubTaskInputDialog(
     val focusRequester = remember { FocusRequester() }
     val maxCharCount = 500
     
-    var selectedImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var selectedImageUris by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val pickMedia = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
-            val cursor = context.contentResolver.query(uri, null, null, null, null)
-            val sizeIndex = cursor?.getColumnIndex(android.provider.OpenableColumns.SIZE)
-            cursor?.moveToFirst()
-            val size = sizeIndex?.let { cursor.getLong(it) } ?: 0L
-            cursor?.close()
-            if (size > 5 * 1024 * 1024) {
-                android.widget.Toast.makeText(context, "图片大小不能超过 5MB", android.widget.Toast.LENGTH_SHORT).show()
-            } else {
-                selectedImageUri = uri
+        androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(5)
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            val validUris = uris.filter { uri ->
+                val cursor = context.contentResolver.query(uri, null, null, null, null)
+                val sizeIndex = cursor?.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                cursor?.moveToFirst()
+                val size = sizeIndex?.let { cursor.getLong(it) } ?: 0L
+                cursor?.close()
+                if (size > 5 * 1024 * 1024) {
+                    android.widget.Toast.makeText(context, "图片大小不能超过 5MB", android.widget.Toast.LENGTH_SHORT).show()
+                    false
+                } else {
+                    true
+                }
+            }
+            // Add valid uris up to 5 total
+            val remainingSlots = 5 - selectedImageUris.size
+            if (remainingSlots > 0) {
+                selectedImageUris = selectedImageUris + validUris.take(remainingSlots)
             }
         }
     }
@@ -227,35 +237,46 @@ fun SubTaskInputDialog(
                         )
 
                         // 左下角：图片预览
-                        if (selectedImageUri != null) {
-                            Box(
+                        if (selectedImageUris.isNotEmpty()) {
+                            androidx.compose.foundation.lazy.LazyRow(
                                 modifier = Modifier
                                     .align(Alignment.BottomStart)
                                     .padding(start = 16.dp, bottom = 12.dp)
-                                    .size(60.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .fillMaxWidth(0.6f),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                coil.compose.AsyncImage(
-                                    model = selectedImageUri,
-                                    contentDescription = "Selected Image",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                                )
-                                IconButton(
-                                    onClick = { selectedImageUri = null },
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .size(20.dp)
-                                        .padding(2.dp)
-                                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Remove Image",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(12.dp)
-                                    )
+                                items(selectedImageUris.size) { index ->
+                                    val uri = selectedImageUris[index]
+                                    Box(
+                                        modifier = Modifier
+                                            .size(60.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    ) {
+                                        coil.compose.AsyncImage(
+                                            model = uri,
+                                            contentDescription = "Selected Image",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                        )
+                                        IconButton(
+                                            onClick = {
+                                                selectedImageUris = selectedImageUris.toMutableList().apply { removeAt(index) }
+                                            },
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .size(20.dp)
+                                                .padding(2.dp)
+                                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Remove Image",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -267,7 +288,7 @@ fun SubTaskInputDialog(
                                 .padding(end = 12.dp, bottom = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (isMultimodalModel && selectedImageUri == null) {
+                            if (isMultimodalModel && selectedImageUris.size < 5) {
                                 IconButton(
                                     onClick = {
                                         pickMedia.launch(
@@ -321,7 +342,7 @@ fun SubTaskInputDialog(
                     Button(
                         onClick = { 
                             if (!isAnalyzing) {
-                                onAnalyze(inputText.trim(), selectedImageUri)
+                                onAnalyze(inputText.trim(), selectedImageUris)
                             }
                         },
                         modifier = Modifier
