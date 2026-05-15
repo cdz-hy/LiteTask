@@ -14,10 +14,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
@@ -31,6 +29,7 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.*
@@ -439,31 +438,44 @@ fun HomeScreen(
                             }
                         },
                         actions = {
-                            if (uiState.isAnalyzingSchedule) {
-                                val infiniteTransition = rememberInfiniteTransition(label = "analyze")
+                            if (uiState.isGeneratingScheduleAdvice) {
+                                val infiniteTransition = rememberInfiniteTransition(label = "schedule")
                                 val alpha by infiniteTransition.animateFloat(
-                                    initialValue = 0.3f,
+                                    initialValue = 0.4f,
                                     targetValue = 1f,
                                     animationSpec = infiniteRepeatable(
-                                        animation = tween(1000),
+                                        animation = tween(800, easing = FastOutSlowInEasing),
                                         repeatMode = RepeatMode.Reverse
                                     ),
-                                    label = "analyzeAlpha"
+                                    label = "scheduleAlpha"
                                 )
-                                IconButton(onClick = { Toast.makeText(context, "为您进行全面日程分析中", Toast.LENGTH_SHORT).show() }) {
+                                IconButton(onClick = { viewModel.toggleScheduleAdviceSheet(true) }) {
                                     Icon(
-                                        imageVector = Icons.Default.Analytics,
-                                        contentDescription = "日程分析中",
-                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = alpha)
+                                        imageVector = Icons.Rounded.AutoAwesome,
+                                        contentDescription = "日程建议生成中",
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = alpha),
+                                        modifier = Modifier.size(24.dp)
                                     )
                                 }
-                            } else if (uiState.scheduleAnalysisResult != null) {
-                                IconButton(onClick = { viewModel.toggleScheduleSheet(true) }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Description,
-                                        contentDescription = "查看日程建议",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
+                            } else if (uiState.currentAdvice != null) {
+                                BadgedBox(
+                                    badge = {
+                                        if (uiState.currentAdvice?.isRead == false) {
+                                            Badge(
+                                                containerColor = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(8.dp).offset(x = (-4).dp, y = 4.dp)
+                                            )
+                                        }
+                                    }
+                                ) {
+                                    IconButton(onClick = { viewModel.toggleScheduleAdviceSheet(true) }) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.AutoAwesome,
+                                            contentDescription = "日程建议",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
                                 }
                             }
                         },
@@ -883,12 +895,13 @@ fun HomeScreen(
                 )
             }
 
-            val schedulePlan = uiState.scheduleAnalysisResult
-            if (uiState.showScheduleSheet && schedulePlan != null) {
-                com.litetask.app.ui.components.PlanSuggestionSheet(
-                    plan = schedulePlan,
-                    suggestions = uiState.scheduleSuggestions,
-                    onDismiss = { viewModel.toggleScheduleSheet(false) }
+            if (uiState.showScheduleAdviceSheet) {
+                com.litetask.app.ui.components.DailyScheduleAdviceSheet(
+                    advice = uiState.currentAdvice,
+                    isGenerating = uiState.isGeneratingScheduleAdvice,
+                    agentLogs = uiState.scheduleAdviceLogs,
+                    onDismiss = { viewModel.toggleScheduleAdviceSheet(false) },
+                    onRefresh = { viewModel.refreshScheduleAdvice() }
                 )
             }
 

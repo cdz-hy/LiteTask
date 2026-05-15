@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
+import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 import com.litetask.app.R
 
@@ -41,7 +42,9 @@ class HomeViewModel @Inject constructor(
     private val speechHelper: com.litetask.app.util.SpeechRecognizerHelper,
     private val preferenceManager: com.litetask.app.data.local.PreferenceManager,
     private val aMapRepository: com.litetask.app.data.repository.AMapRepository,
-    private val userProfileDao: com.litetask.app.data.local.UserProfileDao
+    private val userProfileDao: com.litetask.app.data.local.UserProfileDao,
+    private val scheduleAdviceDao: com.litetask.app.data.local.DailyScheduleAdviceDao,
+    private val scheduleAdviceAssistant: com.litetask.app.data.ai.DailyScheduleAdviceAssistant
 ) : ViewModel() {
 
     // ==================== 数据加载配置 ====================
@@ -69,7 +72,11 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             // 懒更新 - 标记过期任务和提醒
             markOverdueTasksAsExpired()
-            
+
+            // 加载最新日程建议
+            val latestAdvice = scheduleAdviceDao.getLatest()
+            _uiState.update { it.copy(currentAdvice = latestAdvice) }
+
             // 懒更新 - 触发每日智能规划建议
             triggerDailyAnalysisIfNeeded()
         }
@@ -252,15 +259,102 @@ class HomeViewModel @Inject constructor(
     }
     
     private suspend fun triggerDailyAnalysisIfNeeded() {
-        // V6 Planner features removed in favor of V5 rollback
+        val todayStart = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val existing = scheduleAdviceDao.getLatest()
+        if (existing != null && existing.createdAt >= todayStart && existing.generationStatus == "COMPLETED") return
+
+        generateDailyScheduleAdvice()
     }
 
     fun triggerDailyAnalysis() {
-        // V6 Planner features removed in favor of V5 rollback
+        viewModelScope.launch { generateDailyScheduleAdvice() }
     }
 
-    fun toggleScheduleSheet(show: Boolean) {
-        _uiState.value = _uiState.value.copy(showScheduleSheet = show)
+    private suspend fun generateDailyScheduleAdvice() {
+        var placeholderId = 0L
+        try {
+            placeholderId = scheduleAdviceDao.insert(
+                com.litetask.app.data.model.DailyScheduleAdviceEntity(
+                    shortTermJson = "{}", longTermJson = "{}", generationStatus = "GENERATING"
+                )
+            )
+            _uiState.update { it.copy(
+                isGeneratingScheduleAdvice = true,
+                currentAdvice = null,
+                scheduleAdviceLogs = emptyList()
+            ) }
+
+            val isAgent = preferenceManager.isAiAgentEnabled()
+            val result = if (isAgent) {
+                scheduleAdviceAssistant.generateAdvice { msg ->
+                    _uiState.update { state ->
+                        state.copy(scheduleAdviceLogs = state.scheduleAdviceLogs + msg)
+                    }
+                }
+            } else {
+                scheduleAdviceAssistant.generateDirectAdvice { msg ->
+                    _uiState.update { state ->
+                        state.copy(scheduleAdviceLogs = state.scheduleAdviceLogs + msg)
+                    }
+                }
+            }
+
+            result.fold(
+                onSuccess = { entity ->
+                    val updated = entity.copy(id = placeholderId, isRead = false)
+                    scheduleAdviceDao.insert(updated)
+                    _uiState.update { it.copy(
+                        isGeneratingScheduleAdvice = false,
+                        currentAdvice = updated
+                    ) }
+                },
+                onFailure = { e ->
+                    if (placeholderId > 0) {
+                        scheduleAdviceDao.updateGenerationStatus(placeholderId, "FAILED")
+                    }
+                    _uiState.update { it.copy(
+                        isGeneratingScheduleAdvice = false,
+                        scheduleAdviceLogs = it.scheduleAdviceLogs + "生成失败: ${e.message}"
+                    ) }
+                }
+            )
+        } catch (e: Exception) {
+            if (placeholderId > 0) {
+                try { scheduleAdviceDao.updateGenerationStatus(placeholderId, "FAILED") } catch (_: Exception) {}
+            }
+            _uiState.update { it.copy(
+                isGeneratingScheduleAdvice = false,
+                scheduleAdviceLogs = it.scheduleAdviceLogs + "生成失败: ${e.message ?: "未知错误"}"
+            ) }
+        }
+    }
+
+    fun toggleScheduleAdviceSheet(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showScheduleAdviceSheet = show)
+        if (show) {
+            viewModelScope.launch {
+                val advice = _uiState.value.currentAdvice
+                if (advice != null && !advice.isRead) {
+                    scheduleAdviceDao.markAsRead(advice.id)
+                    _uiState.value = _uiState.value.copy(currentAdvice = advice.copy(isRead = true))
+                }
+            }
+        }
+    }
+
+    fun loadLatestScheduleAdvice() {
+        viewModelScope.launch {
+            val advice = scheduleAdviceDao.getLatest()
+            _uiState.value = _uiState.value.copy(currentAdvice = advice)
+        }
+    }
+
+    fun refreshScheduleAdvice() {
+        viewModelScope.launch {
+            generateDailyScheduleAdvice()
+        }
     }
     
     /**
@@ -1342,10 +1436,10 @@ data class HomeUiState(
     val agentLogs: List<String> = emptyList(), // Agent 历史操作日志
     
     // 日程建议相关
-    val isAnalyzingSchedule: Boolean = false, // 是否正在分析日程
-    val scheduleAnalysisResult: com.litetask.app.data.model.DailyPlanEntity? = null, // 日程分析结果
-    val scheduleSuggestions: List<com.litetask.app.data.model.PlanSuggestionEntity> = emptyList(), // 具体的日程建议
-    val showScheduleSheet: Boolean = false // 是否显示日程建议底部面板
+    val isGeneratingScheduleAdvice: Boolean = false,
+    val currentAdvice: com.litetask.app.data.model.DailyScheduleAdviceEntity? = null,
+    val scheduleAdviceLogs: List<String> = emptyList(),
+    val showScheduleAdviceSheet: Boolean = false
 )
 
 // 检查 API Key 结果

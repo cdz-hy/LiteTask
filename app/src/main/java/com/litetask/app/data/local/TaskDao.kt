@@ -492,10 +492,25 @@ abstract class TaskDao {
 
     @Transaction
     @Query("""
-        SELECT * FROM tasks 
+        SELECT * FROM tasks
         WHERE is_done = :isDone AND is_expired = :isExpired
         ORDER BY deadline DESC
         LIMIT :limit
     """)
     abstract suspend fun getRecentTasksByStatus(isDone: Boolean, isExpired: Boolean, limit: Int): List<TaskDetailComposite>
+
+    @Query("""
+        SELECT * FROM tasks
+        WHERE is_done = 0 AND deadline > :startTime AND deadline <= :endTime
+        ORDER BY deadline ASC
+    """)
+    abstract suspend fun getIncompleteTasksInRange(startTime: Long, endTime: Long): List<Task>
+
+    @Query("""
+        SELECT * FROM tasks
+        WHERE is_done = 1 AND (title LIKE '%' || :keyword || '%' OR description LIKE '%' || :keyword || '%')
+        ORDER BY completed_at DESC
+        LIMIT :limit
+    """)
+    abstract suspend fun searchCompletedTasks(keyword: String, limit: Int): List<Task>
 }

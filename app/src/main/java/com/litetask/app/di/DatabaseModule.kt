@@ -52,4 +52,9 @@ object DatabaseModule {
         return database.userLocationDao()
     }
 
+    @Provides
+    fun provideDailyScheduleAdviceDao(database: AppDatabase): com.litetask.app.data.local.DailyScheduleAdviceDao {
+        return database.dailyScheduleAdviceDao()
+    }
+
 }

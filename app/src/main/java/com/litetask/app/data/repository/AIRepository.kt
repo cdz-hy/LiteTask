@@ -2,14 +2,6 @@ package com.litetask.app.data.repository
 
 import com.litetask.app.data.model.Category
 import com.litetask.app.data.model.Task
-import com.litetask.app.data.model.TaskType
-import com.litetask.app.data.model.UserProfileEntity
-import com.litetask.app.data.model.LocationStatsEntity
-import com.litetask.app.data.model.DailyPlanEntity
-import com.litetask.app.data.model.PlanSuggestionEntity
-import com.litetask.app.data.remote.ChatCompletionRequest
-import com.litetask.app.data.remote.Message
-import com.litetask.app.data.remote.OpenAIService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -34,14 +26,6 @@ interface AIRepository {
         imageBases64: List<String>? = null,
         onProgress: (String) -> Unit = {}
     ): Result<List<String>>
-
-    suspend fun generateDailyPlan(
-        apiKey: String,
-        tasks: List<Task>,
-        userProfile: UserProfileEntity?,
-        locations: List<LocationStatsEntity>,
-        currentLocation: String?
-    ): Result<Pair<DailyPlanEntity, List<PlanSuggestionEntity>>>
 }
 
 @Singleton
@@ -291,64 +275,4 @@ class AIRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun generateDailyPlan(
-        apiKey: String,
-        tasks: List<Task>,
-        userProfile: UserProfileEntity?,
-        locations: List<LocationStatsEntity>,
-        currentLocation: String?
-    ): Result<Pair<DailyPlanEntity, List<PlanSuggestionEntity>>> {
-        return withContext(Dispatchers.IO) {
-            try {
-                // Here we optionally call provider.chatWithTools or completion based on prompt.
-                // For demonstration of the UI implementation as requested, we provide structured data 
-                val providerId = preferenceManager.getAiProvider()
-                
-                val plan = DailyPlanEntity(
-                    planDate = java.util.Calendar.getInstance().apply {
-                        set(java.util.Calendar.HOUR_OF_DAY, 0)
-                        set(java.util.Calendar.MINUTE, 0)
-                        set(java.util.Calendar.SECOND, 0)
-                        set(java.util.Calendar.MILLISECOND, 0)
-                    }.timeInMillis,
-                    planType = "SHORT_TERM",
-                    generatedAt = System.currentTimeMillis(),
-                    summary = "今日待办共有${tasks.size}项，结合您常用出行方式（${userProfile?.transportMode ?: "未设定"}）及精力状况为您做了以下安排建议。",
-                    suggestions = "[]",
-                    timeBlocks = "[]",
-                    currentLocation = currentLocation,
-                    aiModel = providerId,
-                    aiPromptHash = "v1-scheduled"
-                )
-                
-                val suggestions = mutableListOf<PlanSuggestionEntity>()
-                if (tasks.isNotEmpty()) {
-                    suggestions.add(
-                        PlanSuggestionEntity(
-                            planId = 0,
-                            suggestionType = "PRIORITY_ADJUSTMENT",
-                            title = "时间优化",
-                            content = "您是${userProfile?.personalityTraits ?: "高效执行者"}，建议早上处理重点任务：[${tasks.first().title}]",
-                            priority = 8
-                        )
-                    )
-                }
-                if (!currentLocation.isNullOrBlank()) {
-                    suggestions.add(
-                        PlanSuggestionEntity(
-                            planId = 0,
-                            suggestionType = "TRAFFIC_ALERT",
-                            title = "出行预估",
-                            content = "当前位于${currentLocation}，按照您经常使用的${userProfile?.transportMode ?: "交通工具"}前往目的地，请提前预留缓冲时间。",
-                            priority = 6
-                        )
-                    )
-                }
-
-                Result.success(Pair(plan, suggestions))
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
-        }
-    }
 }

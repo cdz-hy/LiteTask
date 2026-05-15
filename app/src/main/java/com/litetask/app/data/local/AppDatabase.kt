@@ -14,6 +14,7 @@ import com.litetask.app.data.model.TaskTypeConverter
 import com.litetask.app.data.model.TaskComponentEntity
 import com.litetask.app.data.model.UserProfileHistoryEntity
 import com.litetask.app.data.model.UserLocationEntity
+import com.litetask.app.data.model.DailyScheduleAdviceEntity
 
 @Database(
     entities = [
@@ -24,9 +25,10 @@ import com.litetask.app.data.model.UserLocationEntity
         Category::class, 
         TaskComponentEntity::class,
         UserProfileHistoryEntity::class,
-        UserLocationEntity::class
-    ], 
-    version = 6, 
+        UserLocationEntity::class,
+        DailyScheduleAdviceEntity::class
+    ],
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(TaskTypeConverter::class)
@@ -37,6 +39,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun taskComponentDao(): TaskComponentDao
     abstract fun userProfileDao(): UserProfileDao
     abstract fun userLocationDao(): UserLocationDao
+    abstract fun dailyScheduleAdviceDao(): DailyScheduleAdviceDao
     
     companion object {
         // 数据库名称必须与 DatabaseModule 中的一致
@@ -207,6 +210,27 @@ abstract class AppDatabase : RoomDatabase() {
         }
         
         /**
+         * 数据库迁移：从版本6到版本7
+         * 添加每日日程建议表
+         */
+        val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `daily_schedule_advice` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `short_term_json` TEXT NOT NULL,
+                        `long_term_json` TEXT NOT NULL,
+                        `is_read` INTEGER NOT NULL DEFAULT 0,
+                        `generation_status` TEXT NOT NULL DEFAULT 'GENERATING'
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_daily_schedule_advice_created_at` ON `daily_schedule_advice` (`created_at`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_daily_schedule_advice_generation_status` ON `daily_schedule_advice` (`generation_status`)")
+            }
+        }
+
+        /**
          * 获取数据库单例
          * 用于在 BroadcastReceiver 等无法使用 Hilt 注入的地方获取数据库实例
          */
@@ -218,7 +242,7 @@ abstract class AppDatabase : RoomDatabase() {
                         AppDatabase::class.java,
                         DATABASE_NAME
                     )
-                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)  // 添加迁移
+                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                         .fallbackToDestructiveMigration()
                         .build()
                     INSTANCE = instance
