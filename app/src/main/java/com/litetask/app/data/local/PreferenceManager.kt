@@ -34,7 +34,9 @@ class PreferenceManager @Inject constructor(
         // AI 相关
         private const val KEY_API_KEY = "api_key"
         private const val KEY_AI_PROVIDER = "ai_provider"
-        const val DEFAULT_AI_PROVIDER = "deepseek-v3.2"
+        private const val KEY_AI_MODEL = "ai_model"
+        const val DEFAULT_AI_PROVIDER = "deepseek"
+        const val DEFAULT_AI_MODEL = "deepseek-chat"
         
         // 语音识别相关
         private const val KEY_SPEECH_PROVIDER = "speech_provider"
@@ -81,6 +83,58 @@ class PreferenceManager @Inject constructor(
     
     fun saveAiProvider(provider: String) {
         prefs.edit().putString(KEY_AI_PROVIDER, provider).apply()
+    }
+
+    fun getAiModel(): String {
+        return prefs.getString(KEY_AI_MODEL, DEFAULT_AI_MODEL) ?: DEFAULT_AI_MODEL
+    }
+
+    fun saveAiModel(model: String) {
+        prefs.edit().putString(KEY_AI_MODEL, model).apply()
+    }
+    
+    // ========== 动态获取的模型 ==========
+    fun saveFetchedModels(providerId: String, models: List<Pair<String, String>>) {
+        val jsonArray = org.json.JSONArray()
+        models.forEach { (id, name) ->
+            val obj = org.json.JSONObject()
+            obj.put("id", id)
+            obj.put("name", name)
+            jsonArray.put(obj)
+        }
+        prefs.edit().putString("fetched_models_$providerId", jsonArray.toString()).apply()
+    }
+    
+    fun clearFetchedModels(providerId: String) {
+        prefs.edit().remove("fetched_models_$providerId").apply()
+    }
+
+    fun getFetchedModels(providerId: String): List<Pair<String, String>>? {
+        val jsonStr = prefs.getString("fetched_models_$providerId", null) ?: return null
+        try {
+            val jsonArray = org.json.JSONArray(jsonStr)
+            val models = mutableListOf<Pair<String, String>>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                models.add(obj.getString("id") to obj.getString("name"))
+            }
+            return models
+        } catch (e: Exception) {
+            return null
+        }
+    }
+    
+    // ========== 自定义模型 ==========
+    fun saveCustomModel(providerId: String, modelId: String?) {
+        if (modelId == null) {
+            prefs.edit().remove("custom_model_$providerId").apply()
+        } else {
+            prefs.edit().putString("custom_model_$providerId", modelId).apply()
+        }
+    }
+
+    fun getCustomModel(providerId: String): String? {
+        return prefs.getString("custom_model_$providerId", null)
     }
     
     // ========== AI 智能目的地 ==========

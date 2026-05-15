@@ -15,14 +15,14 @@ interface AIProvider {
      * @param categories 可用的分类列表
      * @return 解析出的任务列表
      */
-    suspend fun parseTasksFromText(apiKey: String, text: String, categories: List<Category>): Result<List<Task>>
+    suspend fun parseTasksFromText(apiKey: String, model: String, text: String, categories: List<Category>, imageBases64: List<String>? = null): Result<List<Task>>
 
     /**
-     * 测试 API 连通性
+     * 测试 API 连通性并获取模型列表
      * @param apiKey API 密钥
-     * @return true 表示连接成功，false 表示失败
+     * @return 成功时返回模型列表
      */
-    suspend fun testConnection(apiKey: String): Result<Boolean>
+    suspend fun testConnection(apiKey: String, model: String): Result<List<Pair<String, String>>>
     
     /**
      * 获取提供商名称
@@ -34,6 +34,7 @@ interface AIProvider {
      */
     suspend fun chatWithTools(
         apiKey: String,
+        model: String,
         messages: org.json.JSONArray,
         tools: org.json.JSONArray? = null
     ): Result<org.json.JSONObject>
@@ -43,7 +44,9 @@ interface AIProvider {
      */
     suspend fun generateSubTasks(
         apiKey: String,
+        model: String,
         task: Task,
-        additionalContext: String = ""
+        additionalContext: String = "",
+        imageBases64: List<String>? = null
     ): Result<List<String>>
 }

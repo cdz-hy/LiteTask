@@ -245,8 +245,13 @@ fun LiteTaskTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
+            val insetsController = WindowCompat.getInsetsController(window, view)
+            // 状态栏
             window.statusBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            insetsController.isAppearanceLightStatusBars = !darkTheme
+            // 导航栏 — 与当前主题背景色一致，实现沉浸式效果
+            window.navigationBarColor = colorScheme.background.toArgb()
+            insetsController.isAppearanceLightNavigationBars = !darkTheme
         }
     }
 

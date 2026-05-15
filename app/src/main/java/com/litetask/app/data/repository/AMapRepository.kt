@@ -128,7 +128,7 @@ class AMapRepository @Inject constructor(
      * @param location 中心点 "lng,lat"
      * @param radius 半径 (米)，默认 5000
      */
-    suspend fun searchNearby(keyword: String, location: String, radius: Int = 5000): List<AMapRouteData> = withContext(Dispatchers.IO) {
+    suspend fun searchNearby(keyword: String, location: String, radius: Int = 50000): List<AMapPoiResult> = withContext(Dispatchers.IO) {
         val key = preferenceManager.getAMapKey()
         if (key.isNullOrBlank() || keyword.isBlank() || location.isBlank()) return@withContext emptyList()
 
@@ -140,7 +140,7 @@ class AMapRepository @Inject constructor(
 
             if (json.optString("status") == "1") {
                 val pois = json.optJSONArray("pois") ?: return@withContext emptyList()
-                val result = mutableListOf<AMapRouteData>()
+                val result = mutableListOf<AMapPoiResult>()
 
                 for (i in 0 until pois.length()) {
                     val poi = pois.getJSONObject(i)
@@ -149,13 +149,14 @@ class AMapRepository @Inject constructor(
 
                     val parts = locStr.split(",")
                     if (parts.size == 2) {
-                        result.add(AMapRouteData(
-                            startName = "我的位置",
-                            endName = poi.optString("name"),
-                            endAddress = poi.optString("address"),
-                            endLng = parts[0].toDoubleOrNull() ?: 0.0,
-                            endLat = parts[1].toDoubleOrNull() ?: 0.0,
-                            adcode = poi.optString("adcode")
+                        result.add(AMapPoiResult(
+                            name = poi.optString("name"),
+                            address = poi.optString("address", ""), // 避免数组为空的问题
+                            lng = parts[0].toDoubleOrNull() ?: 0.0,
+                            lat = parts[1].toDoubleOrNull() ?: 0.0,
+                            adcode = poi.optString("adcode"),
+                            type = poi.optString("type"),
+                            distance = poi.optString("distance").toIntOrNull()
                         ))
                     }
                 }
@@ -168,6 +169,61 @@ class AMapRepository @Inject constructor(
         return@withContext emptyList()
     }
 
+    /**
+     * 路线规划
+     * @param mode 模式: driving, walking, bicycling, transit
+     * @return Pair(耗时秒数, 距离米数) 或 null
+     */
+    suspend fun calculateRoute(
+        originLng: Double, 
+        originLat: Double, 
+        destLng: Double, 
+        destLat: Double,
+        mode: String = "driving"
+    ): Pair<Int, Int>? = withContext(Dispatchers.IO) {
+        val key = preferenceManager.getAMapKey()
+        if (key.isNullOrBlank()) return@withContext null
+
+        try {
+            val origin = "$originLng,$originLat"
+            val dest = "$destLng,$destLat"
+            
+            val apiType = when(mode.lowercase()) {
+                "walking" -> "walking"
+                "bicycling" -> "bicycling"
+                "transit" -> "transit/integrated"
+                else -> "driving"
+            }
+            
+            val urlString = "https://restapi.amap.com/v3/direction/$apiType?origin=$origin&destination=$dest&key=$key"
+            val response = makeGetRequest(urlString) ?: return@withContext null
+            val json = JSONObject(response)
+
+            if (json.optString("status") == "1") {
+                val route = json.optJSONObject("route")
+                val paths = route?.optJSONArray("paths")
+                if (paths != null && paths.length() > 0) {
+                    val path = paths.getJSONObject(0)
+                    val duration = path.optString("duration", "0").toIntOrNull() ?: 0
+                    val distance = path.optString("distance", "0").toIntOrNull() ?: 0
+                    return@withContext Pair(duration, distance)
+                } else if (mode == "transit") {
+                    // 公交模式结构略有不同
+                    val transits = route?.optJSONArray("transits")
+                    if (transits != null && transits.length() > 0) {
+                        val transit = transits.getJSONObject(0)
+                        val duration = transit.optString("duration", "0").toIntOrNull() ?: 0
+                        val distance = transit.optString("distance", "0").toIntOrNull() ?: 0
+                        return@withContext Pair(duration, distance)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext null
+    }
+
     private fun makeGetRequest(urlString: String): String? {
         return try {
             val url = URL(urlString)
@@ -175,7 +231,7 @@ class AMapRepository @Inject constructor(
             connection.requestMethod = "GET"
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
-            
+
             if (connection.responseCode == 200) {
                 connection.inputStream.bufferedReader().use { it.readText() }
             } else {
@@ -187,3 +243,13 @@ class AMapRepository @Inject constructor(
         }
     }
 }
+
+data class AMapPoiResult(
+    val name: String,
+    val address: String?,
+    val lng: Double,
+    val lat: Double,
+    val adcode: String?,
+    val type: String?,
+    val distance: Int?
+)

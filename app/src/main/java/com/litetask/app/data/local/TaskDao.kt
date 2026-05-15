@@ -127,6 +127,9 @@ abstract class TaskDao {
 
     @Query("DELETE FROM sub_tasks WHERE task_id = :taskId")
     abstract suspend fun deleteSubTasksByTaskId(taskId: Long)
+    
+    @Query("SELECT * FROM sub_tasks")
+    abstract suspend fun getAllSubTasks(): List<SubTask>
 
     @Transaction
     open suspend fun updateTaskWithSubTasks(task: Task, subTasks: List<SubTask>) {
@@ -489,10 +492,25 @@ abstract class TaskDao {
 
     @Transaction
     @Query("""
-        SELECT * FROM tasks 
+        SELECT * FROM tasks
         WHERE is_done = :isDone AND is_expired = :isExpired
         ORDER BY deadline DESC
         LIMIT :limit
     """)
     abstract suspend fun getRecentTasksByStatus(isDone: Boolean, isExpired: Boolean, limit: Int): List<TaskDetailComposite>
+
+    @Query("""
+        SELECT * FROM tasks
+        WHERE is_done = 0 AND deadline > :startTime AND deadline <= :endTime
+        ORDER BY deadline ASC
+    """)
+    abstract suspend fun getIncompleteTasksInRange(startTime: Long, endTime: Long): List<Task>
+
+    @Query("""
+        SELECT * FROM tasks
+        WHERE is_done = 1 AND (title LIKE '%' || :keyword || '%' OR description LIKE '%' || :keyword || '%')
+        ORDER BY completed_at DESC
+        LIMIT :limit
+    """)
+    abstract suspend fun searchCompletedTasks(keyword: String, limit: Int): List<Task>
 }

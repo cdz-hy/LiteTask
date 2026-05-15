@@ -12,13 +12,34 @@ import com.litetask.app.data.model.AIHistory
 import com.litetask.app.data.model.Category
 import com.litetask.app.data.model.TaskTypeConverter
 import com.litetask.app.data.model.TaskComponentEntity
-@Database(entities = [Task::class, SubTask::class, Reminder::class, AIHistory::class, Category::class, TaskComponentEntity::class], version = 5, exportSchema = false)
+import com.litetask.app.data.model.UserProfileHistoryEntity
+import com.litetask.app.data.model.UserLocationEntity
+import com.litetask.app.data.model.DailyScheduleAdviceEntity
+
+@Database(
+    entities = [
+        Task::class, 
+        SubTask::class, 
+        Reminder::class, 
+        AIHistory::class, 
+        Category::class, 
+        TaskComponentEntity::class,
+        UserProfileHistoryEntity::class,
+        UserLocationEntity::class,
+        DailyScheduleAdviceEntity::class
+    ],
+    version = 7,
+    exportSchema = false
+)
 @TypeConverters(TaskTypeConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun aiHistoryDao(): AIHistoryDao
     abstract fun categoryDao(): CategoryDao
     abstract fun taskComponentDao(): TaskComponentDao
+    abstract fun userProfileDao(): UserProfileDao
+    abstract fun userLocationDao(): UserLocationDao
+    abstract fun dailyScheduleAdviceDao(): DailyScheduleAdviceDao
     
     companion object {
         // 数据库名称必须与 DatabaseModule 中的一致
@@ -32,27 +53,27 @@ abstract class AppDatabase : RoomDatabase() {
          * 添加新的任务状态字段
          */
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
-            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 // 添加过期状态字段
-                database.execSQL("ALTER TABLE tasks ADD COLUMN is_expired INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE tasks ADD COLUMN is_expired INTEGER NOT NULL DEFAULT 0")
                 
                 // 添加过期时间字段
-                database.execSQL("ALTER TABLE tasks ADD COLUMN expired_at INTEGER")
+                db.execSQL("ALTER TABLE tasks ADD COLUMN expired_at INTEGER")
                 
                 // 添加任务创建时间字段（使用start_time作为默认值）
-                database.execSQL("ALTER TABLE tasks ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0")
-                database.execSQL("UPDATE tasks SET created_at = start_time WHERE created_at = 0")
+                db.execSQL("ALTER TABLE tasks ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE tasks SET created_at = start_time WHERE created_at = 0")
                 
                 // 添加任务完成时间字段
-                database.execSQL("ALTER TABLE tasks ADD COLUMN completed_at INTEGER")
+                db.execSQL("ALTER TABLE tasks ADD COLUMN completed_at INTEGER")
                 
                 // 为新字段添加索引
-                database.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_is_expired ON tasks(is_expired)")
-                database.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_created_at ON tasks(created_at)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_is_expired ON tasks(is_expired)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_tasks_created_at ON tasks(created_at)")
                 
                 // 将当前已过期但未完成的任务标记为过期状态
                 val currentTime = System.currentTimeMillis()
-                database.execSQL("""
+                db.execSQL("""
                     UPDATE tasks SET 
                         is_expired = 1,
                         expired_at = $currentTime
@@ -68,8 +89,8 @@ abstract class AppDatabase : RoomDatabase() {
          * 添加 AI 分析历史表
          */
         val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
-            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
-                database.execSQL("""
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `ai_history` (
                         `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
                         `content` TEXT NOT NULL, 
@@ -79,7 +100,7 @@ abstract class AppDatabase : RoomDatabase() {
                         `is_success` INTEGER NOT NULL DEFAULT 1
                     )
                 """.trimIndent())
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_history_timestamp` ON `ai_history` (`timestamp`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_history_timestamp` ON `ai_history` (`timestamp`)")
             }
         }
 
@@ -88,9 +109,9 @@ abstract class AppDatabase : RoomDatabase() {
          * 引入 Category 表，迁移 TaskType
          */
         val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
-            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 // 1. 创建 categories 表
-                database.execSQL("""
+                db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `categories` (
                         `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
                         `name` TEXT NOT NULL, 
@@ -102,26 +123,26 @@ abstract class AppDatabase : RoomDatabase() {
 
                 // 2. 插入默认分类
                 // WORK: #0B57D0 (蓝色)
-                database.execSQL("INSERT INTO categories (id, name, color_hex, is_default) VALUES (1, '工作', '#0B57D0', 1)")
+                db.execSQL("INSERT INTO categories (id, name, color_hex, is_default) VALUES (1, '工作', '#0B57D0', 1)")
                 // LIFE: #146C2E (绿色)
-                database.execSQL("INSERT INTO categories (id, name, color_hex, is_default) VALUES (2, '生活', '#146C2E', 1)")
+                db.execSQL("INSERT INTO categories (id, name, color_hex, is_default) VALUES (2, '生活', '#146C2E', 1)")
                 // STUDY: #65558F (紫色)
-                database.execSQL("INSERT INTO categories (id, name, color_hex, is_default) VALUES (3, '学习', '#65558F', 1)")
+                db.execSQL("INSERT INTO categories (id, name, color_hex, is_default) VALUES (3, '学习', '#65558F', 1)")
                 // URGENT: #B3261E (红色)
-                database.execSQL("INSERT INTO categories (id, name, color_hex, is_default) VALUES (4, '紧急', '#B3261E', 1)")
+                db.execSQL("INSERT INTO categories (id, name, color_hex, is_default) VALUES (4, '紧急', '#B3261E', 1)")
 
                 // 3. 为 tasks 表添加 category_id 列，默认为 1 (工作)
                 // 注意：这里必须指定 DEFAULT 值，否则现有数据会报错
-                database.execSQL("ALTER TABLE tasks ADD COLUMN category_id INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE tasks ADD COLUMN category_id INTEGER NOT NULL DEFAULT 1")
                 
                 // 4. 根据旧的 type 字段更新 category_id
-                database.execSQL("UPDATE tasks SET category_id = 1 WHERE type = 'WORK'")
-                database.execSQL("UPDATE tasks SET category_id = 2 WHERE type = 'LIFE'")
-                database.execSQL("UPDATE tasks SET category_id = 3 WHERE type = 'STUDY'")
-                database.execSQL("UPDATE tasks SET category_id = 4 WHERE type = 'URGENT'")
+                db.execSQL("UPDATE tasks SET category_id = 1 WHERE type = 'WORK'")
+                db.execSQL("UPDATE tasks SET category_id = 2 WHERE type = 'LIFE'")
+                db.execSQL("UPDATE tasks SET category_id = 3 WHERE type = 'STUDY'")
+                db.execSQL("UPDATE tasks SET category_id = 4 WHERE type = 'URGENT'")
                 
                 // 5. 为 category_id 创建索引
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_tasks_category_id` ON `tasks` (`category_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_tasks_category_id` ON `tasks` (`category_id`)")
             }
         }
         
@@ -130,8 +151,8 @@ abstract class AppDatabase : RoomDatabase() {
          * 添加任务组件表 (TaskComponent)
          */
         val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
-            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
-                database.execSQL("""
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `task_components` (
                         `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
                         `task_id` INTEGER NOT NULL, 
@@ -141,10 +162,74 @@ abstract class AppDatabase : RoomDatabase() {
                         FOREIGN KEY(`task_id`) REFERENCES `tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
                     )
                 """.trimIndent())
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_task_components_task_id` ON `task_components` (`task_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_task_components_task_id` ON `task_components` (`task_id`)")
             }
         }
         
+        /**
+         * 数据库迁移：从版本5到版本6
+         * v6版本重构：剥离日程功能，添加核心画像快照表与物理空间映射表
+         * 采用 Append-Only 模式记录每一次生成的画像结果
+         */
+        val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // 1. 画像快照历史表
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `user_profile_history` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `completion_rate` REAL NOT NULL,
+                        `delayed_rate` REAL NOT NULL,
+                        `input_preference` TEXT,
+                        `category_focus` TEXT,
+                        `identity` TEXT,
+                        `industry` TEXT,
+                        `travel_preference` TEXT,
+                        `delay_index` INTEGER NOT NULL,
+                        `plan_ability` INTEGER NOT NULL,
+                        `stress_level` INTEGER NOT NULL,
+                        `execution_rhythm` TEXT,
+                        `ai_tone` TEXT,
+                        `personality` TEXT
+                    )
+                """.trimIndent())
+                
+                // 2. 物理空间映射表
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `user_locations` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `latitude` REAL NOT NULL,
+                        `longitude` REAL NOT NULL,
+                        `origin_count` INTEGER NOT NULL DEFAULT 0,
+                        `destination_count` INTEGER NOT NULL DEFAULT 0,
+                        `last_visited_at` INTEGER NOT NULL
+                    )
+                """.trimIndent())
+            }
+        }
+        
+        /**
+         * 数据库迁移：从版本6到版本7
+         * 添加每日日程建议表
+         */
+        val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `daily_schedule_advice` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `short_term_json` TEXT NOT NULL,
+                        `long_term_json` TEXT NOT NULL,
+                        `is_read` INTEGER NOT NULL DEFAULT 0,
+                        `generation_status` TEXT NOT NULL DEFAULT 'GENERATING'
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_daily_schedule_advice_created_at` ON `daily_schedule_advice` (`created_at`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_daily_schedule_advice_generation_status` ON `daily_schedule_advice` (`generation_status`)")
+            }
+        }
+
         /**
          * 获取数据库单例
          * 用于在 BroadcastReceiver 等无法使用 Hilt 注入的地方获取数据库实例
@@ -157,7 +242,7 @@ abstract class AppDatabase : RoomDatabase() {
                         AppDatabase::class.java,
                         DATABASE_NAME
                     )
-                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)  // 添加迁移
+                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                         .fallbackToDestructiveMigration()
                         .build()
                     INSTANCE = instance

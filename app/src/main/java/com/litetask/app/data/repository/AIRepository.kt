@@ -2,12 +2,12 @@ package com.litetask.app.data.repository
 
 import com.litetask.app.data.model.Category
 import com.litetask.app.data.model.Task
-import com.litetask.app.data.model.TaskType
-import com.litetask.app.data.remote.ChatCompletionRequest
-import com.litetask.app.data.remote.Message
-import com.litetask.app.data.remote.OpenAIService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -20,12 +20,14 @@ interface AIRepository {
     suspend fun parseTasksFromText(
         apiKey: String, 
         text: String,
+        imageBases64: List<String>? = null,
         onProgress: (String) -> Unit = {}
     ): Result<List<Task>>
 
     suspend fun generateSubTasks(
         task: Task,
         additionalContext: String = "",
+        imageBases64: List<String>? = null,
         onProgress: (String) -> Unit = {}
     ): Result<List<String>>
 }
@@ -36,12 +38,14 @@ class AIRepositoryImpl @Inject constructor(
     private val aiProviderFactory: com.litetask.app.data.ai.AIProviderFactory,
     private val categoryRepository: CategoryRepository,
     private val taskRepository: TaskRepositoryImpl,
-    private val agentAssistant: com.litetask.app.data.ai.AIAgentAssistant
+    private val agentAssistant: com.litetask.app.data.ai.AIAgentAssistant,
+    private val locationTracker: LocationTracker
 ) : AIRepository {
 
     override suspend fun parseTasksFromText(
         apiKey: String, 
         text: String,
+        imageBases64: List<String>?,
         onProgress: (String) -> Unit
     ): Result<List<Task>> {
         val finalKey = if (apiKey.isNotBlank() && apiKey != "DEMO_KEY") {
@@ -55,6 +59,7 @@ class AIRepositoryImpl @Inject constructor(
         }
         
         val providerId = preferenceManager.getAiProvider()
+        val modelId = preferenceManager.getAiModel()
         val categories = categoryRepository.getAllCategoriesSync()
         val provider = aiProviderFactory.getProvider(providerId)
 
@@ -62,11 +67,13 @@ class AIRepositoryImpl @Inject constructor(
             try {
                 if (preferenceManager.isAiAgentEnabled()) {
                     onProgress("准备启动 Agent 模式...")
-                    runAgentProcess(provider, finalKey, text, categories, onProgress)
+                    runAgentProcess(provider, finalKey, modelId, text, categories, imageBases64, onProgress)
                 } else {
                     onProgress("AI 正在分析任务内容...")
-                    provider.parseTasksFromText(finalKey, text, categories)
+                    provider.parseTasksFromText(finalKey, modelId, text, categories, imageBases64)
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(Exception("AI 解析失败: ${e.message}", e))
             }
@@ -76,8 +83,10 @@ class AIRepositoryImpl @Inject constructor(
     private suspend fun runAgentProcess(
         provider: com.litetask.app.data.ai.AIProvider,
         apiKey: String,
+        modelId: String,
         text: String,
         categories: List<Category>,
+        imageBases64: List<String>?,
         onProgress: (String) -> Unit
     ): Result<List<Task>> {
         val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
@@ -86,85 +95,141 @@ class AIRepositoryImpl @Inject constructor(
         val defaultCategory = categories.firstOrNull { it.isDefault }?.name ?: "工作"
 
         val systemPrompt = """
-            # Role: LiteTask 智能日程核心 Agent
-            # Context: Current Time = ${currentDate}
+            # Role: LiteTask 核心 Agent (Now: ${currentDate})
             
-            # Logic & Rules (MUST FOLLOW):
-            1. **分类 (Categories)**: 
-               - 必须严格从以下列表中选择一个：[$categoryPrompt]。
-               - 严禁创造新分类。如果不确定，请使用默认分类：$defaultCategory。
-            2. **时间处理 (Time Precision)**:
-               - 必须将“明天”、“下周”、“下午三点”等所有相对/模糊时间转换为 yyyy-MM-dd HH:mm 格式。
-               - **严禁**直接返回用户原话。必须基于 context 里的 $currentDate 进行偏移计算。
-               - 如果用户只说了一个点（如“下午3点”），通常设为 `endTime`，`startTime` 为当前。
-            3. **修改与干预 (Modification)**:
-               - 必须先调用 `search_tasks` 获取真实 ID。
-               - **核心要求**: 若用户未明确要求修改某项属性，必须**保留**工具返回的原始值。
-            4. **地理位置决策 (Location Intelligence)**:
-               - **模糊地址辨析**: “菜鸟驿站”、“超市”、“银行”、“药店”等通称必须视为**模糊地址**。
-               - **干预流程**: 识别到模糊地址 -> 调用 `search_nearby_location` -> 将结果填入 `destination`。
-               - **确切地址**: “XX大学”等专有名词直接填入，无需搜周边。
-            5. **新增任务**: 新增任务 ID 设为 0。最终 JSON 前需一句话概述行动。
+            # Logic & Rules:
+            1. **分类**: 严禁自创，必须选一：[$categoryPrompt] (默认: $defaultCategory)。
+            2. **时间**: 必须解析相对时间为 yyyy-MM-dd HH:mm。禁直接复读用户原话。
+            3. **查询与修改**: 
+               - 必须先通过 `search_tasks` 或 `get_recent_tasks` 定位 ID（仅返回简报）。
+               - **Token 优化**: 简报不含描述。若必须了解任务详情（如对比描述或确认具体内容），必须调用 `get_task_details`。未变属性须保留原值。
+            4. **地理位置**: 仅在任务内容确实包含位移语义（如“去”、“在”、“到”、“附近”）时调用 `get_user_location` 或 `search_nearby_location`。严禁在解析常规静态任务（如“写文档”、“开会”）时盲目调用位置工具。
+               - 多个模糊地址时可多次(或并发)调用 `search_nearby_location`。
+               - 分析候选列表类型及距离是否合理；若不符或为空，尝试增大 `radius` 重搜。
+               - 若多次不中，直接将地名填入 `destination`。确认后填入。
+            5. **极简调用**: 严禁无目的调用工具。如果当前已有足够信息支持解析，不要为了查询而查询。
+            6. **新增**: ID=0。回复前一句话概述行动，后跟 JSON 数组。
             
-            # JSON Schema (Final Response):
-            必须先用一句话概述你的操作理由，然后紧跟 JSON 数组。
+            # JSON Schema:
+            概述行动...
             [{"id": 123, "title": "...", "startTime": "yyyy-MM-dd HH:mm", "endTime": "yyyy-MM-dd HH:mm", "type": "分类名", "description": "...", "destination": "..."}]
         """.trimIndent()
 
         val messages = JSONArray().apply {
             put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
-            put(JSONObject().apply { put("role", "user"); put("content", text) })
+            put(JSONObject().apply {
+                put("role", "user")
+                if (!imageBases64.isNullOrEmpty()) {
+                    put("content", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("type", "text")
+                            put("text", text)
+                        })
+                        imageBases64.forEach { base64 ->
+                            put(JSONObject().apply {
+                                put("type", "image_url")
+                                put("image_url", JSONObject().apply {
+                                    put("url", "data:image/jpeg;base64,$base64")
+                                })
+                            })
+                        }
+                    })
+                } else {
+                    put("content", text)
+                }
+            })
         }
 
         val tools = agentAssistant.getToolsSchema()
         var retryCount = 0
         
+        // 用于追踪出发地信息
+        var currentOriginLng: Double? = null
+        var currentOriginLat: Double? = null
+        var currentOriginName: String? = null
+        
         onProgress("Agent 正在深度思考中...")
 
-        while (retryCount < 5) {
-            val response = provider.chatWithTools(apiKey, messages, tools)
+        while (retryCount < 10) {
+            val response = provider.chatWithTools(apiKey, modelId, messages, tools)
             if (response.isFailure) return Result.failure(response.exceptionOrNull()!!)
             
             val choice = response.getOrNull()?.getJSONArray("choices")?.getJSONObject(0)
             val message = choice?.getJSONObject("message") ?: break
             
-            if (message.has("tool_calls")) {
+            if (message.has("tool_calls") && !message.isNull("tool_calls")) {
                 messages.put(message) // 把 AI 的回复存入历史
                 
-                // 展示 AI 的前置思考
-                val reasoning = message.optString("content")
+                // 展示 AI 的前置思考：优先尝试 reasoning_content 字段（某些模型如 MiMo, DeepSeek R1 会把思考过程放这里）
+                val reasoning = if (message.has("reasoning_content") && !message.isNull("reasoning_content")) {
+                    message.optString("reasoning_content")
+                } else {
+                    message.optString("content")
+                }
+                
                 if (reasoning.isNotBlank()) {
                     onProgress(reasoning)
                 }
 
                 val toolCalls = message.getJSONArray("tool_calls")
-                
-                for (i in 0 until toolCalls.length()) {
-                    val call = toolCalls.getJSONObject(i)
-                    val function = call.getJSONObject("function")
-                    val name = function.getString("name")
-                    val arguments = JSONObject(function.getString("arguments"))
-                    
-                    val progressMsg = when(name) {
-                        "get_recent_tasks" -> "正在查阅您的最近任务列表..."
-                        "search_tasks" -> "正在搜索关键词: ${arguments.optString("keyword")}..."
-                        "get_categories" -> "正在同步任务分类配置..."
-                        "get_user_location" -> "正在获取您的当前位置..."
-                        "search_nearby_location" -> "正在搜索附近的 ${arguments.optString("keyword")}..."
-                        else -> "正在调用工具: $name..."
+                val originMutex = Mutex()
+
+                // 并行执行所有工具调用
+                coroutineScope {
+                    val jobs = (0 until toolCalls.length()).map { i ->
+                        val call = toolCalls.getJSONObject(i)
+                        val function = call.getJSONObject("function")
+                        val name = function.getString("name")
+                        val arguments = JSONObject(function.getString("arguments"))
+                        val callId = call.getString("id")
+
+                        val progressMsg = when(name) {
+                            "get_recent_tasks" -> "正在查阅您的最近任务列表..."
+                            "search_tasks" -> "正在检索相关任务简报..."
+                            "get_task_details" -> "正在获取任务的具体详情..."
+                            "get_categories" -> "正在同步任务分类配置..."
+                            "get_user_location" -> "正在获取您的当前位置..."
+                            "search_nearby_location" -> "正在搜索附近的 ${arguments.optString("keyword")}..."
+                            else -> "正在调用工具: $name..."
+                        }
+                        onProgress(progressMsg)
+
+                        async {
+                            val result = agentAssistant.handleToolCall(name, arguments)
+
+                            // 如果是获取用户位置，进行逆地理编码并保存出发地（线程安全）
+                            if (name == "get_user_location" && result.contains(",")) {
+                                originMutex.withLock {
+                                    try {
+                                        val coords = result.split(",")
+                                        if (coords.size == 2) {
+                                            val lng = coords[0].toDoubleOrNull()
+                                            val lat = coords[1].toDoubleOrNull()
+                                            if (lng != null && lat != null) {
+                                                currentOriginLng = lng
+                                                currentOriginLat = lat
+                                                currentOriginName = locationTracker.reverseGeocode(lng, lat)
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            }
+
+                            Pair(callId, result)
+                        }
                     }
-                    onProgress(progressMsg)
-                    
-                    val result = agentAssistant.handleToolCall(name, arguments)
-                    
-                    messages.put(JSONObject().apply {
-                        put("role", "tool")
-                        put("tool_call_id", call.getString("id"))
-                        put("content", result)
-                    })
+                    // 等待全部完成，收集结果
+                    jobs.forEach { deferred ->
+                        val (callId, result) = deferred.await()
+                        messages.put(JSONObject().apply {
+                            put("role", "tool")
+                            put("tool_call_id", callId)
+                            put("content", result)
+                        })
+                    }
                 }
-                // onProgress("正在整理资料进行思考...")
-                // 移除"正在整理资料进行思考..."，让用户看到最后一个工具调用的消息
                 retryCount++
             } else {
                 // 没有 tool_calls，说明是最终回答
@@ -172,6 +237,28 @@ class AIRepositoryImpl @Inject constructor(
                 // 移除"分析完成，正在生成最终建议..."，直接解析结果
                 val finalContent = message.getString("content")
                 val tasks = agentAssistant.parseAgentOutput(finalContent, text, categories)
+                
+                // 保存出发地数据（如果获取到了位置信息）
+                val savedLng = currentOriginLng
+                val savedLat = currentOriginLat
+                val savedName = currentOriginName
+                if (savedLng != null && savedLat != null && !savedName.isNullOrBlank()) {
+                    try {
+                        locationTracker.saveOriginLocation(savedName, savedLng, savedLat)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                
+                // 保存目的地数据（只保存 Agent 最终确定的目的地）
+                if (tasks.isNotEmpty()) {
+                    try {
+                        locationTracker.saveDestinationFromTasks(tasks)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                
                 return Result.success(tasks)
             }
         }
@@ -182,6 +269,7 @@ class AIRepositoryImpl @Inject constructor(
     override suspend fun generateSubTasks(
         task: Task,
         additionalContext: String,
+        imageBases64: List<String>?,
         onProgress: (String) -> Unit
     ): Result<List<String>> {
         val apiKey = preferenceManager.getApiKey()
@@ -190,15 +278,19 @@ class AIRepositoryImpl @Inject constructor(
         }
 
         val providerId = preferenceManager.getAiProvider()
+        val modelId = preferenceManager.getAiModel()
         val provider = aiProviderFactory.getProvider(providerId)
 
         return withContext(Dispatchers.IO) {
             try {
                 onProgress("AI 正在根据您的要求拆解子任务...")
-                provider.generateSubTasks(apiKey, task, additionalContext)
+                provider.generateSubTasks(apiKey, modelId, task, additionalContext, imageBases64)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(Exception("子任务生成失败: ${e.message}", e))
             }
         }
     }
+
 }

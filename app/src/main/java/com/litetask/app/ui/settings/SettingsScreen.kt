@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,22 +34,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.TouchApp
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -71,7 +66,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.ViewTimeline
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.DateRange
@@ -125,22 +119,38 @@ import com.litetask.app.reminder.PermissionHelper
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onSave: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    
+    // 防抖状态
+    var isNavigating by remember { mutableStateOf(false) }
     
     // ========== 加载状态 ==========
     var isDataLoaded by remember { mutableStateOf(false) }
     
     // ========== AI 配置状态 ==========
     var apiKey by remember { mutableStateOf("") }
-    var selectedAiProvider by remember { mutableStateOf("deepseek-v3.2") }
+    var selectedAiProvider by remember { mutableStateOf("deepseek") }
+    var selectedAiModel by remember { mutableStateOf("deepseek-chat") }
     var aiProviderExpanded by remember { mutableStateOf(false) }
+    var aiModelExpanded by remember { mutableStateOf(false) }
+    var showCustomModelDialog by remember { mutableStateOf(false) }
+    var customModelInput by remember { mutableStateOf("") }
     val aiConnectionState by viewModel.aiConnectionState.collectAsState()
+    // 触发模型列表刷新的状态
+    var modelsRefreshTrigger by remember { mutableStateOf(0) }
     
-    val aiProviders = listOf("deepseek-v3.2" to "DeepSeek V3.2")
+    // 当连接测试成功时，重新加载模型列表（可能拉取到了新模型）
+    LaunchedEffect(aiConnectionState) {
+        if (aiConnectionState is SettingsViewModel.ConnectionState.Success) {
+            modelsRefreshTrigger++
+        }
+    }
+
+    val aiProviders = viewModel.getSupportedAiProviders()
+    val aiModels = remember(selectedAiProvider, modelsRefreshTrigger) { viewModel.getSupportedAiModels(selectedAiProvider) }
     
     // ========== 语音识别配置状态 ==========
     var selectedSpeechProvider by remember { mutableStateOf("xunfei-rtasr") }
@@ -168,6 +178,7 @@ fun SettingsScreen(
     LaunchedEffect(Unit) {
         apiKey = viewModel.getApiKey() ?: ""
         selectedAiProvider = viewModel.getAiProvider()
+        selectedAiModel = viewModel.getAiModel()
         selectedSpeechProvider = viewModel.getSpeechProvider()
         selectedSpeechProvider = viewModel.getSpeechProvider()
         amapKey = viewModel.getAMapKey() ?: ""
@@ -191,10 +202,18 @@ fun SettingsScreen(
         viewModel.resetSpeechConnectionState()
     }
 
-    // 当 AI Key 改变时，重置测试状态
-    LaunchedEffect(apiKey, selectedAiProvider) {
+    // 当 AI Key 或 Provider/Model 改变时，重置测试状态
+    LaunchedEffect(apiKey, selectedAiProvider, selectedAiModel) {
         if (aiConnectionState !is SettingsViewModel.ConnectionState.Idle) {
             viewModel.resetConnectionState()
+        }
+    }
+
+    // 当 Provider 改变时，如果当前选中的模型不在新提供商支持列表中，则默认选中第一个
+    LaunchedEffect(selectedAiProvider) {
+        val models = viewModel.getSupportedAiModels(selectedAiProvider)
+        if (models.none { it.first == selectedAiModel }) {
+            selectedAiModel = models.firstOrNull()?.first ?: ""
         }
     }
 
@@ -210,8 +229,16 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.settings)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
+                    IconButton(
+                        onClick = {
+                            if (!isNavigating) {
+                                isNavigating = true
+                                onBack()
+                            }
+                        },
+                        enabled = !isNavigating
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 }
             )
@@ -267,6 +294,84 @@ fun SettingsScreen(
                 }
                 
                 Spacer(modifier = Modifier.height(12.dp))
+
+                // AI 模型选择
+                ExposedDropdownMenuBox(
+                    expanded = aiModelExpanded,
+                    onExpandedChange = { aiModelExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = aiModels.find { it.first == selectedAiModel }?.second ?: selectedAiModel,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("AI 模型") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = aiModelExpanded) },
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    
+                    ExposedDropdownMenu(
+                        expanded = aiModelExpanded,
+                        onDismissRequest = { aiModelExpanded = false },
+                        modifier = Modifier.heightIn(max = 320.dp)
+                    ) {
+                        // 自定义模型（如果在预设列表里，也会带 (自定义) 后缀，由 AIProviderFactory 处理）
+                        aiModels.forEach { (value, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    selectedAiModel = value
+                                    aiModelExpanded = false
+                                },
+                                trailingIcon = if (label.endsWith("(自定义)")) {
+                                    {
+                                        IconButton(onClick = {
+                                            viewModel.deleteCustomModel(selectedAiProvider)
+                                            if (selectedAiModel == value) {
+                                                selectedAiModel = aiModels.firstOrNull { !it.second.endsWith("(自定义)") }?.first ?: ""
+                                            }
+                                            modelsRefreshTrigger++
+                                        }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "删除自定义模型", tint = MaterialTheme.colorScheme.error)
+                                        }
+                                    }
+                                } else null
+                            )
+                        }
+                        
+                        HorizontalDivider()
+                        
+                        // 恢复预设模型
+                        DropdownMenuItem(
+                            text = { Text("恢复预设模型列表", color = MaterialTheme.colorScheme.primary) },
+                            onClick = {
+                                viewModel.clearFetchedModels(selectedAiProvider)
+                                modelsRefreshTrigger++
+                                aiModelExpanded = false
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Refresh, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            }
+                        )
+                        
+                        // 所有提供商都支持自定义模型名称
+                        DropdownMenuItem(
+                            text = { Text("自定义模型...") },
+                            onClick = {
+                                aiModelExpanded = false
+                                // 预填充当前模型名称（如果不在预定义列表中）
+                                customModelInput = if (aiModels.none { it.first == selectedAiModel }) {
+                                    selectedAiModel
+                                } else {
+                                    ""
+                                }
+                                showCustomModelDialog = true
+                            }
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
                 
                 // API Key 输入框
                 OutlinedTextField(
@@ -296,7 +401,7 @@ fun SettingsScreen(
                     )
                     
                     TextButton(
-                        onClick = { viewModel.testConnection(apiKey, selectedAiProvider) },
+                        onClick = { viewModel.testConnection(apiKey, selectedAiProvider, selectedAiModel) },
                         enabled = apiKey.isNotBlank() && aiConnectionState !is SettingsViewModel.ConnectionState.Testing
                     ) {
                         Text(stringResource(R.string.test_connection))
@@ -310,6 +415,7 @@ fun SettingsScreen(
                         // 允许保存空值，空值表示不使用 AI 分析功能
                         viewModel.saveApiKey(apiKey)
                         viewModel.saveAiProvider(selectedAiProvider)
+                        viewModel.saveAiModel(selectedAiModel)
                         Toast.makeText(context, context.getString(R.string.settings_saved), Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -586,6 +692,68 @@ fun SettingsScreen(
             onDismiss = { showCategoryDialog = false }
         )
     }
+    
+    // 自定义模型输入对话框
+    if (showCustomModelDialog) {
+        val providerName = aiProviders.find { it.first == selectedAiProvider }?.second ?: "AI"
+        val placeholderText = when (selectedAiProvider) {
+            "deepseek" -> "deepseek-v4-pro"
+            "xiaomi" -> "mimo-v2.5-pro"
+            else -> "model-name"
+        }
+        
+        AlertDialog(
+            onDismissRequest = { 
+                showCustomModelDialog = false
+                customModelInput = ""
+            },
+            title = { Text("自定义模型名称") },
+            text = {
+                Column {
+                    Text(
+                        text = "请输入 $providerName 的模型名称",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    OutlinedTextField(
+                        value = customModelInput,
+                        onValueChange = { customModelInput = it },
+                        label = { Text("模型名称") },
+                        placeholder = { Text(placeholderText) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (customModelInput.isNotBlank()) {
+                            val newModel = customModelInput.trim()
+                            selectedAiModel = newModel
+                            viewModel.saveCustomModel(selectedAiProvider, newModel)
+                            modelsRefreshTrigger++
+                            showCustomModelDialog = false
+                            customModelInput = ""
+                        }
+                    },
+                    enabled = customModelInput.isNotBlank()
+                ) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showCustomModelDialog = false
+                        customModelInput = ""
+                    }
+                ) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 }
 
 /**
@@ -615,7 +783,7 @@ private fun UserPreferencesCard(
     )
     
     val viewOptions = listOf(
-        Triple("timeline", "列表", Icons.Default.List),
+        Triple("timeline", "列表", Icons.AutoMirrored.Filled.List),
         Triple("gantt", "甘特图", Icons.Default.ViewTimeline),
         Triple("deadline", "截止日", Icons.Default.Flag)
     )
@@ -1082,9 +1250,8 @@ private fun ReminderMethodsCard(
             modifier = Modifier.padding(bottom = 12.dp)
         )
         
-        // 铃声开关
         SwitchItem(
-            icon = Icons.Default.VolumeUp,
+            icon = Icons.AutoMirrored.Filled.VolumeUp,
             title = "提醒铃声",
             description = "悬浮提醒时播放闹钟铃声",
             checked = soundEnabled,

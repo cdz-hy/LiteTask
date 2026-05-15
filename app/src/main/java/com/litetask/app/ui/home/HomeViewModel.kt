@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
+import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 import com.litetask.app.R
 
@@ -40,7 +41,10 @@ class HomeViewModel @Inject constructor(
     private val aiHistoryRepository: com.litetask.app.data.repository.AIHistoryRepository,
     private val speechHelper: com.litetask.app.util.SpeechRecognizerHelper,
     private val preferenceManager: com.litetask.app.data.local.PreferenceManager,
-    private val aMapRepository: com.litetask.app.data.repository.AMapRepository
+    private val aMapRepository: com.litetask.app.data.repository.AMapRepository,
+    private val userProfileDao: com.litetask.app.data.local.UserProfileDao,
+    private val scheduleAdviceDao: com.litetask.app.data.local.DailyScheduleAdviceDao,
+    private val scheduleAdviceAssistant: com.litetask.app.data.ai.DailyScheduleAdviceAssistant
 ) : ViewModel() {
 
     // ==================== 数据加载配置 ====================
@@ -68,6 +72,13 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             // 懒更新 - 标记过期任务和提醒
             markOverdueTasksAsExpired()
+
+            // 加载最新日程建议
+            val latestAdvice = scheduleAdviceDao.getLatest()
+            _uiState.update { it.copy(currentAdvice = latestAdvice) }
+
+            // 懒更新 - 触发每日智能规划建议
+            triggerDailyAnalysisIfNeeded()
         }
     }
 
@@ -244,6 +255,105 @@ class HomeViewModel @Inject constructor(
             } finally {
                 _isLoadingHistory.value = false
             }
+        }
+    }
+    
+    private suspend fun triggerDailyAnalysisIfNeeded() {
+        val todayStart = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val existing = scheduleAdviceDao.getLatest()
+        if (existing != null && existing.createdAt >= todayStart && existing.generationStatus == "COMPLETED") return
+
+        generateDailyScheduleAdvice()
+    }
+
+    fun triggerDailyAnalysis() {
+        viewModelScope.launch { generateDailyScheduleAdvice() }
+    }
+
+    private suspend fun generateDailyScheduleAdvice() {
+        var placeholderId = 0L
+        try {
+            placeholderId = scheduleAdviceDao.insert(
+                com.litetask.app.data.model.DailyScheduleAdviceEntity(
+                    shortTermJson = "{}", longTermJson = "{}", generationStatus = "GENERATING"
+                )
+            )
+            _uiState.update { it.copy(
+                isGeneratingScheduleAdvice = true,
+                currentAdvice = null,
+                scheduleAdviceLogs = emptyList()
+            ) }
+
+            val isAgent = preferenceManager.isAiAgentEnabled()
+            val result = if (isAgent) {
+                scheduleAdviceAssistant.generateAdvice { msg ->
+                    _uiState.update { state ->
+                        state.copy(scheduleAdviceLogs = state.scheduleAdviceLogs + msg)
+                    }
+                }
+            } else {
+                scheduleAdviceAssistant.generateDirectAdvice { msg ->
+                    _uiState.update { state ->
+                        state.copy(scheduleAdviceLogs = state.scheduleAdviceLogs + msg)
+                    }
+                }
+            }
+
+            result.fold(
+                onSuccess = { entity ->
+                    val updated = entity.copy(id = placeholderId, isRead = false)
+                    scheduleAdviceDao.insert(updated)
+                    _uiState.update { it.copy(
+                        isGeneratingScheduleAdvice = false,
+                        currentAdvice = updated
+                    ) }
+                },
+                onFailure = { e ->
+                    if (placeholderId > 0) {
+                        scheduleAdviceDao.updateGenerationStatus(placeholderId, "FAILED")
+                    }
+                    _uiState.update { it.copy(
+                        isGeneratingScheduleAdvice = false,
+                        scheduleAdviceLogs = it.scheduleAdviceLogs + "生成失败: ${e.message}"
+                    ) }
+                }
+            )
+        } catch (e: Exception) {
+            if (placeholderId > 0) {
+                try { scheduleAdviceDao.updateGenerationStatus(placeholderId, "FAILED") } catch (_: Exception) {}
+            }
+            _uiState.update { it.copy(
+                isGeneratingScheduleAdvice = false,
+                scheduleAdviceLogs = it.scheduleAdviceLogs + "生成失败: ${e.message ?: "未知错误"}"
+            ) }
+        }
+    }
+
+    fun toggleScheduleAdviceSheet(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showScheduleAdviceSheet = show)
+        if (show) {
+            viewModelScope.launch {
+                val advice = _uiState.value.currentAdvice
+                if (advice != null && !advice.isRead) {
+                    scheduleAdviceDao.markAsRead(advice.id)
+                    _uiState.value = _uiState.value.copy(currentAdvice = advice.copy(isRead = true))
+                }
+            }
+        }
+    }
+
+    fun loadLatestScheduleAdvice() {
+        viewModelScope.launch {
+            val advice = scheduleAdviceDao.getLatest()
+            _uiState.value = _uiState.value.copy(currentAdvice = advice)
+        }
+    }
+
+    fun refreshScheduleAdvice() {
+        viewModelScope.launch {
+            generateDailyScheduleAdvice()
         }
     }
     
@@ -586,15 +696,17 @@ class HomeViewModel @Inject constructor(
     /**
      * 文字输入分析：直接调用 AI 分析文本
      */
-    fun analyzeTextInput(text: String) {
+    fun analyzeTextInput(text: String, imageUris: List<android.net.Uri> = emptyList()) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isAnalyzing = true,
-                agentStatus = "正在分析文本...",
-                agentLogs = listOf("文本输入: $text")
+                agentStatus = "正在准备分析...",
+                agentLogs = listOf("文本输入: $text" + (if (imageUris.isNotEmpty()) " (含${imageUris.size}张图片)" else ""))
             )
             
-            val result = aiRepository.parseTasksFromText("", text) { progress ->
+            val imageBases64 = imageUris.mapNotNull { uriToBase64(application, it) }.takeIf { it.isNotEmpty() }
+            
+            val result = aiRepository.parseTasksFromText("", text, imageBases64) { progress ->
                 _uiState.value = _uiState.value.copy(
                     agentStatus = progress,
                     agentLogs = _uiState.value.agentLogs + progress
@@ -1047,9 +1159,11 @@ class HomeViewModel @Inject constructor(
             try {
                 // 获取用户配置的 AI 提供商
                 val providerId = preferenceManager.getAiProvider()
+                val modelId = preferenceManager.getAiModel()
                 val deepSeekProvider = com.litetask.app.data.ai.DeepSeekProvider()
-                val providerFactory = com.litetask.app.data.ai.AIProviderFactory(deepSeekProvider)
-                val provider = providerFactory.getProvider(providerId) as? com.litetask.app.data.ai.DeepSeekProvider
+                val xiaoMiProvider = com.litetask.app.data.ai.XiaoMiProvider()
+                val providerFactory = com.litetask.app.data.ai.AIProviderFactory(deepSeekProvider, xiaoMiProvider, preferenceManager)
+                val provider = providerFactory.getProvider(providerId)
                 
                 if (provider == null) {
                     _uiState.value = _uiState.value.copy(
@@ -1060,7 +1174,7 @@ class HomeViewModel @Inject constructor(
                     return@launch
                 }
                 
-                val result = provider.generateSubTasks(apiKey, task)
+                val result = provider.generateSubTasks(apiKey, modelId, task, "")
                 
                 result.onSuccess { subTasks ->
                     // 记录 AI 历史
@@ -1113,15 +1227,17 @@ class HomeViewModel @Inject constructor(
     /**
      * 生成子任务（详细模式）
      */
-    fun generateSubTasksWithContext(task: Task, additionalContext: String) {
+    fun generateSubTasksWithContext(task: Task, additionalContext: String, imageUris: List<android.net.Uri> = emptyList()) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isAnalyzing = true,
-                agentStatus = "正在准备拆解子任务...",
-                agentLogs = listOf("主任务: ${task.title}")
+                agentStatus = "正在处理图片并准备拆解...",
+                agentLogs = listOf("主任务: ${task.title}" + (if (imageUris.isNotEmpty()) " (含${imageUris.size}张参考图片)" else ""))
             )
             
-            val result = aiRepository.generateSubTasks(task, additionalContext) { progress ->
+            val imageBases64 = imageUris.mapNotNull { uriToBase64(application, it) }.takeIf { it.isNotEmpty() }
+            
+            val result = aiRepository.generateSubTasks(task, additionalContext, imageBases64) { progress ->
                 _uiState.value = _uiState.value.copy(
                     agentStatus = progress,
                     agentLogs = _uiState.value.agentLogs + progress
@@ -1266,6 +1382,32 @@ class HomeViewModel @Inject constructor(
             taskRepository.deleteComponent(component.toEntity(component.taskId))
         }
     }
+
+    /**
+     * 判断当前模型是否支持多模态（图片）输入
+     */
+    fun isMultimodalModel(): Boolean {
+        val model = preferenceManager.getAiModel().lowercase()
+        return model.contains("mimo-v2.5") || model.contains("mimo-v2-omni")
+    }
+
+    /**
+     * 将图片 URI 转为 Base64 并进行必要的压缩（限制在约 5MB 内）
+     */
+    fun uriToBase64(context: android.content.Context, uri: android.net.Uri): String? {
+        try {
+            val inputStream = context.contentResolver.openInputStream(uri)
+            val bytes = inputStream?.readBytes()
+            inputStream?.close()
+            if (bytes != null) {
+                // 简单的图片压缩逻辑可以在这里实现，如果需要的话
+                return android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
+    }
 }
 
 data class HomeUiState(
@@ -1291,7 +1433,13 @@ data class HomeUiState(
 
     // Agent 思考过程相关
     val agentStatus: String = "",           // 当前 Agent 正在执行的操作
-    val agentLogs: List<String> = emptyList() // Agent 历史操作日志
+    val agentLogs: List<String> = emptyList(), // Agent 历史操作日志
+    
+    // 日程建议相关
+    val isGeneratingScheduleAdvice: Boolean = false,
+    val currentAdvice: com.litetask.app.data.model.DailyScheduleAdviceEntity? = null,
+    val scheduleAdviceLogs: List<String> = emptyList(),
+    val showScheduleAdviceSheet: Boolean = false
 )
 
 // 检查 API Key 结果

@@ -18,9 +18,9 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 /**
- * DeepSeek AI 提供商实现
+ * 小米 MiMo-V2-Flash AI 提供商实现
  */
-class DeepSeekProvider @Inject constructor() : AIProvider {
+class XiaoMiProvider @Inject constructor() : AIProvider {
     
     private val client = OkHttpClient.Builder()
         .connectTimeout(75, TimeUnit.SECONDS)
@@ -28,7 +28,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
         .writeTimeout(75, TimeUnit.SECONDS)
         .build()
     
-    private val baseUrl = "https://api.deepseek.com/v1/chat/completions"
+    private val baseUrl = "https://api.xiaomimimo.com/v1/chat/completions"
     
     override suspend fun parseTasksFromText(apiKey: String, model: String, text: String, categories: List<Category>, imageBases64: List<String>?): Result<List<Task>> {
         return withContext(Dispatchers.IO) {
@@ -84,17 +84,28 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                         })
                         put(JSONObject().apply {
                             put("role", "user")
-                            put("content", text)
+                            if (!imageBases64.isNullOrEmpty()) {
+                                put("content", JSONArray().apply {
+                                    put(JSONObject().apply {
+                                        put("type", "text")
+                                        put("text", text)
+                                    })
+                                    imageBases64.forEach { base64 ->
+                                        put(JSONObject().apply {
+                                            put("type", "image_url")
+                                            put("image_url", JSONObject().apply {
+                                                put("url", "data:image/jpeg;base64,$base64")
+                                            })
+                                        })
+                                    }
+                                })
+                            } else {
+                                put("content", text)
+                            }
                         })
                     })
                     put("temperature", 0.7)
-                    put("max_tokens", 4096)
-                    // 禁用思考模式（非思考模式）
-                    put("extra_body", JSONObject().apply {
-                        put("thinking", JSONObject().apply {
-                            put("type", "disabled")
-                        })
-                    })
+                    put("max_completion_tokens", 4096)
                 }
                 
                 val request = Request.Builder()
@@ -139,7 +150,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
             } catch (e: java.net.SocketException) {
                 Result.failure(Exception("网络连接异常，请检查网络设置", e))
             } catch (e: Exception) {
-                Result.failure(Exception("DeepSeek 解析失败: ${e.message}", e))
+                Result.failure(Exception("小米 MIMO 解析失败: ${e.message}", e))
             }
         }
     }
@@ -147,9 +158,9 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
     override suspend fun testConnection(apiKey: String, model: String): Result<List<Pair<String, String>>> {
         return withContext(Dispatchers.IO) {
             try {
-                // 使用 /models 端点验证 API Key 并获取模型列表
+                // 使用 /models 端点验证 API Key
                 val request = Request.Builder()
-                    .url("https://api.deepseek.com/models")
+                    .url("https://api.xiaomimimo.com/v1/models")
                     .addHeader("Authorization", "Bearer $apiKey")
                     .get()
                     .build()
@@ -254,7 +265,7 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
         return tasks
     }
     
-    override fun getProviderName(): String = "DeepSeek"
+    override fun getProviderName(): String = "小米 MIMO"
 
     override suspend fun chatWithTools(
         apiKey: String,
@@ -271,13 +282,8 @@ class DeepSeekProvider @Inject constructor() : AIProvider {
                         put("tools", tools)
                     }
                     put("temperature", 0.3) // 降低温度以提高精准度
-                    put("max_tokens", 4096)
-                    // 禁用思考模式（非思考模式）
-                    put("extra_body", JSONObject().apply {
-                        put("thinking", JSONObject().apply {
-                            put("type", "disabled")
-                        })
-                    })
+                    put("max_completion_tokens", 4096)
+                    put("tool_choice", "auto")
                 }
 
                 val request = Request.Builder()
@@ -353,15 +359,31 @@ $userInstruction
                             put("role", "system")
                             put("content", systemPrompt)
                         })
-                    })
-                    put("temperature", 0.7)
-                    put("max_tokens", 1024)
-                    // 禁用思考模式（非思考模式）
-                    put("extra_body", JSONObject().apply {
-                        put("thinking", JSONObject().apply {
-                            put("type", "disabled")
+                        put(JSONObject().apply {
+                            put("role", "user")
+                            val promptText = "请帮我将按上述任务详情进行子任务拆解。"
+                            if (!imageBases64.isNullOrEmpty()) {
+                                put("content", JSONArray().apply {
+                                    put(JSONObject().apply {
+                                        put("type", "text")
+                                        put("text", promptText)
+                                    })
+                                    imageBases64.forEach { base64 ->
+                                        put(JSONObject().apply {
+                                            put("type", "image_url")
+                                            put("image_url", JSONObject().apply {
+                                                put("url", "data:image/jpeg;base64,$base64")
+                                            })
+                                        })
+                                    }
+                                })
+                            } else {
+                                put("content", promptText)
+                            }
                         })
                     })
+                    put("temperature", 0.7)
+                    put("max_completion_tokens", 1024)
                 } 
 
                 val request = Request.Builder()

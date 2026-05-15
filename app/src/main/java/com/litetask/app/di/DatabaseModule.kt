@@ -41,4 +41,20 @@ object DatabaseModule {
     fun provideTaskComponentDao(database: AppDatabase): com.litetask.app.data.local.TaskComponentDao {
         return database.taskComponentDao()
     }
+
+    @Provides
+    fun provideUserProfileDao(database: AppDatabase): com.litetask.app.data.local.UserProfileDao {
+        return database.userProfileDao()
+    }
+
+    @Provides
+    fun provideUserLocationDao(database: AppDatabase): com.litetask.app.data.local.UserLocationDao {
+        return database.userLocationDao()
+    }
+
+    @Provides
+    fun provideDailyScheduleAdviceDao(database: AppDatabase): com.litetask.app.data.local.DailyScheduleAdviceDao {
+        return database.dailyScheduleAdviceDao()
+    }
+
 }

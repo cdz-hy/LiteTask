@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.*
@@ -81,6 +83,7 @@ fun HomeScreen(
     onNavigateToAbout: () -> Unit = {},
     onNavigateToHistory: () -> Unit,
     onNavigateToBackup: () -> Unit,
+    onNavigateToUserData: () -> Unit = {},
     onNavigateToSearch: () -> Unit,
     onNavigateToGanttFullscreen: (com.litetask.app.ui.components.GanttViewMode) -> Unit,
     initialView: String = "timeline",
@@ -116,6 +119,9 @@ fun HomeScreen(
     // 侧边栏状态
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    
+    // 防抖状态：防止快速连续点击导致状态混乱
+    var isDrawerAnimating by remember { mutableStateOf(false) }
 
     // 视图切换时的处理（数据已在 ViewModel 初始化时加载，无需额外操作）
     LaunchedEffect(currentView) {
@@ -245,10 +251,40 @@ fun HomeScreen(
                     label = { Text(stringResource(R.string.ai_history)) },
                     selected = false,
                     onClick = {
-                        scope.launch {
-                            drawerState.close()
+                        if (!isDrawerAnimating) {
+                            isDrawerAnimating = true
+                            scope.launch {
+                                try {
+                                    drawerState.close()
+                                    onNavigateToHistory()
+                                } finally {
+                                    isDrawerAnimating = false
+                                }
+                            }
                         }
-                        onNavigateToHistory()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // 用户数据选项
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    label = { Text("用户数据") },
+                    selected = false,
+                    onClick = {
+                        if (!isDrawerAnimating) {
+                            isDrawerAnimating = true
+                            scope.launch {
+                                try {
+                                    drawerState.close()
+                                    onNavigateToUserData()
+                                } finally {
+                                    isDrawerAnimating = false
+                                }
+                            }
+                        }
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -261,10 +297,17 @@ fun HomeScreen(
                     label = { Text(stringResource(R.string.data_backup)) },
                     selected = false,
                     onClick = {
-                        scope.launch {
-                            drawerState.close()
+                        if (!isDrawerAnimating) {
+                            isDrawerAnimating = true
+                            scope.launch {
+                                try {
+                                    drawerState.close()
+                                    onNavigateToBackup()
+                                } finally {
+                                    isDrawerAnimating = false
+                                }
+                            }
                         }
-                        onNavigateToBackup()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -277,10 +320,17 @@ fun HomeScreen(
                     label = { Text(stringResource(R.string.settings)) },
                     selected = false,
                     onClick = {
-                        scope.launch {
-                            drawerState.close()
+                        if (!isDrawerAnimating) {
+                            isDrawerAnimating = true
+                            scope.launch {
+                                try {
+                                    drawerState.close()
+                                    onNavigateToSettings()
+                                } finally {
+                                    isDrawerAnimating = false
+                                }
+                            }
                         }
-                        onNavigateToSettings()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -293,10 +343,17 @@ fun HomeScreen(
                     label = { Text("应用权限") },
                     selected = false,
                     onClick = {
-                        scope.launch {
-                            drawerState.close()
+                        if (!isDrawerAnimating) {
+                            isDrawerAnimating = true
+                            scope.launch {
+                                try {
+                                    drawerState.close()
+                                    onNavigateToPermissions()
+                                } finally {
+                                    isDrawerAnimating = false
+                                }
+                            }
                         }
-                        onNavigateToPermissions()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -309,10 +366,17 @@ fun HomeScreen(
                     label = { Text("关于") },
                     selected = false,
                     onClick = {
-                        scope.launch {
-                            drawerState.close()
+                        if (!isDrawerAnimating) {
+                            isDrawerAnimating = true
+                            scope.launch {
+                                try {
+                                    drawerState.close()
+                                    onNavigateToAbout()
+                                } finally {
+                                    isDrawerAnimating = false
+                                }
+                            }
                         }
-                        onNavigateToAbout()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -355,12 +419,64 @@ fun HomeScreen(
                             }
                         },
                         navigationIcon = {
-                            IconButton(onClick = {
-                                scope.launch {
-                                    drawerState.open()
-                                }
-                            }) {
+                            IconButton(
+                                onClick = {
+                                    if (!isDrawerAnimating) {
+                                        isDrawerAnimating = true
+                                        scope.launch {
+                                            try {
+                                                drawerState.open()
+                                            } finally {
+                                                isDrawerAnimating = false
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !isDrawerAnimating
+                            ) {
                                 Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.menu), tint = MaterialTheme.colorScheme.onSurface)
+                            }
+                        },
+                        actions = {
+                            if (uiState.isGeneratingScheduleAdvice) {
+                                val infiniteTransition = rememberInfiniteTransition(label = "schedule")
+                                val alpha by infiniteTransition.animateFloat(
+                                    initialValue = 0.4f,
+                                    targetValue = 1f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(800, easing = FastOutSlowInEasing),
+                                        repeatMode = RepeatMode.Reverse
+                                    ),
+                                    label = "scheduleAlpha"
+                                )
+                                IconButton(onClick = { viewModel.toggleScheduleAdviceSheet(true) }) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.AutoAwesome,
+                                        contentDescription = "日程建议生成中",
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = alpha),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            } else if (uiState.currentAdvice != null) {
+                                BadgedBox(
+                                    badge = {
+                                        if (uiState.currentAdvice?.isRead == false) {
+                                            Badge(
+                                                containerColor = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(8.dp).offset(x = (-4).dp, y = 4.dp)
+                                            )
+                                        }
+                                    }
+                                ) {
+                                    IconButton(onClick = { viewModel.toggleScheduleAdviceSheet(true) }) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.AutoAwesome,
+                                            contentDescription = "日程建议",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -609,13 +725,14 @@ fun HomeScreen(
                             showTextInputDialog = false 
                         }
                     },
-                    onAnalyze = { text ->
-                        viewModel.analyzeTextInput(text)
+                    onAnalyze = { text, uri ->
+                        viewModel.analyzeTextInput(text, uri)
                         // 不立即关闭，等分析完成后通过 LaunchedEffect 关闭
                     },
                     isAnalyzing = uiState.isAnalyzing,
                     agentStatus = uiState.agentStatus,
-                    agentLogs = uiState.agentLogs
+                    agentLogs = uiState.agentLogs,
+                    isMultimodalModel = viewModel.isMultimodalModel()
                 )
             }
             
@@ -778,6 +895,16 @@ fun HomeScreen(
                 )
             }
 
+            if (uiState.showScheduleAdviceSheet) {
+                com.litetask.app.ui.components.DailyScheduleAdviceSheet(
+                    advice = uiState.currentAdvice,
+                    isGenerating = uiState.isGeneratingScheduleAdvice,
+                    agentLogs = uiState.scheduleAdviceLogs,
+                    onDismiss = { viewModel.toggleScheduleAdviceSheet(false) },
+                    onRefresh = { viewModel.refreshScheduleAdvice() }
+                )
+            }
+
             // AI 错误提示对话框
             if (uiState.showAiError) {
                 AiErrorDialog(
@@ -797,12 +924,13 @@ fun HomeScreen(
                     SubTaskInputDialog(
                         task = currentTask,
                         onDismiss = { viewModel.dismissSubTaskInput() },
-                        onAnalyze = { context ->
-                            viewModel.generateSubTasksWithContext(currentTask, context)
+                        onAnalyze = { contextText, imageUri ->
+                            viewModel.generateSubTasksWithContext(currentTask, contextText, imageUri)
                         },
                         isAnalyzing = uiState.isAnalyzing,
                         agentStatus = uiState.agentStatus,
-                        agentLogs = uiState.agentLogs
+                        agentLogs = uiState.agentLogs,
+                        isMultimodalModel = viewModel.isMultimodalModel()
                     )
                 }
             }

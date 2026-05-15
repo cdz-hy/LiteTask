@@ -48,18 +48,28 @@ class SettingsViewModel @Inject constructor(
     fun saveApiKey(key: String) = preferenceManager.saveApiKey(key)
     fun getAiProvider(): String = preferenceManager.getAiProvider()
     fun saveAiProvider(provider: String) = preferenceManager.saveAiProvider(provider)
+    fun getAiModel(): String = preferenceManager.getAiModel()
+    fun saveAiModel(model: String) = preferenceManager.saveAiModel(model)
     
     fun isAiDestinationEnabled(): Boolean = preferenceManager.isAiDestinationEnabled()
     fun setAiDestinationEnabled(enabled: Boolean) = preferenceManager.setAiDestinationEnabled(enabled)
     
     fun isAiAgentEnabled(): Boolean = preferenceManager.isAiAgentEnabled()
     fun setAiAgentEnabled(enabled: Boolean) = preferenceManager.setAiAgentEnabled(enabled)
+    
+    fun getSupportedAiProviders(): List<Pair<String, String>> {
+        return aiProviderFactory.getSupportedProviders()
+    }
+    
+    fun getSupportedAiModels(providerId: String): List<Pair<String, String>> {
+        return aiProviderFactory.getSupportedModels(providerId)
+    }
 
     fun resetConnectionState() {
         _aiConnectionState.value = ConnectionState.Idle
     }
 
-    fun testConnection(apiKey: String, providerId: String) {
+    fun testConnection(apiKey: String, providerId: String, modelId: String) {
         if (apiKey.isBlank()) {
             _aiConnectionState.value = ConnectionState.Error(application.getString(R.string.please_enter_api_key))
             return
@@ -68,14 +78,29 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _aiConnectionState.value = ConnectionState.Testing
             val provider = aiProviderFactory.getProvider(providerId)
-            val result = provider.testConnection(apiKey)
+            val result = provider.testConnection(apiKey, modelId)
             
-            result.onSuccess {
+            result.onSuccess { models ->
                 _aiConnectionState.value = ConnectionState.Success
+                if (models.isNotEmpty()) {
+                    preferenceManager.saveFetchedModels(providerId, models)
+                }
             }.onFailure {
                 _aiConnectionState.value = ConnectionState.Error(it.message ?: application.getString(R.string.error_connection_failed))
             }
         }
+    }
+    
+    fun saveCustomModel(providerId: String, modelId: String) {
+        preferenceManager.saveCustomModel(providerId, modelId)
+    }
+    
+    fun deleteCustomModel(providerId: String) {
+        preferenceManager.saveCustomModel(providerId, null)
+    }
+    
+    fun clearFetchedModels(providerId: String) {
+        preferenceManager.clearFetchedModels(providerId)
     }
     
     // ========== 提醒方式配置 ==========
