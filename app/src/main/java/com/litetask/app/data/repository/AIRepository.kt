@@ -3,7 +3,11 @@ package com.litetask.app.data.repository
 import com.litetask.app.data.model.Category
 import com.litetask.app.data.model.Task
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -168,53 +172,64 @@ class AIRepositoryImpl @Inject constructor(
                 }
 
                 val toolCalls = message.getJSONArray("tool_calls")
-                
-                for (i in 0 until toolCalls.length()) {
-                    val call = toolCalls.getJSONObject(i)
-                    val function = call.getJSONObject("function")
-                    val name = function.getString("name")
-                    val arguments = JSONObject(function.getString("arguments"))
-                    
-                    val progressMsg = when(name) {
-                        "get_recent_tasks" -> "正在查阅您的最近任务列表..."
-                        "search_tasks" -> "正在检索相关任务简报..."
-                        "get_task_details" -> "正在获取任务的具体详情..."
-                        "get_categories" -> "正在同步任务分类配置..."
-                        "get_user_location" -> "正在获取您的当前位置..."
-                        "search_nearby_location" -> "正在搜索附近的 ${arguments.optString("keyword")}..."
-                        else -> "正在调用工具: $name..."
-                    }
-                    onProgress(progressMsg)
-                    
-                    val result = agentAssistant.handleToolCall(name, arguments)
-                    
-                    // 如果是获取用户位置，进行逆地理编码并保存出发地
-                    if (name == "get_user_location" && result.contains(",")) {
-                        try {
-                            val coords = result.split(",")
-                            if (coords.size == 2) {
-                                val lng = coords[0].toDoubleOrNull()
-                                val lat = coords[1].toDoubleOrNull()
-                                if (lng != null && lat != null) {
-                                    currentOriginLng = lng
-                                    currentOriginLat = lat
-                                    // 进行逆地理编码获取真实地名
-                                    currentOriginName = locationTracker.reverseGeocode(lng, lat)
+                val originMutex = Mutex()
+
+                // 并行执行所有工具调用
+                coroutineScope {
+                    val jobs = (0 until toolCalls.length()).map { i ->
+                        val call = toolCalls.getJSONObject(i)
+                        val function = call.getJSONObject("function")
+                        val name = function.getString("name")
+                        val arguments = JSONObject(function.getString("arguments"))
+                        val callId = call.getString("id")
+
+                        val progressMsg = when(name) {
+                            "get_recent_tasks" -> "正在查阅您的最近任务列表..."
+                            "search_tasks" -> "正在检索相关任务简报..."
+                            "get_task_details" -> "正在获取任务的具体详情..."
+                            "get_categories" -> "正在同步任务分类配置..."
+                            "get_user_location" -> "正在获取您的当前位置..."
+                            "search_nearby_location" -> "正在搜索附近的 ${arguments.optString("keyword")}..."
+                            else -> "正在调用工具: $name..."
+                        }
+                        onProgress(progressMsg)
+
+                        async {
+                            val result = agentAssistant.handleToolCall(name, arguments)
+
+                            // 如果是获取用户位置，进行逆地理编码并保存出发地（线程安全）
+                            if (name == "get_user_location" && result.contains(",")) {
+                                originMutex.withLock {
+                                    try {
+                                        val coords = result.split(",")
+                                        if (coords.size == 2) {
+                                            val lng = coords[0].toDoubleOrNull()
+                                            val lat = coords[1].toDoubleOrNull()
+                                            if (lng != null && lat != null) {
+                                                currentOriginLng = lng
+                                                currentOriginLat = lat
+                                                currentOriginName = locationTracker.reverseGeocode(lng, lat)
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
                                 }
                             }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
+
+                            Pair(callId, result)
                         }
                     }
-                    
-                    messages.put(JSONObject().apply {
-                        put("role", "tool")
-                        put("tool_call_id", call.getString("id"))
-                        put("content", result)
-                    })
+                    // 等待全部完成，收集结果
+                    jobs.forEach { deferred ->
+                        val (callId, result) = deferred.await()
+                        messages.put(JSONObject().apply {
+                            put("role", "tool")
+                            put("tool_call_id", callId)
+                            put("content", result)
+                        })
+                    }
                 }
-                // onProgress("正在整理资料进行思考...")
-                // 移除"正在整理资料进行思考..."，让用户看到最后一个工具调用的消息
                 retryCount++
             } else {
                 // 没有 tool_calls，说明是最终回答
@@ -224,9 +239,12 @@ class AIRepositoryImpl @Inject constructor(
                 val tasks = agentAssistant.parseAgentOutput(finalContent, text, categories)
                 
                 // 保存出发地数据（如果获取到了位置信息）
-                if (currentOriginLng != null && currentOriginLat != null && !currentOriginName.isNullOrBlank()) {
+                val savedLng = currentOriginLng
+                val savedLat = currentOriginLat
+                val savedName = currentOriginName
+                if (savedLng != null && savedLat != null && !savedName.isNullOrBlank()) {
                     try {
-                        locationTracker.saveOriginLocation(currentOriginName, currentOriginLng, currentOriginLat)
+                        locationTracker.saveOriginLocation(savedName, savedLng, savedLat)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }

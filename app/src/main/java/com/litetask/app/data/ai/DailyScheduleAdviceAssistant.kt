@@ -11,6 +11,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -467,52 +469,62 @@ class DailyScheduleAdviceAssistant @Inject constructor(
                 if (reasoning.isNotBlank()) onProgress(reasoning)
 
                 val toolCalls = message.getJSONArray("tool_calls")
-                for (i in 0 until toolCalls.length()) {
-                    val call = toolCalls.getJSONObject(i)
-                    val function = call.getJSONObject("function")
-                    val name = function.getString("name")
-                    val arguments = try { JSONObject(function.getString("arguments")) } catch (e: Exception) { JSONObject() }
+                // 并行执行所有工具调用，同时保持上下文感知
+                coroutineScope {
+                    val jobs = (0 until toolCalls.length()).map { i ->
+                        val call = toolCalls.getJSONObject(i)
+                        val function = call.getJSONObject("function")
+                        val name = function.getString("name")
+                        val arguments = try { JSONObject(function.getString("arguments")) } catch (e: Exception) { JSONObject() }
+                        val callId = call.getString("id")
 
-                    val progressMsg = when (name) {
-                        "get_user_profile" -> "正在读取用户画像..."
-                        "get_incomplete_tasks" -> "正在获取近期任务..."
-                        "get_task_details" -> "正在查阅任务详情..."
-                        "search_completed_similar_tasks" -> "正在检索历史相似任务..."
-                        "get_user_location" -> "正在获取当前位置..."
-                        "calculate_route" -> "正在计算路线耗时..."
-                        "get_weather" -> "正在查询天气..."
-                        "search_nearby_location" -> "正在搜索地点..."
-                        "get_categories" -> "正在获取分类..."
-                        "get_past_task_performance" -> "正在分析历史执行效率..."
-                        else -> "正在调用 $name..."
-                    }
-                    onProgress(progressMsg)
-
-                    val result = handleToolCall(name, arguments)
-                    val resultSummary = when (name) {
-                        "get_user_profile" -> "已获取用户画像数据"
-                        "get_incomplete_tasks" -> {
-                            val count = result.lines().first()
-                                .replace("找到", "").substringBefore("条").toIntOrNull()
-                            if (count != null) "获取到${count}条未完成任务" else "已获取任务列表"
+                        val progressMsg = when (name) {
+                            "get_user_profile" -> "正在读取用户画像..."
+                            "get_incomplete_tasks" -> "正在获取近期任务..."
+                            "get_task_details" -> "正在查阅任务详情..."
+                            "search_completed_similar_tasks" -> "正在检索历史相似任务..."
+                            "get_user_location" -> "正在获取当前位置..."
+                            "calculate_route" -> "正在计算路线耗时..."
+                            "get_weather" -> "正在查询天气..."
+                            "search_nearby_location" -> "正在搜索地点..."
+                            "get_categories" -> "正在获取分类..."
+                            "get_past_task_performance" -> "正在分析历史执行效率..."
+                            else -> "正在调用 $name..."
                         }
-                        "get_task_details" -> "已查阅任务详情"
-                        "search_completed_similar_tasks" -> "已检索历史相似任务"
-                        "get_user_location" -> "已获取当前位置"
-                        "calculate_route" -> "路线耗时计算完成"
-                        "get_weather" -> "天气数据获取完成"
-                        "search_nearby_location" -> "地点搜索完成"
-                        "get_categories" -> "已获取任务分类"
-                        "get_past_task_performance" -> "历史执行效率分析完成"
-                        else -> "已调用 $name"
-                    }
-                    onProgress(resultSummary)
+                        onProgress(progressMsg)
 
-                    messages.put(JSONObject().apply {
-                        put("role", "tool")
-                        put("tool_call_id", call.getString("id"))
-                        put("content", result)
-                    })
+                        async {
+                            val result = handleToolCall(name, arguments)
+                            val resultSummary = when (name) {
+                                "get_user_profile" -> "已获取用户画像数据"
+                                "get_incomplete_tasks" -> {
+                                    val count = result.lines().first()
+                                        .replace("找到", "").substringBefore("条").toIntOrNull()
+                                    if (count != null) "获取到${count}条未完成任务" else "已获取任务列表"
+                                }
+                                "get_task_details" -> "已查阅任务详情"
+                                "search_completed_similar_tasks" -> "已检索历史相似任务"
+                                "get_user_location" -> "已获取当前位置"
+                                "calculate_route" -> "路线耗时计算完成"
+                                "get_weather" -> "天气数据获取完成"
+                                "search_nearby_location" -> "地点搜索完成"
+                                "get_categories" -> "已获取任务分类"
+                                "get_past_task_performance" -> "历史执行效率分析完成"
+                                else -> "已调用 $name"
+                            }
+                            onProgress(resultSummary)
+                            Triple(callId, result, resultSummary)
+                        }
+                    }
+                    // 等待全部完成，收集结果
+                    jobs.forEach { deferred ->
+                        val (callId, result, _) = deferred.await()
+                        messages.put(JSONObject().apply {
+                            put("role", "tool")
+                            put("tool_call_id", callId)
+                            put("content", result)
+                        })
+                    }
                 }
                 retryCount++
             } else {
