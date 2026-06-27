@@ -294,5 +294,52 @@ class XunfeiSpeechProvider @Inject constructor(
     }
 
     override suspend fun validateCredentials(credentials: Map<String, String>) =
-        withContext(Dispatchers.IO) { Result.success(true) }
+        withContext(Dispatchers.IO) {
+            try {
+                val appId = credentials[FIELD_APP_ID] ?: ""
+                val apiKey = credentials[FIELD_API_KEY] ?: ""
+
+                if (appId.isBlank() || apiKey.isBlank()) {
+                    return@withContext Result.failure(Exception("请填写 App ID 和 API Key"))
+                }
+
+                // 生成鉴权 URL
+                val url = generateAuthUrl(appId, apiKey)
+                val request = Request.Builder().url(url).build()
+
+                // 尝试建立 WebSocket 连接验证鉴权
+                val latch = java.util.concurrent.CountDownLatch(1)
+                var testResult: Result<Boolean> = Result.success(true)
+
+                client.newWebSocket(request, object : WebSocketListener() {
+                    override fun onOpen(webSocket: WebSocket, response: Response) {
+                        testResult = Result.success(true)
+                        webSocket.close(1000, "Test complete")
+                        latch.countDown()
+                    }
+
+                    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                        val errorMsg = when {
+                            t.message?.contains("401") == true -> "鉴权失败，请检查 App ID 和 API Key"
+                            t.message?.contains("403") == true -> "权限不足，请检查 API Key 权限"
+                            else -> "连接失败: ${t.message}"
+                        }
+                        testResult = Result.failure(Exception(errorMsg))
+                        latch.countDown()
+                    }
+
+                    override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                        if (latch.count > 0) {
+                            testResult = Result.success(true)
+                            latch.countDown()
+                        }
+                    }
+                })
+
+                latch.await(10, TimeUnit.SECONDS)
+                testResult
+            } catch (e: Exception) {
+                Result.failure(Exception("测试异常: ${e.message}"))
+            }
+        }
 }

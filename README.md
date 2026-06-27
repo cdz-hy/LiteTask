@@ -32,14 +32,29 @@
 - 支持批量任务创建和自然语言识别
 - 实时语音识别，可编辑确认后提交
 - 解析地理位置并在任务中关联地图组件
-- Agent可自动分析现有日程，支持通过自然语言进行任务修改、延期、批量调整等复杂干预
-- Agent可识别模糊地点，获取当前定位并检索附近真实地址
+- Agent 可自动分析现有日程，支持通过自然语言进行任务修改、延期、批量调整等复杂干预
+- Agent 可识别模糊地点，获取当前定位并检索附近真实地址
+- **多模态输入**：支持选择最多 5 张图片辅助任务分析（需配合多模态模型）
+- **提供商与模型选择**：支持 DeepSeek、小米 MIMO 等多种 LLM，可自定义模型名称
+- **Agent 并行工具调用**：多个工具并发执行，大幅缩短 Agent 响应时间
 
 ### AI 子任务拆解
 - 针对复杂目标，可借助 AI 将其分解为数条具体、可执行的子任务
 - 支持输入补充说明，按照特定重点或方向进行拆解
+- 支持图片辅助拆解，AI 结合图片内容生成更精准的子任务
 - 可对子任务分析结果进行修改、重排序等
-- 支持上下文关联，生成符合项目背景的操作步骤
+
+### 每日日程建议
+- 每日首次进入应用自动生成个性化日程建议
+- Agent 自主调用 10 种工具（用户画像、未完成任务、路线计算、天气查询等）生成建议
+- 分为短期建议与长期建议，卡片式展示，支持阅读标记
+- 支持关闭 Agent 模式后使用直接生成模式（基础功能）
+
+### 用户数据与画像
+- **数据看板**：任务完成率、分类分布、时间趋势等多维度统计图表
+- **用户画像**：AI 自动分析行为模式，识别身份、行业、活跃时段、性格特征等
+- **常用地址**：基于历史任务自动识别常去地点，辅助路线规划
+- 画像历史记录，追踪个人习惯变化
 
 ### 多维度可视化
 - **时间线视图**：日常任务概览，左侧色条区分类别
@@ -133,7 +148,8 @@ sequenceDiagram
 - **AIRepository**：协调 AI 调用流程
 - **AIProvider**：对接 LLM API（DeepSeek 等）
 - **AIAgentAssistant**：提供工具定义和执行（查询任务、搜索地点等）
-- **工具集**：get_recent_tasks、search_tasks、get_categories、get_user_location、search_nearby_location
+- **任务分析工具集**：get_recent_tasks、search_tasks、get_task_details、get_categories、get_user_location、search_nearby_location
+- **日程建议工具集**：get_user_profile、get_incomplete_tasks、get_task_details、search_completed_similar_tasks、get_user_location、calculate_route、get_weather、search_nearby_location、get_categories、get_past_task_performance
 
 ### 数据模型
 ```kotlin
@@ -152,9 +168,16 @@ Reminder (提醒表)               TaskComponent (组件表)
 ├── triggerAt, label            └── dataPayload (JSON), createdAt
 └── isFired
 
-AIHistory (AI 历史表)
-├── content, sourceType (VOICE/TEXT/SUBTASK)
-└── parsedCount, isSuccess, timestamp
+AIHistory (AI 历史表)           DailyScheduleAdvice (日程建议表)
+├── content, sourceType         ├── createdAt, shortTermJson
+└── parsedCount, isSuccess      ├── longTermJson, isRead
+                                └── generationStatus
+
+UserProfile (用户画像表)        UserLocation (常用地址表)
+├── userIdentity, industry      ├── name, address, lat, lng
+├── personalityTraits           └── frequency, lastUsedAt
+├── peakHours, taskStats
+└── transportMode, confidence
 ```
 
 ## 项目结构
@@ -162,7 +185,7 @@ AIHistory (AI 历史表)
 ```
 app/src/main/java/com/litetask/app/
 ├── data/
-│   ├── ai/              # AI 提供商适配
+│   ├── ai/              # AI 提供商适配与 Agent 助手
 │   ├── local/           # Room DAO & Database
 │   ├── model/           # 数据模型
 │   ├── remote/          # 网络 API
@@ -176,6 +199,7 @@ app/src/main/java/com/litetask/app/
 │   ├── home/            # 主页 (Timeline/Gantt/Deadline)
 │   ├── search/          # 搜索界面
 │   ├── settings/        # 设置界面
+│   ├── userdata/        # 用户数据与画像
 │   └── theme/           # Material 3 主题
 ├── util/                # 工具类
 └── widget/              # 桌面小组件 (列表/甘特/截止)

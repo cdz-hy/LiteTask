@@ -49,9 +49,7 @@ class AIProviderFactory @Inject constructor(
             )
             "xiaomi" -> listOf(
                 "mimo-v2.5-pro" to "mimo-v2.5-pro",
-                "mimo-v2.5" to "mimo-v2.5",
-                "mimo-v2-omni" to "mimo-v2-omni",
-                "mimo-v2-flash" to "mimo-v2-flash"
+                "mimo-v2.5" to "mimo-v2.5"
             )
             else -> emptyList()
         }

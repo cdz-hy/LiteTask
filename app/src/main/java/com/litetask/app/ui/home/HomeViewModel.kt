@@ -1388,7 +1388,7 @@ class HomeViewModel @Inject constructor(
      */
     fun isMultimodalModel(): Boolean {
         val model = preferenceManager.getAiModel().lowercase()
-        return model.contains("mimo-v2.5") || model.contains("mimo-v2-omni")
+        return model.contains("mimo-v2.5")
     }
 
     /**

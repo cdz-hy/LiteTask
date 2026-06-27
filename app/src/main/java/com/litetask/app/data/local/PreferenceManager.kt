@@ -228,13 +228,18 @@ class PreferenceManager @Inject constructor(
      */
     fun isSpeechConfigured(): Boolean {
         val providerId = getSpeechProvider()
-        // 检查讯飞的必要凭证
-        if (providerId == DEFAULT_SPEECH_PROVIDER) {
-            val appId = getSpeechCredential(providerId, "appId")
-            val apiKey = getSpeechCredential(providerId, "apiKey")
-            return !appId.isNullOrBlank() && !apiKey.isNullOrBlank()
+        return when (providerId) {
+            "xunfei-rtasr" -> {
+                val appId = getSpeechCredential(providerId, "appId")
+                val apiKey = getSpeechCredential(providerId, "apiKey")
+                !appId.isNullOrBlank() && !apiKey.isNullOrBlank()
+            }
+            "mimo-asr" -> {
+                val apiKey = getSpeechCredential(providerId, "apiKey")
+                !apiKey.isNullOrBlank()
+            }
+            else -> false
         }
-        return false
     }
     
     // ========== 提醒配置 ==========

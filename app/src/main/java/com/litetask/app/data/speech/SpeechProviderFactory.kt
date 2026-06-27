@@ -9,7 +9,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class SpeechProviderFactory @Inject constructor(
-    private val xunfeiProvider: XunfeiSpeechProvider
+    private val xunfeiProvider: XunfeiSpeechProvider,
+    private val mimoAsrProvider: MimoAsrProvider
 ) {
     /**
      * 根据提供商标识获取对应的语音识别服务
@@ -19,6 +20,7 @@ class SpeechProviderFactory @Inject constructor(
     fun getProvider(providerId: String): SpeechProvider {
         return when (providerId.lowercase()) {
             XunfeiSpeechProvider.PROVIDER_ID, "xunfei" -> xunfeiProvider
+            MimoAsrProvider.PROVIDER_ID, "mimo" -> mimoAsrProvider
             // 未来可以添加更多提供商
             // "google-speech" -> googleSpeechProvider
             // "azure-speech" -> azureSpeechProvider
@@ -32,8 +34,8 @@ class SpeechProviderFactory @Inject constructor(
      */
     fun getSupportedProviders(): List<Pair<String, String>> {
         return listOf(
-            XunfeiSpeechProvider.PROVIDER_ID to xunfeiProvider.getProviderName()
-            // 未来添加更多
+            XunfeiSpeechProvider.PROVIDER_ID to xunfeiProvider.getProviderName(),
+            MimoAsrProvider.PROVIDER_ID to mimoAsrProvider.getProviderName()
         )
     }
     

@@ -31,12 +31,27 @@ A lightweight task management app that simplifies the schedule creation process 
 - Tap and speak or type text, AI automatically parses task information
 - Supports batch task creation and natural language recognition
 - Real-time speech recognition with editable confirmation before submission
-- Automatically parse locations and attach map components.
+- Automatically parse locations and attach map components
+- **Agent Mode**: AI autonomously analyzes schedules, supports task modification, rescheduling, bulk adjustments via natural language
+- **Multimodal Input**: Select up to 5 images to assist task analysis (requires multimodal model)
+- **Provider & Model Selection**: Supports DeepSeek, Xiaomi MIMO, and custom model names
+- **Parallel Tool Dispatch**: Concurrent agent tool execution for faster responses
 
 ### AI Subtask Decomposition
 - Breakdown complex goals into several concrete, actionable subtasks with AI assistance
-- Support for additional instructions to guide the decomposition towards specific priorities or directions
+- Support for additional instructions and image-assisted decomposition
 - Ability to modify and reorder the generated subtask analysis results
+
+### Daily Schedule Advice
+- Auto-generates personalized daily advice on first app entry each day
+- Agent autonomously calls 10 tools (user profile, incomplete tasks, route, weather, etc.)
+- Short-term and long-term advice cards with read markers
+- Fallback direct generation mode when Agent is disabled
+
+### User Data & Profile
+- **Dashboard**: Task completion rate, category distribution, time trends with charts
+- **User Profile**: AI-analyzed behavior patterns — identity, industry, peak hours, personality traits
+- **Frequent Locations**: Auto-identified from historical tasks for route planning
 
 ### Multi-Dimensional Visualization
 - **Timeline View**: Daily task overview with color-coded categories
@@ -92,7 +107,10 @@ EncryptedSharedPreferences - Secure storage
 ```
 
 ### AI Integration
-- Supports multiple LLM providers like DeepSeek, using an adapter pattern for flexible extension
+- Supports multiple LLM providers (DeepSeek, Xiaomi MIMO, etc.), using an adapter pattern for flexible extension
+- Agent architecture based on Tool-Calling mechanism for AI-driven database queries and map API orchestration
+- **Task Analysis Tools**: get_recent_tasks, search_tasks, get_task_details, get_categories, get_user_location, search_nearby_location
+- **Schedule Advice Tools**: get_user_profile, get_incomplete_tasks, get_task_details, search_completed_similar_tasks, get_user_location, calculate_route, get_weather, search_nearby_location, get_categories, get_past_task_performance
 - Parses natural language into structured task data
 - Keeps track of AI processing history
 - **Note**: AI features require you to configure your own API Key (e.g., DeepSeek) in the app's "Settings" screen.
@@ -114,9 +132,16 @@ Reminder (Reminder Table)        TaskComponent (Component Table)
 ├── triggerAt, label             └── dataPayload (JSON), createdAt
 └── isFired
 
-AIHistory (AI History Table)
-├── content, sourceType (VOICE/TEXT/SUBTASK)
-└── parsedCount, isSuccess, timestamp
+AIHistory (AI History Table)     DailyScheduleAdvice (Daily Advice Table)
+├── content, sourceType          ├── createdAt, shortTermJson
+└── parsedCount, isSuccess       ├── longTermJson, isRead
+                                 └── generationStatus
+
+UserProfile (User Profile)       UserLocation (Frequent Locations)
+├── userIdentity, industry       ├── name, address, lat, lng
+├── personalityTraits            └── frequency, lastUsedAt
+├── peakHours, taskStats
+└── transportMode, confidence
 ```
 
 ## Project Structure
@@ -124,7 +149,7 @@ AIHistory (AI History Table)
 ```
 app/src/main/java/com/litetask/app/
 ├── data/
-│   ├── ai/              # AI provider adapters
+│   ├── ai/              # AI provider adapters & Agent assistants
 │   ├── local/           # Room DAO & Database
 │   ├── model/           # Data models
 │   ├── remote/          # Network API
@@ -138,6 +163,7 @@ app/src/main/java/com/litetask/app/
 │   ├── home/            # Home (Timeline/Gantt/Deadline)
 │   ├── search/          # Search screen
 │   ├── settings/        # Settings screen
+│   ├── userdata/        # User data & profile
 │   └── theme/           # Material 3 theme
 ├── util/                # Utilities
 └── widget/              # Home screen widgets (List/Gantt/Deadline)

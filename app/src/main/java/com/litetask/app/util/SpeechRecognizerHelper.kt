@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import com.litetask.app.data.local.PreferenceManager
 import com.litetask.app.data.speech.AndroidSttProvider
+import com.litetask.app.data.speech.MimoAsrProvider
 import com.litetask.app.data.speech.SpeechProvider
 import com.litetask.app.data.speech.SpeechRecognitionResult
 import com.litetask.app.data.speech.XunfeiSpeechProvider
@@ -45,6 +46,7 @@ data class SpeechSourceInfo(
 class SpeechRecognizerHelper @Inject constructor(
     private val preferenceManager: PreferenceManager,
     private val xunfeiProvider: XunfeiSpeechProvider,
+    private val mimoAsrProvider: MimoAsrProvider,
     private val androidSttProvider: AndroidSttProvider
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -79,6 +81,7 @@ class SpeechRecognizerHelper @Inject constructor(
     private fun getProvider(providerId: String): SpeechProvider {
         return when (providerId) {
             XunfeiSpeechProvider.PROVIDER_ID -> xunfeiProvider
+            MimoAsrProvider.PROVIDER_ID -> mimoAsrProvider
             else -> androidSttProvider
         }
     }
