@@ -1,6 +1,7 @@
 package com.litetask.app.data.local
 
 import androidx.room.*
+import com.litetask.app.data.model.ComponentType
 import com.litetask.app.data.model.TaskComponentEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -11,6 +12,9 @@ interface TaskComponentDao {
 
     @Query("SELECT * FROM task_components WHERE task_id = :taskId ORDER BY created_at ASC")
     suspend fun getComponentsByTaskIdSync(taskId: Long): List<TaskComponentEntity>
+
+    @Query("SELECT * FROM task_components WHERE component_type = :type")
+    suspend fun getComponentsByTypeSync(type: ComponentType): List<TaskComponentEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertComponent(component: TaskComponentEntity): Long

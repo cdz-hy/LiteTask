@@ -17,4 +17,6 @@ class AIHistoryRepository @Inject constructor(
     suspend fun deleteHistory(history: AIHistory) = aiHistoryDao.deleteHistory(history)
 
     suspend fun clearAllHistory() = aiHistoryDao.clearAllHistory()
+
+    suspend fun clearFailedHistory() = aiHistoryDao.clearFailedHistory()
 }

@@ -119,17 +119,82 @@ abstract class TaskDao {
     @Delete
     abstract suspend fun deleteTask(task: Task)
     
+    @Query("SELECT * FROM sub_tasks WHERE task_id = :taskId ORDER BY sort_order ASC, id ASC")
+    abstract suspend fun getSubTasksByTaskIdSync(taskId: Long): List<SubTask>
+
+    @Query("SELECT COALESCE(MAX(sort_order), -1) FROM sub_tasks WHERE task_id = :taskId")
+    abstract suspend fun getMaxSubTaskSortOrder(taskId: Long): Int
+
     @Query("UPDATE sub_tasks SET is_completed = :completed WHERE id = :subTaskId")
     abstract suspend fun updateSubTaskStatus(subTaskId: Long, completed: Boolean)
-    
+
+    @Query("UPDATE sub_tasks SET content = :content WHERE id = :subTaskId")
+    abstract suspend fun updateSubTaskContent(subTaskId: Long, content: String)
+
+    @Query("UPDATE sub_tasks SET sort_order = :sortOrder WHERE id = :subTaskId AND task_id = :taskId")
+    abstract suspend fun updateSubTaskSortOrder(taskId: Long, subTaskId: Long, sortOrder: Int)
+
     @Delete
     abstract suspend fun deleteSubTask(subTask: SubTask)
 
     @Query("DELETE FROM sub_tasks WHERE task_id = :taskId")
     abstract suspend fun deleteSubTasksByTaskId(taskId: Long)
-    
+
+    @Query("DELETE FROM sub_tasks WHERE task_id = :taskId AND is_completed = 0")
+    abstract suspend fun deleteUncompletedSubTasksByTaskId(taskId: Long)
+
     @Query("SELECT * FROM sub_tasks")
     abstract suspend fun getAllSubTasks(): List<SubTask>
+
+    @Transaction
+    open suspend fun addSubTaskAtEnd(taskId: Long, content: String): Int {
+        val nextOrder = getMaxSubTaskSortOrder(taskId) + 1
+        insertSubTask(
+            SubTask(
+                taskId = taskId,
+                content = content.trim(),
+                isCompleted = false,
+                sortOrder = nextOrder
+            )
+        )
+        return nextOrder
+    }
+
+    @Transaction
+    open suspend fun reorderSubTasks(taskId: Long, orderedSubTaskIds: List<Long>) {
+        orderedSubTaskIds.forEachIndexed { index, subTaskId ->
+            updateSubTaskSortOrder(taskId, subTaskId, index)
+        }
+    }
+
+    @Transaction
+    open suspend fun insertSubTasksBatch(
+        taskId: Long,
+        contents: List<String>,
+        replaceUncompleted: Boolean = false
+    ) {
+        val cleaned = contents.map { it.trim() }.filter { it.isNotEmpty() }
+        if (cleaned.isEmpty()) return
+        if (replaceUncompleted) {
+            deleteUncompletedSubTasksByTaskId(taskId)
+            val remaining = getSubTasksByTaskIdSync(taskId)
+            remaining.forEachIndexed { index, sub ->
+                if (sub.sortOrder != index) {
+                    updateSubTaskSortOrder(taskId, sub.id, index)
+                }
+            }
+        }
+        val startOrder = getMaxSubTaskSortOrder(taskId) + 1
+        val entities = cleaned.mapIndexed { index, text ->
+            SubTask(
+                taskId = taskId,
+                content = text,
+                isCompleted = false,
+                sortOrder = startOrder + index
+            )
+        }
+        insertSubTasks(entities)
+    }
 
     @Transaction
     open suspend fun updateTaskWithSubTasks(task: Task, subTasks: List<SubTask>) {
@@ -151,8 +216,8 @@ abstract class TaskDao {
         )
         AND (:typesEmpty = 1 OR t.type IN (:types))
         AND (:categoriesEmpty = 1 OR t.category_id IN (:categoryIds))
-        AND (:startDate IS NULL OR t.start_time >= :startDate)
-        AND (:endDate IS NULL OR t.deadline <= :endDate)
+        AND (:startDate IS NULL OR t.deadline >= :startDate)
+        AND (:endDate IS NULL OR t.start_time <= :endDate)
         ORDER BY t.is_done ASC, t.deadline ASC
     """)
     abstract fun searchTasksInternal(
@@ -482,7 +547,7 @@ abstract class TaskDao {
     
     // 获取所有任务及其详情（用于备份）
     @Transaction
-    @Query("SELECT * FROM tasks")
+    @Query("SELECT * FROM tasks ORDER BY start_time ASC")
     abstract suspend fun getAllTaskDetailsSync(): List<TaskDetailComposite>
 
     // --- Agent 模式专用查询 ---
@@ -506,6 +571,45 @@ abstract class TaskDao {
     """)
     abstract suspend fun getIncompleteTasksInRange(startTime: Long, endTime: Long): List<Task>
 
+    @Transaction
+    @Query("""
+        SELECT * FROM tasks
+        WHERE is_done = 0 AND deadline > :startTime AND deadline <= :endTime
+        ORDER BY is_pinned DESC, deadline ASC
+    """)
+    abstract suspend fun getIncompleteCompositesInRangeSync(startTime: Long, endTime: Long): List<TaskDetailComposite>
+
+    @Transaction
+    @Query("""
+        SELECT * FROM tasks
+        WHERE is_done = 0 AND deadline <= :now
+        ORDER BY is_pinned DESC, deadline DESC
+        LIMIT :limit
+    """)
+    abstract suspend fun getOverdueIncompleteCompositesSync(now: Long, limit: Int): List<TaskDetailComposite>
+
+    @Transaction
+    @Query("""
+        SELECT * FROM tasks
+        WHERE is_done = 1 AND completed_at >= :sinceTime
+        ORDER BY completed_at DESC
+        LIMIT :limit
+    """)
+    abstract suspend fun getCompletedTaskCompositesSinceSync(sinceTime: Long, limit: Int): List<TaskDetailComposite>
+
+    @Transaction
+    @Query("""
+        SELECT * FROM tasks
+        WHERE is_done = 1 AND (title LIKE '%' || :keyword || '%' OR description LIKE '%' || :keyword || '%')
+        ORDER BY completed_at DESC
+        LIMIT :limit
+    """)
+    abstract suspend fun searchCompletedCompositesSync(keyword: String, limit: Int): List<TaskDetailComposite>
+
+    @Transaction
+    @Query("SELECT * FROM tasks WHERE id = :taskId LIMIT 1")
+    abstract suspend fun getTaskCompositeByIdSync(taskId: Long): TaskDetailComposite?
+
     @Query("""
         SELECT * FROM tasks
         WHERE is_done = 1 AND (title LIKE '%' || :keyword || '%' OR description LIKE '%' || :keyword || '%')
@@ -513,4 +617,7 @@ abstract class TaskDao {
         LIMIT :limit
     """)
     abstract suspend fun searchCompletedTasks(keyword: String, limit: Int): List<Task>
+
+    @Query("UPDATE tasks SET total_focus_seconds = total_focus_seconds + :deltaSeconds WHERE id = :taskId")
+    abstract suspend fun addFocusSeconds(taskId: Long, deltaSeconds: Long)
 }

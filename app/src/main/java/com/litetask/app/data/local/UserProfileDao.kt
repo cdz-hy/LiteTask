@@ -27,12 +27,18 @@ interface UserProfileDao {
      */
     @Query("SELECT * FROM user_profile_history ORDER BY created_at DESC")
     fun getAllUserProfileHistoryFlow(): Flow<List<UserProfileHistoryEntity>>
+
+    @Query("SELECT * FROM user_profile_history ORDER BY created_at DESC")
+    suspend fun getAllUserProfileHistorySync(): List<UserProfileHistoryEntity>
     
     /**
      * 插入新的画像快照 (Append-Only)
      */
     @Insert
     suspend fun insert(profile: UserProfileHistoryEntity)
+
+    @Query("DELETE FROM user_profile_history WHERE id = :id")
+    suspend fun deleteById(id: Long)
     
     /**
      * 删除所有画像记录

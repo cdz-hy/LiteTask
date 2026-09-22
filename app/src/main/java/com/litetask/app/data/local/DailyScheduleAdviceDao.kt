@@ -10,17 +10,29 @@ interface DailyScheduleAdviceDao {
     @Query("SELECT * FROM daily_schedule_advice ORDER BY created_at DESC LIMIT 1")
     suspend fun getLatest(): DailyScheduleAdviceEntity?
 
+    @Query("SELECT * FROM daily_schedule_advice WHERE generation_status = 'COMPLETED' ORDER BY created_at DESC LIMIT 1")
+    suspend fun getLatestCompleted(): DailyScheduleAdviceEntity?
+
+    @Query("SELECT * FROM daily_schedule_advice WHERE generation_status = 'COMPLETED' ORDER BY created_at DESC LIMIT :limit")
+    suspend fun getRecentCompletedSync(limit: Int): List<DailyScheduleAdviceEntity>
+
     @Query("SELECT * FROM daily_schedule_advice ORDER BY created_at DESC LIMIT 1")
     fun getLatestFlow(): Flow<DailyScheduleAdviceEntity?>
 
     @Query("SELECT * FROM daily_schedule_advice ORDER BY created_at DESC")
     fun getAllFlow(): Flow<List<DailyScheduleAdviceEntity>>
 
+    @Query("SELECT * FROM daily_schedule_advice ORDER BY created_at DESC")
+    suspend fun getAllSync(): List<DailyScheduleAdviceEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(advice: DailyScheduleAdviceEntity): Long
 
     @Query("UPDATE daily_schedule_advice SET generation_status = :status WHERE id = :id")
     suspend fun updateGenerationStatus(id: Long, status: String)
+
+    @Query("UPDATE daily_schedule_advice SET generation_status = 'FAILED' WHERE generation_status = 'GENERATING' AND created_at < :cutoffMillis")
+    suspend fun failStaleGenerating(cutoffMillis: Long)
 
     @Query("UPDATE daily_schedule_advice SET is_read = 1 WHERE id = :id")
     suspend fun markAsRead(id: Long)

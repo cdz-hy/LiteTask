@@ -21,6 +21,9 @@ interface AIHistoryDao {
     @Query("DELETE FROM ai_history")
     suspend fun clearAllHistory()
     
+    @Query("DELETE FROM ai_history WHERE is_success = 0")
+    suspend fun clearFailedHistory()
+
     @Query("SELECT COUNT(*) FROM ai_history")
     suspend fun getHistoryCount(): Int
 }
