@@ -30,6 +30,20 @@ data class UserLocationEntity(
     @ColumnInfo(name = "destination_count")
     val destinationCount: Int = 0,
 
+    @ColumnInfo(name = "location_type")
+    val locationType: String = TYPE_FREQUENT, // "家" / "公司" / "学校" / "常去"
+
+    @ColumnInfo(name = "address")
+    val address: String = "",
+
     @ColumnInfo(name = "last_visited_at")
     val lastVisitedAt: Long = System.currentTimeMillis()
-)
+) {
+    companion object {
+        const val TYPE_HOME = "家"
+        const val TYPE_WORK = "公司"
+        const val TYPE_SCHOOL = "学校"
+        const val TYPE_FREQUENT = "常去"
+        val ALL_TYPES = listOf(TYPE_HOME, TYPE_WORK, TYPE_SCHOOL, TYPE_FREQUENT)
+    }
+}

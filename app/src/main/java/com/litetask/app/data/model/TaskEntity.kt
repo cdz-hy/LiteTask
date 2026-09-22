@@ -96,7 +96,12 @@ data class Task(
     // --- 5. AI 字段 ---
     @SerializedName("original_voice_text", alternate = ["n"])
     @ColumnInfo(name = "original_voice_text")
-    val originalVoiceText: String? = null
+    val originalVoiceText: String? = null,
+
+    // --- 6. 专注时长统计（累计秒数） ---
+    @SerializedName("total_focus_seconds", alternate = ["o"])
+    @ColumnInfo(name = "total_focus_seconds", defaultValue = "0")
+    val totalFocusSeconds: Long = 0L
 ) {
     // 计算属性：任务是否处于活跃状态（未完成且未过期）
     val isActive: Boolean get() = !isDone && !isExpired

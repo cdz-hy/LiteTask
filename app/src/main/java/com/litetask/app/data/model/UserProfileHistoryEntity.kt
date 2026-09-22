@@ -52,7 +52,7 @@ data class UserProfileHistoryEntity(
     val planAbility: Int = 1, // 规划能力 (1-5级)
 
     @ColumnInfo(name = "stress_level")
-    val stressLevel: Int = 1, // 压力承受度 (1-5级)
+    val stressLevel: Int = 1, // 当前压力指数 (1-5级)
 
     @ColumnInfo(name = "execution_rhythm")
     val executionRhythm: String? = null, // 执行节奏
@@ -61,5 +61,13 @@ data class UserProfileHistoryEntity(
     val aiTone: String? = null, // AI 语气偏好
 
     @ColumnInfo(name = "personality")
-    val personality: String? = null // 综合性格特征描述
-)
+    val personality: String? = null, // 综合性格特征描述
+
+    @ColumnInfo(name = "source")
+    val source: String = SOURCE_AI // 来源: "AI" 或 "MANUAL"
+) {
+    companion object {
+        const val SOURCE_AI = "AI"
+        const val SOURCE_MANUAL = "MANUAL"
+    }
+}
