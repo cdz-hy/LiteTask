@@ -57,4 +57,9 @@ object DatabaseModule {
         return database.dailyScheduleAdviceDao()
     }
 
+    @Provides
+    fun provideFocusSessionDao(database: AppDatabase): com.litetask.app.data.local.FocusSessionDao {
+        return database.focusSessionDao()
+    }
+
 }

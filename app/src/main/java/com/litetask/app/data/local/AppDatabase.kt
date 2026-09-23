@@ -15,6 +15,7 @@ import com.litetask.app.data.model.TaskComponentEntity
 import com.litetask.app.data.model.UserProfileHistoryEntity
 import com.litetask.app.data.model.UserLocationEntity
 import com.litetask.app.data.model.DailyScheduleAdviceEntity
+import com.litetask.app.data.model.FocusSessionEntity
 
 @Database(
     entities = [
@@ -26,9 +27,10 @@ import com.litetask.app.data.model.DailyScheduleAdviceEntity
         TaskComponentEntity::class,
         UserProfileHistoryEntity::class,
         UserLocationEntity::class,
-        DailyScheduleAdviceEntity::class
+        DailyScheduleAdviceEntity::class,
+        FocusSessionEntity::class
     ],
-    version = 7,
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(TaskTypeConverter::class)
@@ -40,6 +42,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun userProfileDao(): UserProfileDao
     abstract fun userLocationDao(): UserLocationDao
     abstract fun dailyScheduleAdviceDao(): DailyScheduleAdviceDao
+    abstract fun focusSessionDao(): FocusSessionDao
     
     companion object {
         // 数据库名称必须与 DatabaseModule 中的一致
@@ -231,6 +234,75 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         /**
+         * 数据库迁移：从版本7到版本8
+         * 新增任务专注时长字段与 focus_sessions 专注记录表
+         */
+        val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `tasks` ADD COLUMN `total_focus_seconds` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `focus_sessions` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `task_id` INTEGER,
+                        `task_title` TEXT NOT NULL,
+                        `mode` TEXT NOT NULL,
+                        `planned_seconds` INTEGER NOT NULL,
+                        `actual_seconds` INTEGER NOT NULL,
+                        `started_at` INTEGER NOT NULL,
+                        `ended_at` INTEGER NOT NULL,
+                        `completed` INTEGER NOT NULL,
+                        FOREIGN KEY(`task_id`) REFERENCES `tasks`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_focus_sessions_task_id` ON `focus_sessions` (`task_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_focus_sessions_started_at` ON `focus_sessions` (`started_at`)")
+            }
+        }
+
+        /**
+         * 数据库迁移：从版本8到版本9
+         * 为常去地点增加地点类型标签与详细地址，为画像历史增加来源标记
+         */
+        val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `user_locations` ADD COLUMN `location_type` TEXT NOT NULL DEFAULT '常去'")
+                db.execSQL("ALTER TABLE `user_locations` ADD COLUMN `address` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `user_profile_history` ADD COLUMN `source` TEXT NOT NULL DEFAULT 'AI'")
+            }
+        }
+
+        val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `ai_history` ADD COLUMN `target_title` TEXT")
+                db.execSQL("ALTER TABLE `ai_history` ADD COLUMN `image_count` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `ai_history` ADD COLUMN `error_message` TEXT")
+            }
+        }
+
+        private fun insertDefaultCategories(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("INSERT OR IGNORE INTO categories (id, name, color_hex, icon_name, is_default) VALUES (1, '工作', '#0B57D0', 'default', 1)")
+            db.execSQL("INSERT OR IGNORE INTO categories (id, name, color_hex, icon_name, is_default) VALUES (2, '生活', '#146C2E', 'default', 1)")
+            db.execSQL("INSERT OR IGNORE INTO categories (id, name, color_hex, icon_name, is_default) VALUES (3, '学习', '#65558F', 'default', 1)")
+            db.execSQL("INSERT OR IGNORE INTO categories (id, name, color_hex, icon_name, is_default) VALUES (4, '紧急', '#B3261E', 'default', 1)")
+        }
+
+        private val databaseCallback = object : Callback() {
+            override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                super.onCreate(db)
+                insertDefaultCategories(db)
+            }
+
+            override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                super.onOpen(db)
+                db.query("SELECT COUNT(*) FROM categories").use { cursor ->
+                    if (cursor.moveToFirst() && cursor.getInt(0) == 0) {
+                        insertDefaultCategories(db)
+                    }
+                }
+            }
+        }
+
+        /**
          * 获取数据库单例
          * 用于在 BroadcastReceiver 等无法使用 Hilt 注入的地方获取数据库实例
          */
@@ -242,7 +314,8 @@ abstract class AppDatabase : RoomDatabase() {
                         AppDatabase::class.java,
                         DATABASE_NAME
                     )
-                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                        .addCallback(databaseCallback)
+                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                         .fallbackToDestructiveMigration()
                         .build()
                     INSTANCE = instance
