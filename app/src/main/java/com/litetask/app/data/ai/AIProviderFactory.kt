@@ -12,28 +12,31 @@ import javax.inject.Singleton
 class AIProviderFactory @Inject constructor(
     private val deepSeekProvider: DeepSeekProvider,
     private val xiaoMiProvider: XiaoMiProvider,
+    private val openAICompatibleProvider: OpenAICompatibleProvider,
     private val preferenceManager: PreferenceManager
 ) {
     /**
      * 根据提供商标识获取对应的 AI 提供商
-     * @param providerId 提供商标识（如 "deepseek-v3.2"）
+     * @param providerId 提供商标识（如 "deepseek" / "xiaomi" / "custom_openai"）
      * @return AI 提供商实例
      */
     fun getProvider(providerId: String): AIProvider {
         return when (providerId.lowercase()) {
             "deepseek" -> deepSeekProvider
             "xiaomi" -> xiaoMiProvider
+            "custom_openai" -> openAICompatibleProvider
             else -> deepSeekProvider
         }
     }
-    
+
     /**
      * 获取所有支持的提供商列表
      */
     fun getSupportedProviders(): List<Pair<String, String>> {
         return listOf(
             "deepseek" to "DeepSeek",
-            "xiaomi" to "小米 MIMO"
+            "xiaomi" to "小米 MIMO",
+            "custom_openai" to "OpenAI 兼容接口"
         )
     }
 
@@ -44,13 +47,14 @@ class AIProviderFactory @Inject constructor(
         val fetchedModels = preferenceManager.getFetchedModels(providerId)
         val defaultModels = when (providerId.lowercase()) {
             "deepseek" -> listOf(
-                "deepseek-v4-pro" to "deepseek-v4-pro",
-                "deepseek-v4-flash" to "deepseek-v4-flash"
+                "deepseek-flash" to "deepseek-flash",
+                "deepseek-v4-pro" to "deepseek-v4-pro"
             )
             "xiaomi" -> listOf(
-                "mimo-v2.5-pro" to "mimo-v2.5-pro",
-                "mimo-v2.5" to "mimo-v2.5"
+                "mimo-v2.6-pro" to "mimo-v2.6-pro",
+                "mimo-v2.6-flash" to "mimo-v2.6-flash"
             )
+            "custom_openai" -> emptyList()
             else -> emptyList()
         }
         

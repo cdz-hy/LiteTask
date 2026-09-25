@@ -45,8 +45,7 @@ interface AIProvider {
     suspend fun generateSubTasks(
         apiKey: String,
         model: String,
-        task: Task,
-        additionalContext: String = "",
+        context: SubTaskGenerationContext,
         imageBases64: List<String>? = null
     ): Result<List<String>>
 }
