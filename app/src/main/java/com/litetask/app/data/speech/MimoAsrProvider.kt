@@ -20,6 +20,7 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.util.Base64
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
@@ -81,11 +82,33 @@ class MimoAsrProvider @Inject constructor(
         }
 
         recordingActive.set(true)
+        val isClosed = AtomicBoolean(false)
+        val recognitionExecutor = Executors.newSingleThreadExecutor()
         trySend(SpeechRecognitionResult.Started)
 
         val committedText = StringBuilder()
 
+        fun submitSegment(pcmData: ByteArray) {
+            if (pcmData.isEmpty() || isClosed.get()) return
+            recognitionExecutor.submit {
+                if (isClosed.get()) return@submit
+                try {
+                    val wavData = convertPcmToWav(pcmData)
+                    val result = recognizeAudio(wavData, baseUrl, apiKey)
+                    if (result != null && !isClosed.get()) {
+                        synchronized(committedText) {
+                            committedText.append(result)
+                        }
+                        trySend(SpeechRecognitionResult.PartialResult(committedText.toString()))
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Recognition error", e)
+                }
+            }
+        }
+
         val recordingThread = Thread {
+            val segmentBuffer = ByteArrayOutputStream()
             try {
                 val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, ENCODING)
                     .coerceAtLeast(4096)
@@ -101,11 +124,10 @@ class MimoAsrProvider @Inject constructor(
                 }
 
                 audioRecord?.startRecording()
-                val segmentBuffer = ByteArrayOutputStream()
                 val readBuffer = ByteArray(1024)
                 var segmentStartTime = System.currentTimeMillis()
 
-                while (recordingActive.get()) {
+                while (recordingActive.get() && !isClosed.get()) {
                     val read = audioRecord?.read(readBuffer, 0, readBuffer.size) ?: -1
                     if (read > 0) {
                         segmentBuffer.write(readBuffer, 0, read)
@@ -115,52 +137,44 @@ class MimoAsrProvider @Inject constructor(
                             val pcmData = segmentBuffer.toByteArray()
                             segmentBuffer.reset()
                             segmentStartTime = System.currentTimeMillis()
-
-                            try {
-                                val wavData = convertPcmToWav(pcmData)
-                                val result = recognizeAudio(wavData, baseUrl, apiKey)
-                                if (result != null && recordingActive.get()) {
-                                    synchronized(committedText) {
-                                        committedText.append(result)
-                                    }
-                                    trySend(SpeechRecognitionResult.PartialResult(committedText.toString()))
-                                }
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Recognition error", e)
-                            }
+                            submitSegment(pcmData)
                         }
                     }
                 }
 
-                if (segmentBuffer.size() > 0 && recordingActive.get()) {
-                    try {
-                        val pcmData = segmentBuffer.toByteArray()
-                        val wavData = convertPcmToWav(pcmData)
-                        val result = recognizeAudio(wavData, baseUrl, apiKey)
-                        if (result != null && recordingActive.get()) {
-                            synchronized(committedText) {
-                                committedText.append(result)
-                            }
-                            trySend(SpeechRecognitionResult.FinalResult(committedText.toString()))
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Final segment recognition error", e)
-                    }
+                // 停止录音后，继续识别剩余尾段音频
+                if (segmentBuffer.size() > 0 && !isClosed.get()) {
+                    submitSegment(segmentBuffer.toByteArray())
+                    segmentBuffer.reset()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Recording error", e)
                 trySend(SpeechRecognitionResult.Error("RECORD", e.message ?: "录音异常"))
             } finally {
                 stopAudioCapture()
-                if (recordingActive.get()) {
-                    trySend(SpeechRecognitionResult.FinalResult(committedText.toString()))
+                recognitionExecutor.shutdown()
+                if (!isClosed.get()) {
+                    try {
+                        recognitionExecutor.awaitTermination(8, TimeUnit.SECONDS)
+                    } catch (_: InterruptedException) {}
+                    if (!isClosed.get()) {
+                        synchronized(committedText) {
+                            trySend(SpeechRecognitionResult.FinalResult(committedText.toString()))
+                        }
+                    }
+                } else {
+                    recognitionExecutor.shutdownNow()
                 }
             }
         }
 
         recordingThread.start()
 
-        awaitClose { stopRecognition() }
+        awaitClose {
+            isClosed.set(true)
+            stopRecognition()
+            recognitionExecutor.shutdownNow()
+        }
     }
 
     /**

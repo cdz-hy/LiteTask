@@ -246,7 +246,6 @@ class XunfeiSpeechProvider @Inject constructor(
                             break
                         }
                     }
-                    Thread.sleep(FRAME_INTERVAL)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Audio capture error", e)
