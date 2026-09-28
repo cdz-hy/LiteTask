@@ -5,15 +5,14 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
-import android.location.LocationListener
 import android.location.LocationManager
-import android.os.Bundle
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
+import androidx.core.os.CancellationSignal
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,6 +22,12 @@ import kotlin.coroutines.resume
 class LocationProvider @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    companion object {
+        private const val FRESH_CACHE_MAX_AGE_MS = 3 * 60 * 1000L
+        private const val FALLBACK_MAX_AGE_MS = 2 * 60 * 60 * 1000L
+        private const val REQUEST_TIMEOUT_MS = 5000L
+    }
+
     private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
     fun hasLocationPermission(): Boolean {
@@ -35,8 +40,14 @@ class LocationProvider @Inject constructor(
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    /**
+     * 获取当前位置（返回 GCJ-02 坐标系供高德与足迹使用）。
+     * @param maxAgeMs 允许直接复用系统缓存定位的最大年龄，默认 3 分钟。
+     */
     @SuppressLint("MissingPermission")
-    suspend fun getCurrentLocation(): Location? = suspendCancellableCoroutine { continuation ->
+    suspend fun getCurrentLocation(
+        maxAgeMs: Long = FRESH_CACHE_MAX_AGE_MS
+    ): Location? = suspendCancellableCoroutine { continuation ->
         if (!hasLocationPermission()) {
             continuation.resume(null)
             return@suspendCancellableCoroutine
@@ -48,78 +59,97 @@ class LocationProvider @Inject constructor(
             return@suspendCancellableCoroutine
         }
 
-        // 尝试获取最后一次已知位置
-        var bestLocation: Location? = null
+        val now = System.currentTimeMillis()
+        var bestFreshOrRecent: Location? = null
         for (provider in providers) {
-            val lastLocation = locationManager.getLastKnownLocation(provider)
-            if (lastLocation != null) {
-                if (bestLocation == null || lastLocation.accuracy < bestLocation.accuracy) {
-                    bestLocation = lastLocation
-                }
+            val last = try {
+                locationManager.getLastKnownLocation(provider)
+            } catch (_: Exception) {
+                null
+            } ?: continue
+            if (now - last.time > FALLBACK_MAX_AGE_MS) continue
+            if (bestFreshOrRecent == null ||
+                last.time > bestFreshOrRecent.time + 60_000L ||
+                last.accuracy < bestFreshOrRecent.accuracy
+            ) {
+                bestFreshOrRecent = last
             }
         }
 
-        // 如果有近期的缓存（30分钟内），直接使用
-        if (bestLocation != null && System.currentTimeMillis() - bestLocation.time < 30 * 60 * 1000) {
-            continuation.resume(bestLocation)
+        // maxAgeMs 内的缓存直接复用（减少频繁唤醒 GPS/网络定位）
+        if (bestFreshOrRecent != null && now - bestFreshOrRecent.time < maxAgeMs) {
+            continuation.resume(toGcj02Location(bestFreshOrRecent))
             return@suspendCancellableCoroutine
         }
 
-        // 如果缓存较旧但存在，先保存作为备用
-        val fallbackLocation = bestLocation
-
-        // 尝试请求一次新的位置更新（带超时）
+        val fallbackLocation = bestFreshOrRecent?.let(::toGcj02Location)
         var isResolved = false
-        val listener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                locationManager.removeUpdates(this)
-                if (continuation.isActive && !isResolved) {
-                    isResolved = true
-                    continuation.resume(location)
-                }
+        val mainHandler = Handler(Looper.getMainLooper())
+        val cancellationSignal = CancellationSignal()
+
+        val timeoutRunnable = Runnable {
+            if (continuation.isActive && !isResolved) {
+                isResolved = true
+                cancellationSignal.cancel()
+                continuation.resume(fallbackLocation)
             }
-            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-            override fun onProviderEnabled(provider: String) {}
-            override fun onProviderDisabled(provider: String) {}
+        }
+
+        val provider = pickPreferredProvider(providers)
+        if (provider == null) {
+            continuation.resume(fallbackLocation)
+            return@suspendCancellableCoroutine
         }
 
         try {
-            // 优先使用网络定位（更快）
-            val provider = if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                LocationManager.NETWORK_PROVIDER
-            } else if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                LocationManager.GPS_PROVIDER
-            } else {
-                // 没有可用的定位提供者，使用备用位置
+            mainHandler.postDelayed(timeoutRunnable, REQUEST_TIMEOUT_MS)
+            LocationManagerCompat.getCurrentLocation(
+                locationManager,
+                provider,
+                cancellationSignal,
+                ContextCompat.getMainExecutor(context)
+            ) { location ->
+                mainHandler.removeCallbacks(timeoutRunnable)
                 if (continuation.isActive && !isResolved) {
                     isResolved = true
-                    continuation.resume(fallbackLocation)
-                }
-                return@suspendCancellableCoroutine
-            }
-            
-            locationManager.requestSingleUpdate(provider, listener, null)
-            
-            // 设置超时：3秒后如果还没有获取到新位置，使用备用位置
-            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                kotlinx.coroutines.delay(3000)
-                if (continuation.isActive && !isResolved) {
-                    isResolved = true
-                    locationManager.removeUpdates(listener)
-                    // 使用备用位置（即使较旧也比没有好）
-                    continuation.resume(fallbackLocation)
+                    continuation.resume(location?.let(::toGcj02Location) ?: fallbackLocation)
                 }
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
+            mainHandler.removeCallbacks(timeoutRunnable)
             if (continuation.isActive && !isResolved) {
                 isResolved = true
-                // 发生异常时，使用备用位置
                 continuation.resume(fallbackLocation)
             }
         }
 
         continuation.invokeOnCancellation {
-            locationManager.removeUpdates(listener)
+            mainHandler.removeCallbacks(timeoutRunnable)
+            cancellationSignal.cancel()
+        }
+    }
+
+    private fun pickPreferredProvider(enabledProviders: List<String>): String? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            enabledProviders.contains(LocationManager.FUSED_PROVIDER)
+        ) {
+            return LocationManager.FUSED_PROVIDER
+        }
+        if (enabledProviders.contains(LocationManager.NETWORK_PROVIDER)) {
+            return LocationManager.NETWORK_PROVIDER
+        }
+        if (enabledProviders.contains(LocationManager.GPS_PROVIDER)) {
+            return LocationManager.GPS_PROVIDER
+        }
+        return enabledProviders.firstOrNull { it != LocationManager.PASSIVE_PROVIDER }
+            ?: enabledProviders.firstOrNull()
+    }
+
+    private fun toGcj02Location(raw: Location): Location {
+        val (mgLng, mgLat) = GeoCoordinateUtils.wgs84ToGcj02(raw.longitude, raw.latitude)
+        return Location(raw).apply {
+            longitude = mgLng
+            latitude = mgLat
         }
     }
 }
