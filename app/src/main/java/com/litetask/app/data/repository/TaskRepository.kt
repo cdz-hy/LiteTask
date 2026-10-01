@@ -1,15 +1,23 @@
 package com.litetask.app.data.repository
 
+import android.content.Context
 import android.util.Log
-import com.litetask.app.data.local.TaskDao
 import com.litetask.app.data.local.CategoryDao
+import com.litetask.app.data.local.PreferenceManager
+import com.litetask.app.data.local.TaskDao
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.reminder.ReminderScheduler
+import com.litetask.app.util.CalendarSyncHelper
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -17,11 +25,41 @@ private const val TAG = "TaskRepository"
 
 @Singleton
 class TaskRepositoryImpl @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val taskDao: TaskDao,
     private val categoryDao: CategoryDao,
     private val taskComponentDao: com.litetask.app.data.local.TaskComponentDao,
-    private val reminderScheduler: ReminderScheduler
+    private val reminderScheduler: ReminderScheduler,
+    private val preferenceManager: PreferenceManager
 ) {
+    private val autoSyncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private fun triggerCalendarAutoSync(taskId: Long) {
+        if (taskId <= 0L || !preferenceManager.isCalendarAutoPushEnabled()) return
+        if (!CalendarSyncHelper.hasCalendarPermissions(context)) return
+        autoSyncScope.launch {
+            runCatching {
+                val detail = taskDao.getTaskDetailCompositeSync(taskId) ?: return@runCatching
+                CalendarSyncHelper.syncSingleTask(
+                    context = context,
+                    detail = detail,
+                    targetCalendarId = preferenceManager.getCalendarTargetId(),
+                    includeFinished = preferenceManager.isCalendarPushIncludeDone(),
+                    includeReminders = preferenceManager.isCalendarSyncReminders()
+                )
+            }
+        }
+    }
+
+    private fun triggerCalendarDeleteSync(taskId: Long) {
+        if (taskId <= 0L || !preferenceManager.isCalendarAutoPushEnabled()) return
+        if (!CalendarSyncHelper.hasCalendarPermissions(context)) return
+        autoSyncScope.launch {
+            runCatching {
+                CalendarSyncHelper.deleteSyncedTaskEvent(context, taskId)
+            }
+        }
+    }
     // 拆分流
     fun getPinnedTasks() = taskDao.getPinnedTasks()
     fun getActiveNonPinnedTasks() = taskDao.getActiveNonPinnedTasks()
@@ -35,8 +73,33 @@ class TaskRepositoryImpl @Inject constructor(
 
     fun getTaskDetail(id: Long) = taskDao.getTaskDetail(id)
 
-    suspend fun insertTask(task: Task) = taskDao.insertTask(task)
-    suspend fun insertSubTask(subTask: SubTask) = taskDao.insertSubTask(subTask)
+    suspend fun insertTask(task: Task): Long {
+        val id = taskDao.insertTask(task)
+        triggerCalendarAutoSync(id)
+        return id
+    }
+    suspend fun insertSubTask(subTask: SubTask) {
+        taskDao.insertSubTask(subTask)
+        triggerCalendarAutoSync(subTask.taskId)
+    }
+
+    suspend fun addSubTask(taskId: Long, content: String) {
+        val trimmed = content.trim()
+        if (trimmed.isEmpty()) return
+        taskDao.addSubTaskAtEnd(taskId, trimmed)
+        triggerCalendarAutoSync(taskId)
+    }
+
+    suspend fun insertSubTasksBatch(
+        taskId: Long,
+        contents: List<String>,
+        replaceUncompleted: Boolean = false
+    ) {
+        val cleaned = contents.map { it.trim() }.filter { it.isNotEmpty() }
+        if (cleaned.isEmpty()) return
+        taskDao.insertSubTasksBatch(taskId, cleaned, replaceUncompleted)
+        triggerCalendarAutoSync(taskId)
+    }
     
     suspend fun updateTask(task: Task) {
         // 如果截止时间在未来，自动清除过期状态（防止 UI 传回过时的过期标记）
@@ -52,16 +115,42 @@ class TaskRepositoryImpl @Inject constructor(
         }
         
         taskDao.updateTask(taskToUpdate)
+        triggerCalendarAutoSync(taskToUpdate.id)
     }
-    suspend fun deleteTask(task: Task) = taskDao.deleteTask(task)
+    suspend fun deleteTask(task: Task) {
+        taskDao.deleteTask(task)
+        triggerCalendarDeleteSync(task.id)
+    }
     suspend fun updateSubTaskStatus(id: Long, completed: Boolean) = taskDao.updateSubTaskStatus(id, completed)
-    suspend fun deleteSubTask(subTask: SubTask) = taskDao.deleteSubTask(subTask)
+
+    suspend fun updateSubTaskContent(taskId: Long, subTaskId: Long, content: String) {
+        val trimmed = content.trim()
+        if (trimmed.isEmpty()) return
+        taskDao.updateSubTaskContent(subTaskId, trimmed)
+        triggerCalendarAutoSync(taskId)
+    }
+
+    suspend fun reorderSubTasks(taskId: Long, orderedSubTasks: List<SubTask>) {
+        if (orderedSubTasks.isEmpty()) return
+        taskDao.reorderSubTasks(taskId, orderedSubTasks.map { it.id })
+        triggerCalendarAutoSync(taskId)
+    }
+
+    suspend fun deleteSubTask(subTask: SubTask) {
+        taskDao.deleteSubTask(subTask)
+        triggerCalendarAutoSync(subTask.taskId)
+    }
 
     suspend fun updateTaskWithSubTasks(task: Task, subTasks: List<SubTask>) {
         taskDao.updateTaskWithSubTasks(task, subTasks)
+        triggerCalendarAutoSync(task.id)
     }
 
-    suspend fun insertTaskWithRemindersAndReturnId(task: Task, reminders: List<com.litetask.app.data.model.Reminder>): Long {
+    suspend fun insertTaskWithRemindersAndReturnId(
+        task: Task,
+        reminders: List<com.litetask.app.data.model.Reminder>,
+        syncToCalendar: Boolean = true
+    ): Long {
         val taskId = taskDao.insertTask(task)
         if (reminders.isNotEmpty()) {
             val remindersWithId = reminders.map { it.copy(taskId = taskId) }
@@ -78,6 +167,9 @@ class TaskRepositoryImpl @Inject constructor(
                     category?.colorHex
                 )
             }
+        }
+        if (syncToCalendar) {
+            triggerCalendarAutoSync(taskId)
         }
         return taskId
     }
@@ -102,8 +194,10 @@ class TaskRepositoryImpl @Inject constructor(
     /**
      * 重新激活过期任务
      */
-    suspend fun reactivateExpiredTask(taskId: Long, newDeadline: Long) = 
+    suspend fun reactivateExpiredTask(taskId: Long, newDeadline: Long) {
         taskDao.reactivateExpiredTask(taskId, newDeadline)
+        triggerCalendarAutoSync(taskId)
+    }
     
     // 搜索
     // 搜索
@@ -187,6 +281,7 @@ class TaskRepositoryImpl @Inject constructor(
                 )
             }
         }
+        triggerCalendarAutoSync(task.id)
     }
     
     /**
@@ -229,7 +324,7 @@ class TaskRepositoryImpl @Inject constructor(
             }
         }
         
-        return taskId
+        return taskId.also { triggerCalendarAutoSync(it) }
     }
     
     /**
@@ -244,6 +339,7 @@ class TaskRepositoryImpl @Inject constructor(
         
         // 删除任务（提醒会通过外键级联删除）
         taskDao.deleteTask(task)
+        triggerCalendarDeleteSync(task.id)
     }
     
     /**
@@ -258,6 +354,7 @@ class TaskRepositoryImpl @Inject constructor(
         
         // 更新任务状态，记录完成时间
         taskDao.markTaskCompleted(task.id, System.currentTimeMillis())
+        triggerCalendarAutoSync(task.id)
     }
     
     /**
@@ -265,6 +362,7 @@ class TaskRepositoryImpl @Inject constructor(
      */
     suspend fun markTaskUndone(task: Task) {
         taskDao.markTaskUncompleted(task.id)
+        triggerCalendarAutoSync(task.id)
     }
     
     /**
@@ -355,6 +453,7 @@ class TaskRepositoryImpl @Inject constructor(
                 taskDao.updateTask(newTask)
             }
         }
+        triggerCalendarAutoSync(newTask.id)
     }
 
     // --- Agent 模式支持 ---
