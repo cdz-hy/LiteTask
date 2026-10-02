@@ -243,7 +243,7 @@ class AIAgentAssistant @Inject constructor(
         }
     }
 
-    fun parseAgentOutput(content: String, originalText: String, categories: List<Category>): List<Task> {
+    suspend fun parseAgentOutput(content: String, originalText: String, categories: List<Category>): List<Task> {
         val tasks = mutableListOf<Task>()
         try {
             // 尝试提取 JSON 数组部分
@@ -256,28 +256,46 @@ class AIAgentAssistant @Inject constructor(
             
             val array = JSONArray(jsonPart)
             val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+            val now = System.currentTimeMillis()
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
                     val id = obj.optLong("id", 0L)
+                    val existingTask = if (id > 0L) taskRepository.getTaskByIdSync(id)?.task else null
                     val title = obj.getString("title")
                     val startStr = obj.optString("startTime", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()))
-                    val endStr = obj.optString("endTime", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(System.currentTimeMillis() + 86400000)))
+                    val endStr = obj.optString("endTime", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(now + 86400000)))
                     val categoryName = obj.optString("type", "工作")
                     val description = obj.optString("description", "")
                     val destination = obj.optString("destination", "")
 
                     val matchedCategory = categories.find { it.name.equals(categoryName, ignoreCase = true) }
                         ?: categories.firstOrNull { it.isDefault }
-                    
-                    val task = Task(
-                        id = id,
-                        title = title,
-                        description = description,
-                        startTime = dateFormat.parse(startStr)?.time ?: System.currentTimeMillis(),
-                        deadline = dateFormat.parse(endStr)?.time ?: (System.currentTimeMillis() + 86400000),
-                        categoryId = matchedCategory?.id ?: 1L,
-                        originalVoiceText = originalText
-                    )
+                    val newStartTime = dateFormat.parse(startStr)?.time ?: existingTask?.startTime ?: now
+                    val newDeadline = dateFormat.parse(endStr)?.time ?: existingTask?.deadline ?: (now + 86400000)
+
+                    val task = if (existingTask != null) {
+                        val stillExpired = existingTask.isExpired && newDeadline <= now
+                        existingTask.copy(
+                            title = title,
+                            description = description,
+                            startTime = newStartTime,
+                            deadline = newDeadline,
+                            categoryId = matchedCategory?.id ?: existingTask.categoryId,
+                            originalVoiceText = originalText.ifBlank { existingTask.originalVoiceText },
+                            isExpired = stillExpired,
+                            expiredAt = if (stillExpired) existingTask.expiredAt else null
+                        )
+                    } else {
+                        Task(
+                            id = 0L,
+                            title = title,
+                            description = description,
+                            startTime = newStartTime,
+                            deadline = newDeadline,
+                            categoryId = matchedCategory?.id ?: 1L,
+                            originalVoiceText = originalText
+                        )
+                    }
                     task.parsedDestination = destination
                     tasks.add(task)
                 }

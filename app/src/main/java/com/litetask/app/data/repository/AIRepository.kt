@@ -1,7 +1,13 @@
 package com.litetask.app.data.repository
 
+import com.litetask.app.data.ai.ScheduleAdvicePromptSupport
+import com.litetask.app.data.ai.SubTaskGenerationContext
+import com.litetask.app.data.ai.SubTaskGenerationMode
+import com.litetask.app.data.local.UserProfileDao
 import com.litetask.app.data.model.Category
 import com.litetask.app.data.model.Task
+import com.litetask.app.data.model.TaskComponent
+import com.litetask.app.data.model.sortedByOrder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -28,6 +34,9 @@ interface AIRepository {
         task: Task,
         additionalContext: String = "",
         imageBases64: List<String>? = null,
+        mode: SubTaskGenerationMode = SubTaskGenerationMode.APPEND_NEXT,
+        previousGeneratedSteps: List<String> = emptyList(),
+        refinementFeedback: String = "",
         onProgress: (String) -> Unit = {}
     ): Result<List<String>>
 }
@@ -39,7 +48,8 @@ class AIRepositoryImpl @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val taskRepository: TaskRepositoryImpl,
     private val agentAssistant: com.litetask.app.data.ai.AIAgentAssistant,
-    private val locationTracker: LocationTracker
+    private val locationTracker: LocationTracker,
+    private val userProfileDao: UserProfileDao
 ) : AIRepository {
 
     override suspend fun parseTasksFromText(
@@ -48,25 +58,26 @@ class AIRepositoryImpl @Inject constructor(
         imageBases64: List<String>?,
         onProgress: (String) -> Unit
     ): Result<List<Task>> {
+        val providerId = preferenceManager.getAiProvider()
         val finalKey = if (apiKey.isNotBlank() && apiKey != "DEMO_KEY") {
             apiKey
         } else {
-            preferenceManager.getApiKey()
+            preferenceManager.getApiKey(providerId).orEmpty()
         }
-        
-        if (finalKey.isNullOrBlank()) {
-            return Result.failure(Exception("未设置 API Key，请在设置中配置"))
+
+        preferenceManager.getAiConfigError(finalKey)?.let { errorMsg ->
+            return Result.failure(Exception(errorMsg))
         }
-        
-        val providerId = preferenceManager.getAiProvider()
+
         val modelId = preferenceManager.getAiModel()
         val categories = categoryRepository.getAllCategoriesSync()
         val provider = aiProviderFactory.getProvider(providerId)
 
         return withContext(Dispatchers.IO) {
             try {
+                locationTracker.clearPendingOrigin()
                 if (preferenceManager.isAiAgentEnabled()) {
-                    onProgress("准备启动 Agent 模式...")
+                    onProgress("准备启动智能助手深度模式...")
                     runAgentProcess(provider, finalKey, modelId, text, categories, imageBases64, onProgress)
                 } else {
                     onProgress("AI 正在分析任务内容...")
@@ -147,6 +158,7 @@ class AIRepositoryImpl @Inject constructor(
         var currentOriginLng: Double? = null
         var currentOriginLat: Double? = null
         var currentOriginName: String? = null
+        var currentOriginAddress = ""
         
         onProgress("Agent 正在深度思考中...")
 
@@ -208,7 +220,9 @@ class AIRepositoryImpl @Inject constructor(
                                             if (lng != null && lat != null) {
                                                 currentOriginLng = lng
                                                 currentOriginLat = lat
-                                                currentOriginName = locationTracker.reverseGeocode(lng, lat)
+                                                val regeo = locationTracker.reverseGeocodeDetailed(lng, lat)
+                                                currentOriginName = regeo.name
+                                                currentOriginAddress = regeo.address
                                             }
                                         }
                                     } catch (e: Exception) {
@@ -238,27 +252,14 @@ class AIRepositoryImpl @Inject constructor(
                 val finalContent = message.getString("content")
                 val tasks = agentAssistant.parseAgentOutput(finalContent, text, categories)
                 
-                // 保存出发地数据（如果获取到了位置信息）
+                // 暂存出发地，等待用户在确认弹窗点击保存后正式写入足迹，避免误取消污染地点统计
                 val savedLng = currentOriginLng
                 val savedLat = currentOriginLat
                 val savedName = currentOriginName
                 if (savedLng != null && savedLat != null && !savedName.isNullOrBlank()) {
-                    try {
-                        locationTracker.saveOriginLocation(savedName, savedLng, savedLat)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+                    locationTracker.stagePendingOrigin(savedName, savedLng, savedLat, currentOriginAddress)
                 }
-                
-                // 保存目的地数据（只保存 Agent 最终确定的目的地）
-                if (tasks.isNotEmpty()) {
-                    try {
-                        locationTracker.saveDestinationFromTasks(tasks)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-                
+
                 return Result.success(tasks)
             }
         }
@@ -270,21 +271,91 @@ class AIRepositoryImpl @Inject constructor(
         task: Task,
         additionalContext: String,
         imageBases64: List<String>?,
+        mode: SubTaskGenerationMode,
+        previousGeneratedSteps: List<String>,
+        refinementFeedback: String,
         onProgress: (String) -> Unit
     ): Result<List<String>> {
-        val apiKey = preferenceManager.getApiKey()
-        if (apiKey.isNullOrBlank()) {
-            return Result.failure(Exception("未设置 API Key，请在设置中配置"))
+        val providerId = preferenceManager.getAiProvider()
+        val apiKey = preferenceManager.getApiKey(providerId).orEmpty()
+        preferenceManager.getAiConfigError(apiKey)?.let { errorMsg ->
+            return Result.failure(Exception(errorMsg))
         }
 
-        val providerId = preferenceManager.getAiProvider()
         val modelId = preferenceManager.getAiModel()
         val provider = aiProviderFactory.getProvider(providerId)
 
         return withContext(Dispatchers.IO) {
             try {
-                onProgress("AI 正在根据您的要求拆解子任务...")
-                provider.generateSubTasks(apiKey, modelId, task, additionalContext, imageBases64)
+                onProgress("正在读取任务详情、已有步骤与关联信息...")
+                val detail = taskRepository.getTaskByIdSync(task.id)
+                val latestTask = detail?.task ?: task
+                val categoryName = detail?.category?.name
+                    ?: categoryRepository.getAllCategoriesSync().firstOrNull { it.id == latestTask.categoryId }?.name
+                val existingSubTasks = detail?.subTasks?.sortedByOrder().orEmpty()
+                val components = detail?.components?.mapNotNull { runCatching { it.toTaskComponent() }.getOrNull() }.orEmpty()
+
+                val routeDestination = components
+                    .filterIsInstance<TaskComponent.AMapComponent>()
+                    .firstOrNull()
+                    ?.data
+                    ?.let { route ->
+                        val addr = route.endAddress?.takeIf { it.isNotBlank() }
+                        if (addr != null) "${route.endName}（$addr）" else route.endName
+                    }
+
+                val attachmentNames = components
+                    .filterIsInstance<TaskComponent.FileComponent>()
+                    .map { it.data.fileName }
+                    .filter { it.isNotBlank() }
+
+                val userProfile = runCatching { userProfileDao.getLatestUserProfile() }.getOrNull()
+                val profileSummary = userProfile?.let {
+                    ScheduleAdvicePromptSupport.formatProfileSummaryText(it, emptyList())
+                }
+
+                val contextSummaryParts = buildList {
+                    if (existingSubTasks.isNotEmpty()) {
+                        add("${existingSubTasks.size}条已有步骤")
+                    }
+                    if (!routeDestination.isNullOrBlank()) {
+                        add("目的地「$routeDestination」")
+                    }
+                    if (!imageBases64.isNullOrEmpty()) {
+                        add("${imageBases64.size}张参考图")
+                    }
+                }
+                if (contextSummaryParts.isNotEmpty()) {
+                    onProgress("已整理上下文（${contextSummaryParts.joinToString("、")}）")
+                }
+
+                val generationContext = SubTaskGenerationContext(
+                    task = latestTask,
+                    categoryName = categoryName,
+                    existingSubTasks = existingSubTasks,
+                    routeDestination = routeDestination,
+                    attachmentNames = attachmentNames,
+                    userProfileSummary = profileSummary,
+                    additionalContext = additionalContext,
+                    mode = mode,
+                    previousGeneratedSteps = previousGeneratedSteps,
+                    refinementFeedback = refinementFeedback,
+                    hasImages = !imageBases64.isNullOrEmpty()
+                )
+
+                onProgress(
+                    if (refinementFeedback.isNotBlank()) {
+                        "正在由 ${provider.getProviderName()} 按微调意见优化步骤..."
+                    } else {
+                        "正在由 ${provider.getProviderName()} 拆解可落地的子任务..."
+                    }
+                )
+
+                val result = provider.generateSubTasks(apiKey, modelId, generationContext, imageBases64)
+                result.onSuccess { steps ->
+                    onProgress("拆解与去重校验完成（共 ${steps.size} 个步骤）")
+                }
+                result
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {

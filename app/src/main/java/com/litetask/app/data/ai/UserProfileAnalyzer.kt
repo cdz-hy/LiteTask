@@ -1,5 +1,6 @@
 package com.litetask.app.data.ai
 
+import com.litetask.app.data.local.FocusSessionDao
 import com.litetask.app.data.local.TaskDao
 import com.litetask.app.data.local.UserLocationDao
 import com.litetask.app.data.local.AIHistoryDao
@@ -33,6 +34,7 @@ class UserProfileAnalyzer @Inject constructor(
     private val aiProviderFactory: AIProviderFactory,
     private val preferenceManager: PreferenceManager,
     private val taskDao: TaskDao,
+    private val focusSessionDao: FocusSessionDao,
     private val userLocationDao: UserLocationDao,
     private val aiHistoryDao: AIHistoryDao,
     private val categoryDao: CategoryDao,
@@ -40,45 +42,134 @@ class UserProfileAnalyzer @Inject constructor(
     private val userProfileDao: UserProfileDao
 ) {
     
+    data class ObjectiveStats(
+        val completionRate: Double,
+        val delayedRate: Double,
+        val categoryFocus: String,
+        val inputPreference: String
+    )
+
+    companion object {
+        private val TRAVEL_KEYWORDS = listOf(
+            "去", "出差", "出行", "导航", "路线", "打车", "地铁", "公交", "高铁", "火车", "航班", "机场", "骑行", "自驾", "步行"
+        )
+
+        /**
+         * 将 AI 历史记录整理为注入画像分析器的摘要文本。
+         * 优先选取成功记录；仅当全部失败时才回退展示失败记录，并清晰标注来源类型与附加信息。
+         */
+        internal fun formatAiHistoryForPrompt(
+            histories: List<com.litetask.app.data.model.AIHistory>,
+            limit: Int
+        ): String {
+            if (histories.isEmpty() || limit <= 0) return "无AI交互记录。"
+            val sorted = histories.sortedByDescending { it.timestamp }
+            val candidates = sorted.filter { it.isSuccess }.ifEmpty { sorted }.take(limit)
+            val samples = candidates.joinToString("\n") { item ->
+                val sourceLabel = when (item.sourceType) {
+                    com.litetask.app.data.model.AIHistorySource.VOICE -> "语音"
+                    com.litetask.app.data.model.AIHistorySource.TEXT -> "文字"
+                    com.litetask.app.data.model.AIHistorySource.SUBTASK -> "子任务拆解"
+                }
+                val targetPrefix = item.targetTitle?.trim()?.takeIf { it.isNotEmpty() }
+                    ?.let { "目标「${it.take(24)}」 " } ?: ""
+                val cleanedContent = item.content.trim().take(50)
+                val body = when {
+                    cleanedContent.isNotEmpty() && item.imageCount > 0 -> "$cleanedContent (含${item.imageCount}张图)"
+                    cleanedContent.isNotEmpty() -> cleanedContent
+                    item.imageCount > 0 -> "[纯图片识别(${item.imageCount}张)]"
+                    item.targetTitle?.isNotBlank() == true -> "[一键自动拆解]"
+                    else -> "[空内容]"
+                }
+                val statusSuffix = if (!item.isSuccess) " [未成功]" else ""
+                "- [$sourceLabel] $targetPrefix$body$statusSuffix"
+            }
+            return "用户最近的AI交互记录:\n$samples"
+        }
+
+        internal fun computeObjectiveStats(
+            allTasks: List<com.litetask.app.data.model.Task>,
+            categories: List<com.litetask.app.data.model.Category>,
+            allAiHistories: List<com.litetask.app.data.model.AIHistory>,
+            now: Long = System.currentTimeMillis()
+        ): ObjectiveStats {
+            val cutoff30d = now - 30L * 24 * 60 * 60 * 1000
+            val completed = allTasks.count { it.isDone }
+            val recentPool = allTasks.filter {
+                it.createdAt >= cutoff30d || it.deadline >= cutoff30d || (it.completedAt ?: 0L) >= cutoff30d
+            }.ifEmpty { allTasks }
+            val delayed = recentPool.count {
+                it.isExpired ||
+                    (!it.isDone && it.deadline in 1 until now) ||
+                    (it.isDone && it.completedAt != null && it.deadline > 0 && it.completedAt > it.deadline)
+            }
+            val completionRate = if (allTasks.isNotEmpty()) completed.toDouble() / allTasks.size else 0.0
+            val delayedRate = if (recentPool.isNotEmpty()) delayed.toDouble() / recentPool.size else 0.0
+
+            val focusPool = allTasks.filter { it.createdAt >= cutoff30d }.ifEmpty { allTasks }
+            val categoryCounts = focusPool.groupBy { it.categoryId }.mapValues { it.value.size }
+            val topCategoryId = categoryCounts.maxByOrNull { it.value }?.key
+            val categoryFocus = categories.find { it.id == topCategoryId }?.name ?: "无明显重心"
+
+            val voiceCount = allAiHistories.count { it.sourceType == com.litetask.app.data.model.AIHistorySource.VOICE }
+            val textCount = allAiHistories.count { it.sourceType == com.litetask.app.data.model.AIHistorySource.TEXT }
+            val inputPreference = when {
+                voiceCount == 0 && textCount == 0 -> "无 AI 记录（手动为主）"
+                voiceCount > textCount -> "语音"
+                textCount > voiceCount -> "文字"
+                else -> "语音与文字均衡"
+            }
+            return ObjectiveStats(completionRate, delayedRate, categoryFocus, inputPreference)
+        }
+    }
+
     /**
      * 分析用户画像 (优化版 Function Calling)
      */
     suspend fun analyzeUserProfile(
         onStep: (AnalysisStep) -> Unit = {}
     ): Result<UserProfileHistoryEntity> {
-        val apiKey = preferenceManager.getApiKey()
-        if (apiKey.isNullOrBlank()) {
-            return Result.failure(Exception("未设置 API Key，请在设置中配置"))
-        }
-        
-        if (!preferenceManager.isAiAgentEnabled()) {
-            return Result.failure(Exception("AI Agent 未开启，请先在设置中启用 AI Agent 助手。"))
+        val providerId = preferenceManager.getAiProvider()
+        val apiKey = preferenceManager.getApiKey(providerId).orEmpty()
+        preferenceManager.getAiConfigError(apiKey)?.let { errorMsg ->
+            return Result.failure(Exception(errorMsg))
         }
 
-        val providerId = preferenceManager.getAiProvider()
         val modelId = preferenceManager.getAiModel()
         val provider = aiProviderFactory.getProvider(providerId)
 
         return try {
             onStep(AnalysisStep.Thinking("初始化用户画像分析引擎..."))
-            
+
             // 预先计算客观数据
             val allTasks = taskDao.getAllTasks().first()
-            val completed = allTasks.count { it.isDone }
-            val delayed = allTasks.count { it.isExpired || (!it.isDone && it.deadline < System.currentTimeMillis()) }
-            val completionRate = if (allTasks.isNotEmpty()) completed.toDouble() / allTasks.size else 0.0
-            val delayedRate = if (allTasks.isNotEmpty()) delayed.toDouble() / allTasks.size else 0.0
-
+            val now = System.currentTimeMillis()
             val categories = categoryDao.getAllCategories().first()
-            val categoryCounts = allTasks.groupBy { it.categoryId }.mapValues { it.value.size }
-            val topCategoryId = categoryCounts.maxByOrNull { it.value }?.key
-            val categoryFocus = categories.find { it.id == topCategoryId }?.name ?: "无明显重心"
-
             val allAiHistories = aiHistoryDao.getAllHistory()
-            val voiceCount = allAiHistories.count { it.sourceType == com.litetask.app.data.model.AIHistorySource.VOICE }
-            val textCount = allAiHistories.count { it.sourceType == com.litetask.app.data.model.AIHistorySource.TEXT }
-            val inputPreference = if (voiceCount > textCount) "语音" else "文字"
-            
+            val stats = computeObjectiveStats(allTasks, categories, allAiHistories, now)
+            val completionRate = stats.completionRate
+            val delayedRate = stats.delayedRate
+            val categoryFocus = stats.categoryFocus
+            val inputPreference = stats.inputPreference
+
+            val recentFocusSessions = focusSessionDao.getSessionsSinceSync(now - 30L * 24 * 60 * 60 * 1000)
+            val focusSummaryText = if (recentFocusSessions.isNotEmpty()) {
+                val totalMin = recentFocusSessions.sumOf { it.actualSeconds } / 60L
+                val pomodoroCount = recentFocusSessions.count { it.mode == "POMODORO" }
+                "${recentFocusSessions.size}次（共${totalMin}分钟，其中番茄钟${pomodoroCount}次）"
+            } else {
+                "暂无专注计时记录"
+            }
+
+            // 判断是否存在位置/出行语境，以按需开放地理相关工具
+            val savedLocations = userLocationDao.getAllLocationsSync()
+            val savedRoutes = taskComponentDao.getComponentsByTypeSync(ComponentType.AMAP_ROUTE)
+            val recentTaskTexts = allTasks.sortedByDescending { it.createdAt }.take(20)
+                .joinToString(" ") { "${it.title} ${it.description.orEmpty()}" }
+            val hasTravelContext = savedLocations.isNotEmpty() ||
+                savedRoutes.isNotEmpty() ||
+                TRAVEL_KEYWORDS.any { recentTaskTexts.contains(it) }
+
             // 获取上一次画像作为基准
             val previousProfile = userProfileDao.getLatestUserProfile()
             val previousContext = if (previousProfile != null) {
@@ -87,68 +178,66 @@ class UserProfileAnalyzer @Inject constructor(
                 - 身份: ${previousProfile.identity}
                 - 行业: ${previousProfile.industry}
                 - 性格: ${previousProfile.personality}
-                - 拖延指数: ${previousProfile.delayIndex}/5
-                - 规划能力: ${previousProfile.planAbility}/5
-                - 压力承受度: ${previousProfile.stressLevel}/5
+                - 拖延指数: ${previousProfile.delayIndex}/5（1最自律，5最拖延）
+                - 规划能力: ${previousProfile.planAbility}/5（1较弱，5极强）
+                - 当前压力指数: ${previousProfile.stressLevel}/5（1轻松，5压力极大）
                 """.trimIndent()
             } else {
                 "这是首次分析，无历史画像基准。"
             }
-            
+
             val systemPrompt = """
 你是一个专业的用户画像推演 Agent 系统。你可以调用多个内置工具实时探索用户的行为轨迹、任务文本、时间模式等。
 请结合工具获取到的原始数据，对用户进行深度心理与行为模式推理。
 
 # 当前已知的客观数据
-- 任务完成率: ${(completionRate * 100).toInt()}%
-- 任务拖延/延期率: ${(delayedRate * 100).toInt()}%
-- 核心关注领域: $categoryFocus
+- 任务总体完成率: ${(completionRate * 100).toInt()}%
+- 近30天拖延/延期率: ${(delayedRate * 100).toInt()}%
+- 近期核心关注领域: $categoryFocus
 - 输入偏好: $inputPreference
+- 近30天真实专注记录: $focusSummaryText
 
 $previousContext
 
 # 分析维度与推理思路 (Chain of Thought)
 1. **信息收集**: 优先调用工具获取用户近期的任务内容、分类分布、活跃时间和AI交互历史。
-2. **身份 & 行业推理**: 深入分析任务文本中的专有名词、高频动作（如"早八"、"备课"、"发版"、"接孩子"），推断出极其具体的用户身份和行业。
-3. **行为模式分析**: 
-   - **出行偏好**: 结合常去地点、路线规划策略或任务文本提取交通方式。
+2. **身份 & 行业推理**: 深入分析任务文本中的专有名词、高频动作（如"早八"、"备课"、"发版"、"接孩子"），推断出具体的用户身份和行业。
+3. **行为模式分析**:
+   - **出行偏好**: 结合常去地点、路线规划策略或任务文本提取交通方式；若无明显出行线索则返回"暂无明显偏好"。
    - **执行节奏**: 根据完成时间与截止时间的差值，判断用户是"提前规划"、"稳步推进"还是"极限踩点"。
 4. **心理与能力评估**:
-   - **规划能力**: 分析复杂任务是否被合理拆解（子任务使用情况）。
-   - **压力承受度**: 结合近期任务密度、"紧急"任务占比，评估用户当前的压力状态。
-   - **拖延指数**: 综合延期率和执行节奏给出评分（1-5级，1为极度自律，5为严重拖延）。
+   - **规划能力**: 分析复杂任务是否被合理拆解（子任务使用情况），1为规划较弱，5为规划极强。
+   - **当前压力指数**: 结合近期任务密度、"紧急"或逾期任务占比评估当前负担，1为轻松从容，5为压力极大。
+   - **拖延指数**: 综合延期率和执行节奏给出评分，1为极度自律，5为严重拖延。
 5. **AI 互动定制**:
    - **AI语气偏好**: 根据用户的压力水平和拖延情况定制最合适的陪伴语气（例如：高压期需要"温和鼓励"，严重拖延需要"严厉监督"，高效期适用"极简干练"）。
    - **综合性格**: 用简练、生动的一句话总结用户的核心特质（如"追求完美的实干派"、"随性自由的夜猫子"）。
 
 # 工具调用核心原则
 - **拒绝主观臆断**: 所有的推断必须有工具返回的数据支撑。
-- **极简主义 & 针对性调用**: 严禁无差别地调用所有工具。
-  - 仅在分析维度（如出行偏好、身份推断）确实需要具体底层数据支撑时才调用对应工具。
-  - **地理位置限制**: 在调用地理位置或路线偏好工具前，必须确认任务文本或地点记录中包含明显的位移语义（如“去”、“出差”、“打车”、“导航”）。若近期任务多为静态事务（如“看书”、“写代码”），严禁调用地点相关工具。同时请注意，为了保护隐私，地点数据（常在地）已做了模糊化处理（通常为标志性区域而非详细门牌号），请结合这一特性进行区域性的身份与偏好推断。
-- **按需调用**: 遇到信息不足的维度，务必调用对应工具补充数据，不要为了调用而调用。
+- **按需调用**: 仅调用完成当前维度推断所必需的工具，不要无差别遍历。
 
 # 最终输出格式约束
 当你完成了所有必要的推理，必须返回一个纯粹的 JSON 对象，不要包含任何额外的解释文本或 Markdown 标记（如 ```json）。JSON 结构必须严格如下：
 {
   "identity": "具体的用户身份（如：考研学生、前端工程师、全职妈妈）",
-  "industry": "具体的行业领域（如：高等教育、互联网、家庭管理）", 
-  "travelPreference": "高频出行方式（如：地铁通勤、自驾）",
+  "industry": "具体的行业领域（如：高等教育、互联网、家庭管理）",
+  "travelPreference": "高频出行方式（如：地铁通勤、自驾，无明显线索则填暂无明显偏好）",
   "delayIndex": 3, // 1-5整数，1最自律，5最拖延
-  "planAbility": 4, // 1-5整数，1规划极差，5规划极强
-  "stressLevel": 3, // 1-5整数，1轻松，5压力极大
+  "planAbility": 4, // 1-5整数，1规划较弱，5规划极强
+  "stressLevel": 3, // 1-5整数，1轻松从容，5压力极大
   "executionRhythm": "核心执行习惯（如：极限踩点、步步为营、随性处理）",
   "aiTone": "最适合当前状态的AI语气设定（如：温柔鼓励、严厉鞭策、幽默调侃、极简理性）",
   "personality": "综合性格特征描述（一句话，精准生动）"
 }
             """.trimIndent()
-            
+
             val messages = JSONArray().apply {
                 put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
                 put(JSONObject().apply { put("role", "user"); put("content", "开始分析我的画像，调用你需要的工具并给出最终结论 JSON。") })
             }
-            
-            val tools = buildToolDefinitions()
+
+            val tools = buildToolDefinitions(hasTravelContext)
             
             var retryCount = 0
             val maxRetries = 15
@@ -225,9 +314,9 @@ $previousContext
     }
     
     /**
-     * 构建工具定义
+     * 构建工具定义（按需提供地理工具，并移除与 systemPrompt 重复的历史画像读取工具）
      */
-    private fun buildToolDefinitions(): JSONArray {
+    private fun buildToolDefinitions(includeLocationTools: Boolean): JSONArray {
         return JSONArray().apply {
             // 1. 获取近期任务样本
             put(JSONObject().apply {
@@ -264,20 +353,22 @@ $previousContext
                 put("type", "function")
                 put("function", JSONObject().apply {
                     put("name", "get_category_distribution")
-                    put("description", "获取各分类（特别是紧急类）的任务数量分布，用于评估压力承受度。")
+                    put("description", "获取各分类（特别是紧急类）的任务数量分布，用于评估当前压力指数。")
                     put("parameters", JSONObject("""{"type": "object", "properties": {"days": {"type": "integer", "description": "分析最近N天，默认30"}}}"""))
                 })
             })
-            
-            // 5. 获取路线规划偏好
-            put(JSONObject().apply {
-                put("type", "function")
-                put("function", JSONObject().apply {
-                    put("name", "get_route_preferences")
-                    put("description", "获取用户在高德路线规划中的策略偏好（速度优先/距离优先），用于推断出行偏好。")
-                    put("parameters", JSONObject("""{"type": "object", "properties": {}}"""))
+
+            if (includeLocationTools) {
+                // 5. 获取路线规划偏好
+                put(JSONObject().apply {
+                    put("type", "function")
+                    put("function", JSONObject().apply {
+                        put("name", "get_route_preferences")
+                        put("description", "获取用户在高德路线规划中的策略偏好（速度优先/距离优先），用于推断出行偏好。")
+                        put("parameters", JSONObject("""{"type": "object", "properties": {}}"""))
+                    })
                 })
-            })
+            }
             
             // 6. 获取活跃时间模式
             put(JSONObject().apply {
@@ -288,28 +379,20 @@ $previousContext
                     put("parameters", JSONObject("""{"type": "object", "properties": {}}"""))
                 })
             })
-            
-            // 7. 获取地点足迹
-            put(JSONObject().apply {
-                put("type", "function")
-                put("function", JSONObject().apply {
-                    put("name", "get_location_footprints")
-                    put("description", "获取用户的常在地和常去地统计，用于推断生活范围和出行模式。")
-                    put("parameters", JSONObject("""{"type": "object", "properties": {}}"""))
+
+            if (includeLocationTools) {
+                // 7. 获取地点足迹
+                put(JSONObject().apply {
+                    put("type", "function")
+                    put("function", JSONObject().apply {
+                        put("name", "get_location_footprints")
+                        put("description", "获取用户的常在地和常去地统计，用于推断生活范围和出行模式。")
+                        put("parameters", JSONObject("""{"type": "object", "properties": {}}"""))
+                    })
                 })
-            })
+            }
             
-            // 8. 获取上一期画像
-            put(JSONObject().apply {
-                put("type", "function")
-                put("function", JSONObject().apply {
-                    put("name", "get_previous_profile")
-                    put("description", "获取上一次分析的用户画像，作为本次分析的演进基准，确保画像平滑变化。")
-                    put("parameters", JSONObject("""{"type": "object", "properties": {}}"""))
-                })
-            })
-            
-            // 9. 获取AI交互历史
+            // 8. 获取AI交互历史
             put(JSONObject().apply {
                 put("type", "function")
                 put("function", JSONObject().apply {
@@ -346,7 +429,7 @@ $previousContext
             "get_route_preferences" -> handleRoutePreferences()
             "get_time_activity_pattern" -> handleTimeActivity(allTasks)
             "get_location_footprints" -> handleLocationFootprints()
-            "get_previous_profile" -> handlePreviousProfile()
+            "get_previous_profile" -> "上一期画像基准已在系统上下文中提供。"
             "get_ai_interaction_history" -> {
                 val limit = args.optInt("limit", 10)
                 handleAiInteractionHistory(limit)
@@ -367,7 +450,6 @@ $previousContext
             "get_route_preferences" -> "获取路线规划偏好"
             "get_time_activity_pattern" -> "分析活跃时间分布"
             "get_location_footprints" -> "获取地点活动足迹"
-            "get_previous_profile" -> "读取历史画像基准"
             "get_ai_interaction_history" -> "获取AI交互日志"
             else -> toolName
         }
@@ -399,7 +481,7 @@ $previousContext
         }
     }
     
-    private fun handleTaskTimingStats(tasks: List<com.litetask.app.data.model.Task>, days: Int): String {
+    private suspend fun handleTaskTimingStats(tasks: List<com.litetask.app.data.model.Task>, days: Int): String {
         val cutoffTime = System.currentTimeMillis() - (days * 24 * 60 * 60 * 1000L)
         val recentCompleted = tasks.filter { 
             it.isDone && it.completedAt != null && it.completedAt >= cutoffTime && it.deadline > 0
@@ -408,9 +490,19 @@ $previousContext
         val recentOverdue = tasks.filter {
             !it.isDone && (it.isExpired || (it.deadline in 1 until System.currentTimeMillis()))
         }
+
+        val focusSessions = focusSessionDao.getSessionsSinceSync(cutoffTime)
+        val focusStats = if (focusSessions.isNotEmpty()) {
+            val totalMin = focusSessions.sumOf { it.actualSeconds } / 60L
+            val completedPomodoros = focusSessions.count { it.mode == "POMODORO" && it.completed }
+            val avgMin = totalMin.toDouble() / focusSessions.size
+            "近${days}天真实专注统计: ${focusSessions.size}次专注，累计${totalMin}分钟（单次均值${String.format("%.1f", avgMin)}分钟），完整完成番茄钟${completedPomodoros}次。"
+        } else {
+            "近${days}天无专注计时记录。"
+        }
         
         if (recentCompleted.isEmpty() && recentOverdue.isEmpty()) {
-            return "最近${days}天无有效的时间统计数据。"
+            return "最近${days}天无有效的完成时间统计数据。\n$focusStats"
         }
         
         val timingData = recentCompleted.map { task ->
@@ -431,6 +523,7 @@ $previousContext
 ${if (distribution.isEmpty()) "无完成且有截止时间的任务" else distribution.entries.joinToString("\n") { "- ${it.key}: ${it.value}次" }}
 
 当前未完成的严重逾期任务数: ${recentOverdue.size}
+$focusStats
         """.trimIndent()
     }
     
@@ -480,12 +573,7 @@ ${if (distribution.isEmpty()) "无完成且有截止时间的任务" else distri
     }
     
     private suspend fun handleRoutePreferences(): String {
-        val allComponents = taskDao.getAllTasks().first().flatMap { task ->
-            taskComponentDao.getComponentsByTaskIdSync(task.id)
-        }
-        
-        val routeComponents = allComponents.filter { it.type == ComponentType.AMAP_ROUTE }
-        
+        val routeComponents = taskComponentDao.getComponentsByTypeSync(ComponentType.AMAP_ROUTE)
         if (routeComponents.isEmpty()) {
             return "用户暂未使用路线规划功能。"
         }
@@ -494,7 +582,7 @@ ${if (distribution.isEmpty()) "无完成且有截止时间的任务" else distri
             try {
                 val json = JSONObject(component.dataJson)
                 json.optInt("strategy", 0)
-            } catch (e: Exception) { null }
+            } catch (_: Exception) { null }
         }
         
         val strategyCount = strategies.groupingBy { it }.eachCount()
@@ -532,46 +620,38 @@ ${if (distribution.isEmpty()) "无完成且有截止时间的任务" else distri
     }
     
     private suspend fun handleLocationFootprints(): String {
-        val locations = userLocationDao.getAllLocationsFlow().first()
-        return if (locations.isEmpty()) {
-            "暂无地点活动记录。"
-        } else {
-            val topOrigins = locations.sortedByDescending { it.originCount }.take(3)
-            val topDests = locations.sortedByDescending { it.destinationCount }.take(3)
-            """
-地点活动足迹:
-- 常在地(出发): ${topOrigins.joinToString(", ") { "${it.name}(${it.originCount}次)" }}
-- 常去地(目的): ${topDests.joinToString(", ") { "${it.name}(${it.destinationCount}次)" }}
-            """.trimIndent()
+        val locations = userLocationDao.getAllLocationsSync()
+        if (locations.isEmpty()) return "暂无地点活动记录。"
+
+        fun formatLocation(loc: com.litetask.app.data.model.UserLocationEntity, count: Int): String {
+            val typeTag = if (loc.locationType != com.litetask.app.data.model.UserLocationEntity.TYPE_FREQUENT) {
+                "[${loc.locationType}]"
+            } else ""
+            val addressPart = loc.address.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+            return "$typeTag${loc.name}(${count}次$addressPart)"
         }
-    }
-    
-    private suspend fun handlePreviousProfile(): String {
-        val previous = userProfileDao.getLatestUserProfile()
-        return if (previous == null) {
-            "这是首次画像分析，无历史基准。"
-        } else {
-            """
-上一期画像快照:
-- 身份: ${previous.identity}
-- 行业: ${previous.industry}
-- 性格: ${previous.personality}
-- 执行节奏: ${previous.executionRhythm}
-- 拖延指数: ${previous.delayIndex}/5
-- 规划能力: ${previous.planAbility}/5
-- 压力承受度: ${previous.stressLevel}/5
-- AI语气偏好: ${previous.aiTone}
-            """.trimIndent()
-        }
+
+        val labeled = locations.filter { it.locationType != com.litetask.app.data.model.UserLocationEntity.TYPE_FREQUENT }
+        val topOrigins = locations.filter { it.originCount > 0 }.sortedByDescending { it.originCount }.take(5)
+        val topDests = locations.filter { it.destinationCount > 0 }.sortedByDescending { it.destinationCount }.take(5)
+        return buildString {
+            appendLine("地点活动足迹:")
+            if (labeled.isNotEmpty()) {
+                appendLine(
+                    "- 已标记锚点地点: " + labeled.joinToString(", ") { loc ->
+                        val addr = loc.address.takeIf { it.isNotBlank() }?.let { "($it)" }.orEmpty()
+                        "[${loc.locationType}]${loc.name}$addr"
+                    }
+                )
+            }
+            appendLine("- 常在地(出发): ${if (topOrigins.isEmpty()) "暂无" else topOrigins.joinToString(", ") { formatLocation(it, it.originCount) }}")
+            append("- 常去地(目的): ${if (topDests.isEmpty()) "暂无" else topDests.joinToString(", ") { formatLocation(it, it.destinationCount) }}")
+        }.trim()
     }
     
     private suspend fun handleAiInteractionHistory(limit: Int): String {
         val histories = aiHistoryDao.getAllHistory()
-        if (histories.isEmpty()) return "无AI交互记录。"
-        val samples = histories.sortedByDescending { it.timestamp }.take(limit).joinToString("\n") {
-            "- [${if (it.sourceType == com.litetask.app.data.model.AIHistorySource.VOICE) "语音" else "文字"}] ${it.content.take(50)}"
-        }
-        return "用户最近的AI交互记录:\n$samples"
+        return formatAiHistoryForPrompt(histories, limit)
     }
     
     private fun parseAnalysisResult(
@@ -606,7 +686,8 @@ ${if (distribution.isEmpty()) "无完成且有截止时间的任务" else distri
                 stressLevel = json.optInt("stressLevel", 1).coerceIn(1, 5),
                 executionRhythm = json.optString("executionRhythm", "无"),
                 aiTone = json.optString("aiTone", "默认"),
-                personality = json.optString("personality", "无")
+                personality = json.optString("personality", "无"),
+                source = UserProfileHistoryEntity.SOURCE_AI
             )
             Result.success(profile)
         } catch (e: Exception) {
