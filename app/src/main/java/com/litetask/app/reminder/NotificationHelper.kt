@@ -32,12 +32,17 @@ object NotificationHelper {
     // 通知渠道
     private const val CHANNEL_NORMAL = "litetask_reminder_normal"
     private const val CHANNEL_URGENT = "litetask_reminder_urgent"
+    private const val CHANNEL_FOCUS = "litetask_focus_timer"
+
+    // 专注通知固定 ID
+    private const val FOCUS_NOTIFICATION_ID = 90001
 
     // Intent Extras
     const val EXTRA_TASK_ID = "task_id"
     const val EXTRA_FROM_NOTIFICATION = "from_notification"
     const val EXTRA_CATEGORY_NAME = "category_name"
     const val EXTRA_CATEGORY_COLOR = "category_color"
+    const val EXTRA_OPEN_FOCUS = "open_focus"
 
     /**
      * 创建通知渠道（Application 启动时调用）
@@ -182,6 +187,122 @@ object NotificationHelper {
      */
     fun cancelNotification(context: Context, notificationId: Int) {
         NotificationManagerCompat.from(context).cancel(notificationId)
+    }
+
+    /**
+     * 更新专注计时进行中通知（使用系统 Chronometer 零功耗实时计时）
+     */
+    fun showFocusOngoingNotification(
+        context: Context,
+        taskTitle: String,
+        isPomodoro: Boolean,
+        isRunning: Boolean,
+        elapsedSeconds: Long,
+        remainingSeconds: Long
+    ) {
+        if (!PermissionHelper.hasNotificationPermission(context)) return
+        ensureFocusChannel(context)
+
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(EXTRA_OPEN_FOCUS, true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            FOCUS_NOTIFICATION_ID,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val title = taskTitle.ifBlank { "自由专注" }
+        val modeLabel = if (isPomodoro) "番茄钟专注" else "正向专注计时"
+        val builder = NotificationCompat.Builder(context, CHANNEL_FOCUS)
+            .setSmallIcon(R.drawable.ic_clock)
+            .setContentTitle("$modeLabel · $title")
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+        if (isRunning) {
+            val baseTime = if (isPomodoro) {
+                System.currentTimeMillis() + remainingSeconds * 1000L
+            } else {
+                System.currentTimeMillis() - elapsedSeconds * 1000L
+            }
+            builder.setWhen(baseTime)
+                .setShowWhen(true)
+                .setUsesChronometer(true)
+                .setChronometerCountDown(isPomodoro)
+                .setContentText(if (isPomodoro) "专注倒计时进行中" else "正向计时进行中")
+        } else {
+            val mins = elapsedSeconds / 60
+            val secs = elapsedSeconds % 60
+            builder.setUsesChronometer(false)
+                .setShowWhen(false)
+                .setContentText(String.format(java.util.Locale.getDefault(), "已暂停 · 已专注 %02d:%02d", mins, secs))
+        }
+
+        try {
+            NotificationManagerCompat.from(context).notify(FOCUS_NOTIFICATION_ID, builder.build())
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException showing focus notification: ${e.message}")
+        }
+    }
+
+    /**
+     * 发送专注完成通知
+     */
+    fun showFocusCompletedNotification(context: Context, taskTitle: String, focusedSeconds: Long) {
+        if (!PermissionHelper.hasNotificationPermission(context)) return
+        ensureFocusChannel(context)
+
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(EXTRA_OPEN_FOCUS, true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            FOCUS_NOTIFICATION_ID + 1,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val mins = (focusedSeconds / 60).coerceAtLeast(1)
+        val notification = NotificationCompat.Builder(context, CHANNEL_NORMAL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("专注完成 · ${taskTitle.ifBlank { "自由专注" }}")
+            .setContentText("已完成 ${mins} 分钟专注，休息一下吧！")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(context).notify(FOCUS_NOTIFICATION_ID + 1, notification)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException showing focus complete notification: ${e.message}")
+        }
+    }
+
+    fun cancelFocusNotification(context: Context) {
+        NotificationManagerCompat.from(context).cancel(FOCUS_NOTIFICATION_ID)
+    }
+
+    private fun ensureFocusChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (manager.getNotificationChannel(CHANNEL_FOCUS) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(CHANNEL_FOCUS, "专注计时器", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "进行中的专注倒计时或正向计时状态"
+                    setSound(null, null)
+                    enableVibration(false)
+                }
+            )
+        }
     }
 
     // ==================== 私有方法 ====================
