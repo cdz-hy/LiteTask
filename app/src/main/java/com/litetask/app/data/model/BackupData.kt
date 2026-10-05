@@ -28,5 +28,20 @@ data class BackupData(
     val reminders: List<Reminder> = emptyList(),
     
     @SerializedName("categories")
-    val categories: List<Category> = emptyList()
+    val categories: List<Category> = emptyList(),
+
+    @SerializedName("focus_sessions")
+    val focusSessions: List<FocusSessionEntity> = emptyList(),
+
+    @SerializedName("user_locations")
+    val userLocations: List<UserLocationEntity>? = emptyList(),
+
+    @SerializedName("user_profile_history")
+    val userProfileHistory: List<UserProfileHistoryEntity>? = emptyList(),
+
+    @SerializedName("ai_history")
+    val aiHistory: List<AIHistory>? = emptyList(),
+
+    @SerializedName("daily_schedule_advice")
+    val dailyScheduleAdvice: List<DailyScheduleAdviceEntity>? = emptyList()
 )
