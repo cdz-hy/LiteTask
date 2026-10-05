@@ -18,6 +18,10 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
 
+    <!-- 日历同步权限 -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
@@ -34,6 +38,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.LiteTask"
+        android:usesCleartextTraffic="true"
         tools:targetApi="31">
         <activity
             android:name=".MainActivity"
@@ -45,6 +50,9 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
         
         <!-- 提醒广播接收器 -->
@@ -71,6 +79,18 @@
             android:exported="false"
             android:enabled="true" />
 
+        <!-- 下拉控制中心快速记事磁贴 -->
+        <service
+            android:name=".reminder.QuickAddTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_shortcut_add"
+            android:label="@string/tile_quick_add_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- 强提醒 Activity (闹钟模式) -->
         <activity
             android:name=".reminder.ReminderActivity"
@@ -91,6 +111,8 @@
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.litetask.app.widget.ACTION_TOGGLE_TASK" />
+                <action android:name="com.litetask.app.widget.ACTION_ITEM_CLICK" />
+                <action android:name="com.litetask.app.widget.ACTION_CYCLE_FILTER" />
                 <action android:name="com.litetask.app.widget.ACTION_REFRESH_TASK_LIST" />
             </intent-filter>
             <meta-data

@@ -41,9 +41,11 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     
-    // 用于从外部（如通知或小组件）传递的动作或任务ID
+    // 用于从外部（如通知或小组件）传递的动作、视图或任务ID
     private var pendingTaskId = mutableStateOf<Long?>(null)
     private var pendingAction = mutableStateOf<String?>(null)
+    private var pendingView = mutableStateOf<String?>(null)
+    private var pendingOpenFocus = mutableStateOf(false)
     
     // 通知权限请求
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -73,8 +75,13 @@ class MainActivity : ComponentActivity() {
                 ) {
                     AppContent(
                         initialTaskId = pendingTaskId.value,
+                        onTaskHandled = { pendingTaskId.value = null },
                         initialAction = pendingAction.value,
-                        onActionHandled = { pendingAction.value = null }
+                        onActionHandled = { pendingAction.value = null },
+                        initialExternalView = pendingView.value,
+                        onViewHandled = { pendingView.value = null },
+                        openFocusTrigger = pendingOpenFocus.value,
+                        onFocusTriggerHandled = { pendingOpenFocus.value = false }
                     )
                 }
             }
@@ -105,16 +112,35 @@ class MainActivity : ComponentActivity() {
     
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
-        
-        // 处理通知点击
+
+        // 处理通知或小组件任务详情点击
         if (intent.getBooleanExtra(NotificationHelper.EXTRA_FROM_NOTIFICATION, false)) {
-            pendingTaskId.value = intent.getLongExtra(NotificationHelper.EXTRA_TASK_ID, -1).takeIf { it != -1L }
+            val taskId = intent.getLongExtra(NotificationHelper.EXTRA_TASK_ID, -1)
+            if (taskId > 0) {
+                pendingTaskId.value = taskId
+            }
         }
-        
-        // 处理动作请求（如来自小组件的 add_task）
-        val action = intent.getStringExtra("action")
+
+        // 处理动作请求（来自小组件、快捷方式或快速设置磁贴）
+        val action = intent.getStringExtra("action") ?: when (intent.action) {
+            "com.litetask.app.SHORTCUT_VOICE_ADD" -> "voice_add"
+            "com.litetask.app.SHORTCUT_TEXT_ADD" -> "text_add"
+            "com.litetask.app.SHORTCUT_MANUAL_ADD" -> "manual_add"
+            else -> null
+        }
         if (action != null) {
             pendingAction.value = action
+        }
+
+        // 处理目标视图请求（如来自小组件的 view = gantt / deadline）
+        val view = intent.getStringExtra("view")
+        if (view != null) {
+            pendingView.value = view
+        }
+
+        // 处理专注计时通知跳转
+        if (intent.getBooleanExtra(NotificationHelper.EXTRA_OPEN_FOCUS, false)) {
+            pendingOpenFocus.value = true
         }
     }
     
@@ -128,8 +154,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppContent(
     initialTaskId: Long? = null,
+    onTaskHandled: () -> Unit = {},
     initialAction: String? = null,
-    onActionHandled: () -> Unit = {}
+    onActionHandled: () -> Unit = {},
+    initialExternalView: String? = null,
+    onViewHandled: () -> Unit = {},
+    openFocusTrigger: Boolean = false,
+    onFocusTriggerHandled: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     var currentHomeView by remember { mutableStateOf("timeline") } // 记住 HomeScreen 的当前视图
@@ -141,10 +172,25 @@ fun AppContent(
     var hasCheckedPermissions by remember { mutableStateOf(false) }
     val context = LocalContext.current
     
-    // 如果有从通知传入的任务 ID，自动打开任务详情
+    // 如果从外部小组件传入目标视图，确保返回首页并传递目标视图
+    LaunchedEffect(initialExternalView) {
+        if (initialExternalView != null) {
+            currentHomeView = initialExternalView
+            navController.popBackStack("home", inclusive = false)
+        }
+    }
+
+    LaunchedEffect(openFocusTrigger) {
+        if (openFocusTrigger) {
+            navController.popBackStack("home", inclusive = false)
+        }
+    }
+
+    // 如果有从通知或小组件传入的任务 ID，切回首页并自动打开任务详情
     LaunchedEffect(initialTaskId) {
         if (initialTaskId != null && initialTaskId > 0) {
             selectedTaskId = initialTaskId
+            navController.popBackStack("home", inclusive = false)
         }
     }
 
@@ -188,14 +234,21 @@ fun AppContent(
                 hasCheckedPermissions = hasCheckedPermissions,
                 onPermissionChecked = { hasCheckedPermissions = true },
                 onNavigateToHistory = { navController.navigate("ai_history") },
+                initialTaskId = initialTaskId,
+                onTaskHandled = onTaskHandled,
                 initialAction = initialAction,
-                onActionHandled = onActionHandled
+                onActionHandled = onActionHandled,
+                initialExternalView = initialExternalView,
+                onViewHandled = onViewHandled,
+                openFocusTrigger = openFocusTrigger,
+                onFocusTriggerHandled = onFocusTriggerHandled
             )
         }
         
         composable("settings") {
             com.litetask.app.ui.settings.SettingsScreen(
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onNavigateToBackup = { navController.navigate("backup") }
             )
         }
         
@@ -213,7 +266,13 @@ fun AppContent(
         
         composable("ai_history") {
             com.litetask.app.ui.history.AIHistoryScreen(
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onReusePrompt = { promptText ->
+                    runCatching {
+                        navController.getBackStackEntry("home").savedStateHandle["reuse_ai_prompt"] = promptText
+                    }
+                    navController.popBackStack("home", false)
+                }
             )
         }
         
@@ -260,10 +319,20 @@ private fun HomeScreenWrapper(
     hasCheckedPermissions: Boolean,
     onPermissionChecked: () -> Unit,
     onNavigateToHistory: () -> Unit,
+    initialTaskId: Long? = null,
+    onTaskHandled: () -> Unit = {},
     initialAction: String? = null,
-    onActionHandled: () -> Unit = {}
+    onActionHandled: () -> Unit = {},
+    initialExternalView: String? = null,
+    onViewHandled: () -> Unit = {},
+    openFocusTrigger: Boolean = false,
+    onFocusTriggerHandled: () -> Unit = {}
 ) {
     val viewModel: HomeViewModel = hiltViewModel()
+    val reuseAiPrompt by navController.currentBackStackEntry
+        ?.savedStateHandle
+        ?.getStateFlow<String?>("reuse_ai_prompt", null)
+        ?.collectAsState() ?: remember { mutableStateOf(null) }
     
     com.litetask.app.ui.home.HomeScreen(
         onNavigateToAdd = { /* 添加任务功能保持在 HomeScreen 内部 */ },
@@ -284,8 +353,18 @@ private fun HomeScreenWrapper(
         shouldCheckPermissions = !hasCheckedPermissions,
         onPermissionChecked = onPermissionChecked,
         viewModel = viewModel,
+        initialTaskId = initialTaskId,
+        onTaskHandled = onTaskHandled,
         initialAction = initialAction,
-        onActionHandled = onActionHandled
+        onActionHandled = onActionHandled,
+        initialExternalView = initialExternalView,
+        onViewHandled = onViewHandled,
+        openFocusTrigger = openFocusTrigger,
+        onFocusTriggerHandled = onFocusTriggerHandled,
+        initialAiPrompt = reuseAiPrompt,
+        onAiPromptHandled = {
+            navController.currentBackStackEntry?.savedStateHandle?.set<String?>("reuse_ai_prompt", null)
+        }
     )
 }
 
@@ -300,6 +379,8 @@ private fun SearchScreenWrapper(
     onShowEditDialogChange: (Boolean) -> Unit
 ) {
     val homeViewModel: HomeViewModel = hiltViewModel()
+    val categories by homeViewModel.categories.collectAsState()
+    val amapKey by homeViewModel.amapKey.collectAsState()
     val context = LocalContext.current
     
     com.litetask.app.ui.search.SearchScreen(
@@ -352,18 +433,21 @@ private fun SearchScreenWrapper(
                     onSelectedTaskIdChange(null)
                     Toast.makeText(context, "任务已删除", Toast.LENGTH_SHORT).show()
                 },
-                onUpdateTask = { homeViewModel.updateTask(it) },
+                onUpdateTask = { homeViewModel.updateTaskWithStatusTracking(composite.task, it) },
                 onUpdateSubTask = { sub, isCompleted -> 
                     homeViewModel.updateSubTaskStatus(sub.id, isCompleted)
+                },
+                onUpdateSubTaskContent = { sub, newContent ->
+                    homeViewModel.updateSubTaskContent(composite.task.id, sub.id, newContent)
+                },
+                onReorderSubTasks = { orderedSubTasks ->
+                    homeViewModel.reorderSubTasks(composite.task.id, orderedSubTasks)
                 },
                 onAddSubTask = { content ->
                     homeViewModel.addSubTask(composite.task.id, content)
                 },
                 onDeleteSubTask = { subTask ->
                     homeViewModel.deleteSubTask(subTask)
-                },
-                onGenerateSubTasks = {
-                    homeViewModel.generateSubTasks(composite.task)
                 },
                 onGenerateSubTasksWithContext = { task ->
                     homeViewModel.showSubTaskInputDialog(task)
@@ -373,15 +457,17 @@ private fun SearchScreenWrapper(
         }
     }
     
-    // 编辑对话框 - 需要加载已有提醒
+    // 编辑对话框 - 需要加载已有提醒和组件
     var editTaskReminders by remember { mutableStateOf<List<com.litetask.app.data.model.Reminder>>(emptyList()) }
+    var editTaskComponents by remember { mutableStateOf<List<com.litetask.app.data.model.TaskComponent>>(emptyList()) }
     var isLoadingReminders by remember { mutableStateOf(false) }
     
-    // 当 taskToEdit 变化时，先加载提醒，加载完成后再显示对话框
+    // 当 taskToEdit 变化时，先加载提醒和组件，加载完成后再显示对话框
     LaunchedEffect(taskToEdit) {
         if (taskToEdit != null && !showEditDialog) {
             isLoadingReminders = true
             editTaskReminders = homeViewModel.getRemindersForTaskSync(taskToEdit!!.id)
+            editTaskComponents = homeViewModel.getComponentsForTaskSync(taskToEdit!!.id)
             isLoadingReminders = false
             onShowEditDialogChange(true)
         }
@@ -391,16 +477,24 @@ private fun SearchScreenWrapper(
         AddTaskDialog(
             initialTask = taskToEdit,
             initialReminders = editTaskReminders,
+            initialComponents = editTaskComponents,
+            availableCategories = categories,
+            amapKey = amapKey,
+            onGeocode = { address -> homeViewModel.geocodeLocation(address) },
+            onSearchLocations = { keyword -> homeViewModel.searchLocations(keyword) },
+            onGetWeather = { adcode -> homeViewModel.getWeatherForAdcode(adcode) },
             onDismiss = { 
                 onShowEditDialogChange(false)
                 onTaskToEditChange(null)
                 editTaskReminders = emptyList()
+                editTaskComponents = emptyList()
             },
             onConfirm = { task ->
                 homeViewModel.updateTask(task)
                 onShowEditDialogChange(false)
                 onTaskToEditChange(null)
                 editTaskReminders = emptyList()
+                editTaskComponents = emptyList()
                 Toast.makeText(context, "任务已更新", Toast.LENGTH_SHORT).show()
             },
             onConfirmWithReminders = { task, reminderConfigs ->
@@ -408,6 +502,15 @@ private fun SearchScreenWrapper(
                 onShowEditDialogChange(false)
                 onTaskToEditChange(null)
                 editTaskReminders = emptyList()
+                editTaskComponents = emptyList()
+                Toast.makeText(context, "任务已更新", Toast.LENGTH_SHORT).show()
+            },
+            onConfirmWithComponents = { task, reminderConfigs, components ->
+                homeViewModel.updateTaskWithComponents(task, reminderConfigs, components)
+                onShowEditDialogChange(false)
+                onTaskToEditChange(null)
+                editTaskReminders = emptyList()
+                editTaskComponents = emptyList()
                 Toast.makeText(context, "任务已更新", Toast.LENGTH_SHORT).show()
             }
         )
@@ -420,9 +523,11 @@ private fun SearchScreenWrapper(
         if (currentTask != null) {
             SubTaskInputDialog(
                 task = currentTask,
+                existingSubTasks = uiState.currentTaskSubTasks,
+                initialMode = uiState.subTaskGenerationMode,
                 onDismiss = { homeViewModel.dismissSubTaskInput() },
-                onAnalyze = { contextText, imageUri ->
-                    homeViewModel.generateSubTasksWithContext(currentTask, contextText, imageUri)
+                onAnalyze = { contextText, imageUri, mode ->
+                    homeViewModel.generateSubTasksWithContext(currentTask, contextText, mode, imageUri)
                 },
                 isAnalyzing = uiState.isAnalyzing,
                 agentStatus = uiState.agentStatus,
@@ -438,9 +543,16 @@ private fun SearchScreenWrapper(
             SubTaskConfirmationDialog(
                 task = currentTask,
                 subTasks = uiState.generatedSubTasks,
+                existingSubTasks = uiState.currentTaskSubTasks,
+                initialMode = uiState.subTaskGenerationMode,
+                isRefining = uiState.isRefiningSubTasks,
+                refinementError = uiState.subTaskRefinementError,
+                onRefine = { draftSteps, feedback ->
+                    homeViewModel.refineGeneratedSubTasks(draftSteps, feedback)
+                },
                 onDismiss = { homeViewModel.dismissSubTaskResult() },
-                onConfirm = { editedSubTasks -> 
-                    homeViewModel.confirmAddSubTasks(editedSubTasks)
+                onConfirm = { editedSubTasks, replaceUncompleted ->
+                    homeViewModel.confirmAddSubTasks(editedSubTasks, replaceUncompleted)
                 }
             )
         }
