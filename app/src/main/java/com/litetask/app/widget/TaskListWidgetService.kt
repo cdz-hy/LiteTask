@@ -171,8 +171,35 @@ class TaskListRemoteViewsFactory(
                     
                     // 记录哪些任务刚完成（用于UI显示）
                     justCompletedTaskIds = justCompletedTasks.map { it.id }.toSet()
-                    
-                    tasks = activeComposites
+
+                    // 根据当前小组件实例的筛选模式过滤任务
+                    val prefs = com.litetask.app.data.local.PreferenceManager(context.applicationContext)
+                    val filter = prefs.getWidgetFilter(appWidgetId)
+                    tasks = when {
+                        filter == com.litetask.app.data.local.PreferenceManager.WIDGET_FILTER_TODAY -> {
+                            val cal = Calendar.getInstance().apply {
+                                set(Calendar.HOUR_OF_DAY, 0)
+                                set(Calendar.MINUTE, 0)
+                                set(Calendar.SECOND, 0)
+                                set(Calendar.MILLISECOND, 0)
+                            }
+                            val todayStart = cal.timeInMillis
+                            cal.add(Calendar.DAY_OF_MONTH, 1)
+                            val todayEnd = cal.timeInMillis - 1L
+                            activeComposites.filter {
+                                it.task.startTime <= todayEnd && it.task.deadline >= todayStart
+                            }
+                        }
+                        filter.startsWith(com.litetask.app.data.local.PreferenceManager.WIDGET_FILTER_CAT_PREFIX) -> {
+                            val catId = filter.removePrefix(com.litetask.app.data.local.PreferenceManager.WIDGET_FILTER_CAT_PREFIX).toLongOrNull()
+                            if (catId != null) {
+                                activeComposites.filter { it.task.categoryId == catId }
+                            } else {
+                                activeComposites
+                            }
+                        }
+                        else -> activeComposites
+                    }
                     
                     // 清理过期缓存（由于现在加载更频繁，略微降低清理频率）
                     if (System.currentTimeMillis() % 10000 < 1000) { 
@@ -309,26 +336,35 @@ class TaskListRemoteViewsFactory(
         
         views.setInt(R.id.task_item_container, "setBackgroundResource", R.drawable.widget_item_background)
         
-        // 设置点击事件（未完成和刚完成的都可以点击，刚完成的用于撤销）
-        val fillInIntent = Intent().apply {
+        // 设置行容器点击（打开任务详情）与勾选框点击（标记完成/撤销）
+        val detailFillInIntent = Intent().apply {
             putExtra(TaskListWidgetProvider.EXTRA_TASK_ID, task.id)
+            putExtra(TaskListWidgetProvider.EXTRA_CLICK_TYPE, TaskListWidgetProvider.CLICK_TYPE_OPEN_DETAIL)
         }
-        views.setOnClickFillInIntent(R.id.checkbox, fillInIntent)
+        views.setOnClickFillInIntent(R.id.task_item_container, detailFillInIntent)
+
+        val toggleFillInIntent = Intent().apply {
+            putExtra(TaskListWidgetProvider.EXTRA_TASK_ID, task.id)
+            putExtra(TaskListWidgetProvider.EXTRA_CLICK_TYPE, TaskListWidgetProvider.CLICK_TYPE_TOGGLE)
+        }
+        views.setOnClickFillInIntent(R.id.checkbox, toggleFillInIntent)
         
         return views
     }
     
     private fun formatTaskTime(task: Task): String {
         val calendar = Calendar.getInstance()
-        val today = calendar.get(Calendar.DAY_OF_YEAR)
+        val todayYear = calendar.get(Calendar.YEAR)
+        val todayDay = calendar.get(Calendar.DAY_OF_YEAR)
         
         calendar.timeInMillis = task.deadline
+        val deadlineYear = calendar.get(Calendar.YEAR)
         val deadlineDay = calendar.get(Calendar.DAY_OF_YEAR)
         
         val startTime = timeFormat.format(task.startTime)
         val endTime = timeFormat.format(task.deadline)
         
-        return if (deadlineDay == today) {
+        return if (deadlineYear == todayYear && deadlineDay == todayDay) {
             "$startTime-$endTime"
         } else {
             "${dateFormat.format(task.deadline)} $endTime"

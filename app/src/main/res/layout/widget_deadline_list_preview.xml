@@ -6,16 +6,14 @@
     android:background="@drawable/widget_background"
     android:paddingBottom="8dp">
 
-    <!-- 紧凑标题栏 -->
+    <!-- 紧凑标题栏（与 widget_deadline.xml 一致） -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp">
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp">
 
         <ImageView
             android:layout_width="14dp"
@@ -34,189 +32,288 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- 预览截止项1: 紧急 (小时计) -->
+    <!-- 截止列表容器（paddingHorizontal=8dp 与 ListView 一致） -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@drawable/widget_item_background"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
-        android:layout_marginTop="1dp"
-        android:layout_marginBottom="3dp">
+        android:orientation="vertical"
+        android:paddingHorizontal="8dp">
 
+        <!-- 预览截止项1: 24h内紧急（红色） -->
         <LinearLayout
-            android:layout_width="48dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="bottom|center_horizontal">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="3"
-                android:textColor="@color/urgent_task"
-                android:textSize="20sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="1dp"
-                android:layout_marginBottom="2dp"
-                android:text="小时"
-                android:textColor="@color/on_surface_variant"
-                android:textSize="9sp" />
-        </LinearLayout>
-
-        <ImageView
-            android:layout_width="3dp"
-            android:layout_height="32dp"
-            android:layout_marginStart="6dp"
-            android:src="@drawable/widget_type_indicator_urgent"
-            android:scaleType="fitXY"
-            android:contentDescription="@null" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="8dp"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="交付产品演示视频"
-                android:textColor="@color/on_surface"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:maxLines="1" />
+            android:gravity="center_vertical"
+            android:background="@drawable/widget_item_background"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="6dp"
+            android:layout_marginTop="1dp"
+            android:layout_marginBottom="3dp">
 
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="48dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
                 android:orientation="horizontal"
-                android:gravity="center_vertical">
-                
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:paddingHorizontal="4dp"
-                    android:paddingVertical="1dp"
-                    android:background="@drawable/widget_urgent_badge"
-                    android:text="紧急"
-                    android:textColor="@android:color/white"
-                    android:textSize="8sp" />
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="6dp"
-                    android:text="今天 23:59"
-                    android:textColor="@color/on_surface_variant"
-                    android:textSize="9sp" />
-            </LinearLayout>
-        </LinearLayout>
-    </LinearLayout>
-
-    <!-- 预览截止项2: 普通 (天计) -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@drawable/widget_item_background"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
-        android:layout_marginTop="1dp"
-        android:layout_marginBottom="3dp">
-
-        <LinearLayout
-            android:layout_width="48dp"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="bottom|center_horizontal">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="2"
-                android:textColor="@color/on_surface"
-                android:textSize="20sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="1dp"
-                android:layout_marginBottom="2dp"
-                android:text="天"
-                android:textColor="@color/on_surface_variant"
-                android:textSize="9sp" />
-        </LinearLayout>
-
-        <ImageView
-            android:layout_width="3dp"
-            android:layout_height="32dp"
-            android:layout_marginStart="6dp"
-            android:src="@drawable/widget_type_indicator_study"
-            android:scaleType="fitXY"
-            android:contentDescription="@null" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="8dp"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Kotlin 深研笔记"
-                android:textColor="@color/on_surface"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:maxLines="1" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:gravity="bottom|center_horizontal">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:paddingHorizontal="4dp"
-                    android:paddingVertical="1dp"
-                    android:background="@drawable/widget_badge_study"
-                    android:text="学习"
-                    android:textColor="@android:color/white"
-                    android:textSize="8sp" />
+                    android:text="3"
+                    android:textColor="@color/urgent_task"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
 
                 <TextView
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="6dp"
-                    android:text="周五 12:00"
+                    android:layout_marginStart="1dp"
+                    android:layout_marginBottom="2dp"
+                    android:text="小时"
                     android:textColor="@color/on_surface_variant"
                     android:textSize="9sp" />
             </LinearLayout>
+
+            <ImageView
+                android:layout_width="3dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="6dp"
+                android:src="@drawable/widget_type_indicator_urgent"
+                android:scaleType="fitXY"
+                android:contentDescription="@null" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="交付产品演示视频"
+                    android:textColor="@color/on_surface"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingHorizontal="4dp"
+                        android:paddingVertical="1dp"
+                        android:background="@drawable/widget_urgent_badge"
+                        android:text="@string/task_type_urgent"
+                        android:textColor="@android:color/white"
+                        android:textSize="8sp" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:text="今天 23:59"
+                        android:textColor="@color/on_surface_variant"
+                        android:textSize="9sp"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 预览截止项2: 24~48h临近（橙色） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/widget_item_background"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="6dp"
+            android:layout_marginTop="1dp"
+            android:layout_marginBottom="3dp">
+
+            <LinearLayout
+                android:layout_width="48dp"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="bottom|center_horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="36"
+                    android:textColor="@color/warning_color"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="1dp"
+                    android:layout_marginBottom="2dp"
+                    android:text="小时"
+                    android:textColor="@color/on_surface_variant"
+                    android:textSize="9sp" />
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="3dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="6dp"
+                android:src="@drawable/widget_type_indicator_work"
+                android:scaleType="fitXY"
+                android:contentDescription="@null" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="评审下周迭代方案"
+                    android:textColor="@color/on_surface"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingHorizontal="4dp"
+                        android:paddingVertical="1dp"
+                        android:background="@drawable/widget_badge_work"
+                        android:text="@string/task_type_work"
+                        android:textColor="@android:color/white"
+                        android:textSize="8sp" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:text="明天 18:00"
+                        android:textColor="@color/on_surface_variant"
+                        android:textSize="9sp"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 预览截止项3: 48h以上普通（默认颜色） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/widget_item_background"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="6dp"
+            android:layout_marginTop="1dp"
+            android:layout_marginBottom="3dp">
+
+            <LinearLayout
+                android:layout_width="48dp"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="bottom|center_horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="3"
+                    android:textColor="@color/on_surface"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="1dp"
+                    android:layout_marginBottom="2dp"
+                    android:text="天"
+                    android:textColor="@color/on_surface_variant"
+                    android:textSize="9sp" />
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="3dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="6dp"
+                android:src="@drawable/widget_type_indicator_study"
+                android:scaleType="fitXY"
+                android:contentDescription="@null" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Kotlin 深研笔记"
+                    android:textColor="@color/on_surface"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingHorizontal="4dp"
+                        android:paddingVertical="1dp"
+                        android:background="@drawable/widget_badge_study"
+                        android:text="@string/task_type_study"
+                        android:textColor="@android:color/white"
+                        android:textSize="8sp" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:text="11/16 12:00"
+                        android:textColor="@color/on_surface_variant"
+                        android:textSize="9sp"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
+
 </LinearLayout>

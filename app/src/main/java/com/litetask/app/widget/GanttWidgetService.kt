@@ -170,8 +170,11 @@ class GanttRemoteViewsFactory(
             views.setViewVisibility(R.id.progress_bar_done, android.view.View.GONE)
         }
         
-        // 设置点击事件
-        val fillInIntent = Intent()
+        // 设置点击事件，携带任务 ID 跳转到任务详情
+        val fillInIntent = Intent().apply {
+            putExtra(com.litetask.app.reminder.NotificationHelper.EXTRA_FROM_NOTIFICATION, true)
+            putExtra(com.litetask.app.reminder.NotificationHelper.EXTRA_TASK_ID, task.id)
+        }
         views.setOnClickFillInIntent(R.id.gantt_item_container, fillInIntent)
         
         return views

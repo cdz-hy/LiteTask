@@ -171,8 +171,11 @@ class DeadlineRemoteViewsFactory(
         val deadlineTime = formatDeadlineTime(task.deadline)
         views.setTextViewText(R.id.deadline_time, deadlineTime)
         
-        // 设置点击事件
-        val fillInIntent = Intent()
+        // 设置点击事件，携带任务 ID 跳转到任务详情
+        val fillInIntent = Intent().apply {
+            putExtra(com.litetask.app.reminder.NotificationHelper.EXTRA_FROM_NOTIFICATION, true)
+            putExtra(com.litetask.app.reminder.NotificationHelper.EXTRA_TASK_ID, task.id)
+        }
         views.setOnClickFillInIntent(R.id.deadline_item_container, fillInIntent)
         
         return views

@@ -32,6 +32,22 @@
             android:textSize="12sp"
             android:textStyle="bold" />
 
+        <TextView
+            android:id="@+id/btn_widget_filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="3dp"
+            android:background="@drawable/widget_badge_background"
+            android:text="@string/widget_filter_all"
+            android:textColor="@color/on_surface_variant"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:maxWidth="72dp" />
+
         <ImageView
             android:id="@+id/btn_add_task"
             android:layout_width="24dp"

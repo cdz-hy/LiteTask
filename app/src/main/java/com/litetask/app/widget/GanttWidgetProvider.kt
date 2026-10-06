@@ -129,12 +129,12 @@ class GanttWidgetProvider : AppWidgetProvider() {
         
         // 设置列表项点击模板
         val itemClickIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("view", "gantt")
         }
         val itemClickPendingIntent = PendingIntent.getActivity(
             context, 3, itemClickIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         )
         views.setPendingIntentTemplate(R.id.gantt_list, itemClickPendingIntent)
         

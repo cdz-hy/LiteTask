@@ -215,8 +215,8 @@
     
     <!-- 设置界面新增 -->
     <string name="ai_config">AI 配置</string>
-    <string name="enable_ai_agent">开启 Agent 智能模式</string>
-    <string name="enable_ai_agent_desc">允许 AI 自动查阅和修改您的任务记录</string>
+    <string name="enable_ai_agent">开启智能助手深度处理 (Agent)</string>
+    <string name="enable_ai_agent_desc">让助手帮您查旧任务、看当前位置并自动搜周边地点（更聪明但更耗流量与额度）</string>
     <string name="verifying_connection">正在验证连通性...</string>
     <string name="key_stored_locally">Key 仅存储在本地</string>
     
@@ -343,13 +343,27 @@
     <string name="widget_task_ended">任务已结束</string>
     <string name="widget_task_done">任务已完成</string>
     <string name="widget_task_expired">任务已过期</string>
+    <string name="widget_filter_all">全部</string>
+    <string name="widget_filter_today">今日</string>
+
+    <!-- 快捷方式与控制中心磁贴 -->
+    <string name="shortcut_voice_short">语音添加</string>
+    <string name="shortcut_voice_long">AI 语音识别添加任务</string>
+    <string name="shortcut_text_short">文字分析</string>
+    <string name="shortcut_text_long">AI 文本解析创建任务</string>
+    <string name="shortcut_manual_short">新建任务</string>
+    <string name="shortcut_manual_long">快速添加任务</string>
+    <string name="tile_quick_add_label">快速记事</string>
 
     <!-- AI 历史记录 -->
     <string name="ai_history">AI 分析历史</string>
-    <string name="ai_history_subtitle">记录所有的 AI 语音和文本分析记录</string>
+    <string name="ai_history_subtitle">记录所有的 AI 语音、文本与日程建议记录</string>
     <string name="ai_history_empty">暂无 AI 分析记录</string>
+    <string name="ai_history_empty_filtered">没有符合筛选条件的记录</string>
     <string name="ai_history_clear_all">清空历史记录</string>
+    <string name="ai_history_clear_failed">清理失败记录</string>
     <string name="ai_history_clear_confirm">确认要清空所有的 AI 分析记录吗？此操作不可撤销。</string>
+    <string name="ai_history_clear_failed_confirm">确认清理全部 %d 条失败的分析记录吗？</string>
     <string name="ai_history_delete_confirm">确认要删除这条历史记录吗？</string>
     <string name="ai_history_copy_success">内容已复制到剪贴板</string>
     <string name="ai_history_source_voice">语音输入</string>
@@ -357,13 +371,16 @@
     <string name="ai_history_source_subtask">子任务拆解</string>
     <string name="ai_history_parsed_tasks">解析出 %d 个任务</string>
     <string name="ai_history_parsed_subtasks">拆解出 %d 个步骤</string>
+    <string name="ai_history_parsed_zero">未识别出任务</string>
+    <string name="ai_history_status_failed">分析失败</string>
     <string name="ai_history_detail">记录详情</string>
+    <string name="ai_history_reuse_prompt">重新编辑/解析</string>
     <!-- 数据管理 -->
     <string name="data_backup">数据管理</string>
-    <string name="export_data">导出数据</string>
-    <string name="export_data_desc">将所有任务、分类及设置导出为 JSON 文件，用于备份或迁移。</string>
-    <string name="import_data">导入数据</string>
-    <string name="import_data_desc">从 JSON 文件恢复数据。系统会自动识别并跳过重复任务。</string>
+    <string name="export_data">导出完整备份</string>
+    <string name="export_data_desc">把全部任务、分类、专注统计、常去地点、个人画像、AI 解析历史与日程建议打包保存为本地备份文件，方便换机或防丢失。</string>
+    <string name="import_data">从备份恢复</string>
+    <string name="import_data_desc">从本地备份文件恢复数据，已有的任务和常去地点会自动合并去重。</string>
     <string name="export_success">数据导出成功</string>
     <string name="export_fail">导出失败</string>
     <string name="import_success_fmt">成功导入 %1$d 条数据，跳过 %2$d 条重复数据</string>

@@ -14,6 +14,10 @@ import android.widget.RemoteViews
 import android.widget.Toast
 import com.litetask.app.MainActivity
 import com.litetask.app.R
+import com.litetask.app.data.local.AppDatabase
+import com.litetask.app.data.local.PreferenceManager
+import com.litetask.app.reminder.NotificationHelper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlin.concurrent.thread
 
@@ -32,8 +36,13 @@ class TaskListWidgetProvider : AppWidgetProvider() {
     
     companion object {
         const val ACTION_TOGGLE_TASK = "com.litetask.app.widget.ACTION_TOGGLE_TASK"
+        const val ACTION_ITEM_CLICK = "com.litetask.app.widget.ACTION_ITEM_CLICK"
+        const val ACTION_CYCLE_FILTER = "com.litetask.app.widget.ACTION_CYCLE_FILTER"
         const val ACTION_REFRESH = "com.litetask.app.widget.ACTION_REFRESH_TASK_LIST"
         const val EXTRA_TASK_ID = "extra_task_id"
+        const val EXTRA_CLICK_TYPE = "extra_click_type"
+        const val CLICK_TYPE_TOGGLE = "toggle"
+        const val CLICK_TYPE_OPEN_DETAIL = "open_detail"
         
         /**
          * 刷新所有任务列表小组件（强制立即刷新）
@@ -81,19 +90,103 @@ class TaskListWidgetProvider : AppWidgetProvider() {
     
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        
+
         when (intent.action) {
             ACTION_TOGGLE_TASK -> {
                 val taskId = intent.getLongExtra(EXTRA_TASK_ID, -1)
                 if (taskId != -1L) {
-                    // 使用 goAsync() 确保在后台被杀死时也能完成操作
                     val pendingResult = goAsync()
                     handleToggleTask(context, taskId, pendingResult)
+                }
+            }
+            ACTION_ITEM_CLICK -> {
+                val taskId = intent.getLongExtra(EXTRA_TASK_ID, -1L)
+                val clickType = intent.getStringExtra(EXTRA_CLICK_TYPE)
+                if (taskId != -1L) {
+                    if (clickType == CLICK_TYPE_OPEN_DETAIL) {
+                        val openDetailIntent = Intent(context, MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            putExtra(NotificationHelper.EXTRA_FROM_NOTIFICATION, true)
+                            putExtra(NotificationHelper.EXTRA_TASK_ID, taskId)
+                        }
+                        context.startActivity(openDetailIntent)
+                    } else {
+                        val pendingResult = goAsync()
+                        handleToggleTask(context, taskId, pendingResult)
+                    }
+                }
+            }
+            ACTION_CYCLE_FILTER -> {
+                val appWidgetId = intent.getIntExtra(
+                    AppWidgetManager.EXTRA_APPWIDGET_ID,
+                    AppWidgetManager.INVALID_APPWIDGET_ID
+                )
+                if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                    cycleWidgetFilter(context, appWidgetId)
                 }
             }
             ACTION_REFRESH -> {
                 refreshAllWidgets(context)
             }
+        }
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        val prefs = PreferenceManager(context.applicationContext)
+        appWidgetIds.forEach { widgetId ->
+            prefs.clearWidgetFilter(widgetId)
+        }
+    }
+
+    private fun cycleWidgetFilter(context: Context, appWidgetId: Int) {
+        val prefs = PreferenceManager(context.applicationContext)
+        val categories = runBlocking(Dispatchers.IO) {
+            try {
+                AppDatabase.getInstance(context).categoryDao().getAllCategoriesSync()
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+        val states = buildList {
+            add(PreferenceManager.WIDGET_FILTER_ALL)
+            add(PreferenceManager.WIDGET_FILTER_TODAY)
+            categories.forEach { add("${PreferenceManager.WIDGET_FILTER_CAT_PREFIX}${it.id}") }
+        }
+        val current = prefs.getWidgetFilter(appWidgetId)
+        val currentIdx = states.indexOf(current)
+        val nextFilter = if (currentIdx < 0) states.first() else states[(currentIdx + 1) % states.size]
+        prefs.setWidgetFilter(appWidgetId, nextFilter)
+        updateWidget(context, AppWidgetManager.getInstance(context), appWidgetId)
+    }
+
+    private fun resolveFilterLabel(context: Context, appWidgetId: Int): String {
+        val prefs = PreferenceManager(context.applicationContext)
+        val filter = prefs.getWidgetFilter(appWidgetId)
+        return when {
+            filter == PreferenceManager.WIDGET_FILTER_ALL -> context.getString(R.string.widget_filter_all)
+            filter == PreferenceManager.WIDGET_FILTER_TODAY -> context.getString(R.string.widget_filter_today)
+            filter.startsWith(PreferenceManager.WIDGET_FILTER_CAT_PREFIX) -> {
+                val catId = filter.removePrefix(PreferenceManager.WIDGET_FILTER_CAT_PREFIX).toLongOrNull()
+                val categoryName = if (catId != null) {
+                    runBlocking(Dispatchers.IO) {
+                        try {
+                            AppDatabase.getInstance(context).categoryDao().getCategoryById(catId)?.name
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                } else null
+                if (categoryName != null) {
+                    categoryName
+                } else {
+                    prefs.setWidgetFilter(appWidgetId, PreferenceManager.WIDGET_FILTER_ALL)
+                    context.getString(R.string.widget_filter_all)
+                }
+            }
+            else -> context.getString(R.string.widget_filter_all)
         }
     }
     
@@ -111,6 +204,20 @@ class TaskListWidgetProvider : AppWidgetProvider() {
         }
         views.setRemoteAdapter(R.id.task_list, serviceIntent)
         views.setEmptyView(R.id.task_list, R.id.empty_view)
+
+        // 设置筛选胶囊文字与点击切换逻辑
+        views.setTextViewText(R.id.btn_widget_filter, resolveFilterLabel(context, appWidgetId))
+        val filterIntent = Intent(context, TaskListWidgetProvider::class.java).apply {
+            action = ACTION_CYCLE_FILTER
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+        }
+        val filterPendingIntent = PendingIntent.getBroadcast(
+            context,
+            appWidgetId * 10 + 1,
+            filterIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        views.setOnClickPendingIntent(R.id.btn_widget_filter, filterPendingIntent)
         
         // 设置点击头部打开主界面
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
@@ -133,16 +240,16 @@ class TaskListWidgetProvider : AppWidgetProvider() {
         )
         views.setOnClickPendingIntent(R.id.btn_add_task, addTaskPendingIntent)
         
-        // 设置列表项点击模板（用于标记完成）
-        val toggleIntent = Intent(context, TaskListWidgetProvider::class.java).apply {
-            action = ACTION_TOGGLE_TASK
+        // 设置列表项点击模板（区分为勾选完成与打开详情）
+        val itemClickIntent = Intent(context, TaskListWidgetProvider::class.java).apply {
+            action = ACTION_ITEM_CLICK
             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         }
-        val togglePendingIntent = PendingIntent.getBroadcast(
-            context, 0, toggleIntent,
+        val itemClickPendingIntent = PendingIntent.getBroadcast(
+            context, appWidgetId * 10 + 2, itemClickIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         )
-        views.setPendingIntentTemplate(R.id.task_list, togglePendingIntent)
+        views.setPendingIntentTemplate(R.id.task_list, itemClickPendingIntent)
         
         appWidgetManager.updateAppWidget(appWidgetId, views)
         
@@ -231,12 +338,13 @@ class TaskListWidgetProvider : AppWidgetProvider() {
                                 DeadlineWidgetProvider.refreshAllWidgets(context)
                             }
                             
-                            // 2秒后再次刷新，将已完成任务从列表移除（使用Handler延迟，不阻塞线程）
-                            Handler(Looper.getMainLooper()).postDelayed({
+                            // 等待2秒容错时间后移除已完成任务（在 pendingResult.finish() 前等待，防止进程被提前回收）
+                            Thread.sleep(2000)
+                            Handler(Looper.getMainLooper()).post {
                                 refreshAllWidgets(context)
                                 GanttWidgetProvider.refreshAllWidgets(context)
                                 DeadlineWidgetProvider.refreshAllWidgets(context)
-                            }, 2000)
+                            }
                         } else {
                             // 数据库操作失败，移除缓存恢复未完成状态
                             TaskListWidgetService.undoTaskCompletion(taskId)

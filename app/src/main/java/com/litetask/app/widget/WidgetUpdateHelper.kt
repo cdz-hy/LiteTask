@@ -65,8 +65,8 @@ object WidgetUpdateHelper {
      * 用于从非 UI 线程或 Service 中触发刷新
      */
     fun sendRefreshBroadcast(context: Context) {
-        context.sendBroadcast(Intent(TaskListWidgetProvider.ACTION_REFRESH))
-        context.sendBroadcast(Intent(GanttWidgetProvider.ACTION_REFRESH))
-        context.sendBroadcast(Intent(DeadlineWidgetProvider.ACTION_REFRESH))
+        context.sendBroadcast(Intent(TaskListWidgetProvider.ACTION_REFRESH).setPackage(context.packageName))
+        context.sendBroadcast(Intent(GanttWidgetProvider.ACTION_REFRESH).setPackage(context.packageName))
+        context.sendBroadcast(Intent(DeadlineWidgetProvider.ACTION_REFRESH).setPackage(context.packageName))
     }
 }

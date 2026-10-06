@@ -60,12 +60,12 @@ class DeadlineWidgetProvider : AppWidgetProvider() {
             
             // 列表项点击
             val itemClickIntent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra("view", "deadline")
             }
             val itemClickPendingIntent = PendingIntent.getActivity(
                 context, 6, itemClickIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             )
             views.setPendingIntentTemplate(R.id.deadline_list, itemClickPendingIntent)
             

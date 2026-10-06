@@ -6,16 +6,14 @@
     android:background="@drawable/widget_background"
     android:paddingBottom="16dp">
 
-    <!-- 紧凑标题栏 -->
+    <!-- 紧凑标题栏（与 widget_gantt.xml 一致） -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp">
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp">
 
         <ImageView
             android:layout_width="14dp"
@@ -36,161 +34,184 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp"
-            android:paddingTop="2dp"
-            android:paddingBottom="2dp"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
             android:background="@drawable/widget_badge_background"
             android:text="2/5"
             android:textColor="@color/on_surface_variant"
             android:textSize="10sp" />
     </LinearLayout>
 
-    <!-- 预览甘特项1: 进行中 (工作) -->
+    <!-- 甘特列表容器（paddingHorizontal=8dp 与 ListView 一致） -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="@drawable/widget_item_background"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
-        android:layout_marginTop="1dp"
-        android:layout_marginBottom="3dp"
-        android:gravity="center_vertical">
+        android:orientation="vertical"
+        android:paddingHorizontal="8dp">
 
-        <ImageView
-            android:layout_width="3dp"
-            android:layout_height="36dp"
-            android:src="@drawable/widget_type_indicator_work"
-            android:scaleType="fitXY"
-            android:contentDescription="@null" />
-
+        <!-- 预览甘特项1: 进行中 (工作) —— 与 widget_gantt_item.xml 4行结构一致 -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:layout_marginStart="8dp">
+            android:orientation="horizontal"
+            android:background="@drawable/widget_item_background"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="6dp"
+            android:layout_marginTop="1dp"
+            android:layout_marginBottom="3dp"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:layout_width="3dp"
+                android:layout_height="56dp"
+                android:src="@drawable/widget_type_indicator_work"
+                android:scaleType="fitXY"
+                android:contentDescription="@null" />
 
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="UI 组件库搭建"
+                        android:textColor="@color/on_surface"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="65%"
+                        android:textColor="@color/work_task"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
 
                 <TextView
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="UI 组件库搭建"
-                    android:textColor="@color/on_surface"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:maxLines="1" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="65%"
-                    android:textColor="@color/work_task"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <ProgressBar
-                style="@android:style/Widget.ProgressBar.Horizontal"
-                android:layout_width="match_parent"
-                android:layout_height="6dp"
-                android:layout_marginTop="4dp"
-                android:max="100"
-                android:progress="65"
-                android:progressDrawable="@drawable/widget_gantt_progress_drawable" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="09:00 - 18:00 (进行中)"
-                android:textColor="@color/on_surface_variant"
-                android:textSize="9sp" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <!-- 预览甘特项2: 已完成 (紧急) -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="@drawable/widget_item_background"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
-        android:layout_marginTop="1dp"
-        android:layout_marginBottom="3dp"
-        android:gravity="center_vertical">
-
-        <ImageView
-            android:layout_width="3dp"
-            android:layout_height="36dp"
-            android:src="@drawable/widget_type_indicator_urgent"
-            android:scaleType="fitXY"
-            android:contentDescription="@null" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:layout_marginStart="8dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="处理关键系统错误"
-                    android:textColor="@color/on_surface"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:maxLines="1" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="已完成"
-                    android:textColor="@color/gantt_done_text"
+                    android:layout_marginTop="2dp"
+                    android:text="11/13 09:00 - 18:00"
+                    android:textColor="@color/on_surface_variant"
                     android:textSize="9sp"
-                    android:textStyle="bold" />
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <ProgressBar
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="10dp"
+                    android:layout_marginTop="4dp"
+                    android:max="100"
+                    android:progress="65"
+                    android:progressDrawable="@drawable/widget_gantt_progress_drawable" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="时长已过 65%"
+                    android:textColor="@color/on_surface_variant"
+                    android:textSize="9sp"
+                    android:maxLines="1" />
             </LinearLayout>
+        </LinearLayout>
 
-            <ProgressBar
-                style="@android:style/Widget.ProgressBar.Horizontal"
-                android:layout_width="match_parent"
-                android:layout_height="6dp"
-                android:layout_marginTop="4dp"
-                android:max="100"
-                android:progress="100"
-                android:progressDrawable="@drawable/widget_gantt_progress_done" />
+        <!-- 预览甘特项2: 已完成 —— 与 GanttWidgetService 已完成样式一致 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="@drawable/widget_item_done_background"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="6dp"
+            android:layout_marginTop="1dp"
+            android:layout_marginBottom="3dp"
+            android:gravity="center_vertical">
 
-            <TextView
-                android:layout_width="match_parent"
+            <ImageView
+                android:layout_width="3dp"
+                android:layout_height="56dp"
+                android:src="@drawable/widget_type_indicator_done"
+                android:scaleType="fitXY"
+                android:contentDescription="@null" />
+
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="今天 10:00 - 12:00"
-                android:textColor="@color/on_surface_variant"
-                android:textSize="9sp" />
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="接口联调与测试"
+                        android:textColor="@color/outline"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="100%"
+                        android:textColor="@color/outline"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="11/13 10:00 - 12:00"
+                    android:textColor="@color/outline"
+                    android:textSize="9sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <ProgressBar
+                    style="@android:style/Widget.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="10dp"
+                    android:layout_marginTop="4dp"
+                    android:max="100"
+                    android:progress="100"
+                    android:progressDrawable="@drawable/widget_gantt_progress_done" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/widget_task_done"
+                    android:textColor="@color/outline"
+                    android:textSize="9sp"
+                    android:maxLines="1" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
+
 </LinearLayout>
