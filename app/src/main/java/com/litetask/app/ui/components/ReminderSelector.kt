@@ -60,7 +60,7 @@ fun ReminderSelector(
             text = stringResource(R.string.reminder_settings),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF1F1F1F),
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(bottom = 12.dp)
         )
         
@@ -252,7 +252,7 @@ private fun CustomReminderItem(
         Text(
             text = config.generateLabel(),
             style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFF1F1F1F),
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
         IconButton(
@@ -262,7 +262,7 @@ private fun CustomReminderItem(
             Icon(
                 Icons.Default.Close,
                 contentDescription = stringResource(R.string.delete),
-                tint = Color(0xFF747775),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp)
             )
         }

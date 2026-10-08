@@ -1,12 +1,15 @@
 package com.litetask.app.ui.components
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,34 +22,39 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.litetask.app.R
+import com.litetask.app.data.ai.SubTaskGenerationMode
+import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Task
 import org.burnoutcrew.reorderable.*
 import java.util.UUID
 
-// 1. 定义一个带唯一 ID 的包装类，确保拖拽时 Key 的稳定性，防止动画闪烁
+// 带唯一 ID 的 UI 草稿项，保证拖拽重排时 Key 稳定、动画不闪烁
 data class UiSubTask(
     val id: String = UUID.randomUUID().toString(),
-    var content: String
+    val content: String
+)
+
+private val QUICK_REFINE_OPTIONS = listOf(
+    "再细化一点" to "请把偏笼统的步骤再拆分细化，写出具体做法",
+    "精简为3步" to "请合并精简成 3 个核心步骤即可",
+    "换一版思路" to "请换一个更高效的执行推进思路重新生成"
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -54,27 +62,58 @@ data class UiSubTask(
 fun SubTaskConfirmationDialog(
     task: Task,
     subTasks: List<String>,
+    existingSubTasks: List<SubTask> = emptyList(),
+    initialMode: SubTaskGenerationMode = SubTaskGenerationMode.APPEND_NEXT,
+    isRefining: Boolean = false,
+    refinementError: String? = null,
+    onRefine: (List<String>, String) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
-    onConfirm: (List<String>) -> Unit
+    onConfirm: (List<String>, Boolean) -> Unit
 ) {
-    // 数据状态
-    var editableSubTasks by remember {
-        mutableStateOf(subTasks.map { UiSubTask(content = it) }.toMutableList())
+    // 随新生成的 subTasks 重置可编辑草稿，支持确认弹窗内原位微调重生成
+    var editableSubTasks by remember(subTasks) {
+        mutableStateOf(subTasks.map { UiSubTask(content = it) })
     }
 
-    // 编辑状态
-    var editingId by remember { mutableStateOf<String?>(null) }
-    var editingText by remember { mutableStateOf("") }
+    var editingId by remember(subTasks) { mutableStateOf<String?>(null) }
+    var editingText by remember(subTasks) { mutableStateOf("") }
+    var newStepDraft by remember { mutableStateOf("") }
+    var refineInput by remember { mutableStateOf("") }
+
+    val existingUncompletedCount = remember(existingSubTasks) {
+        existingSubTasks.count { !it.isCompleted }
+    }
+    var replaceUncompleted by remember(task.id, initialMode, existingUncompletedCount) {
+        mutableStateOf(existingUncompletedCount > 0 && initialMode == SubTaskGenerationMode.REFINE_ALL)
+    }
 
     val haptic = LocalHapticFeedback.current
+    val keyboardController = LocalSoftwareKeyboardController.current
 
-    // 拖拽状态
+    fun commitActiveEditIfAny() {
+        val currentId = editingId ?: return
+        if (editingText.isNotBlank()) {
+            val trimmed = editingText.trim()
+            editableSubTasks = editableSubTasks.map {
+                if (it.id == currentId) it.copy(content = trimmed) else it
+            }
+        }
+        editingId = null
+        editingText = ""
+    }
+
+    // 拖拽状态（限定仅在 subtask item 之间移动，排除末尾手动补加输入行）
     val reorderableState = rememberReorderableLazyListState(
         onMove = { from, to ->
-            editableSubTasks = editableSubTasks.toMutableList().apply {
-                add(to.index, removeAt(from.index))
+            if (from.index in editableSubTasks.indices && to.index in editableSubTasks.indices) {
+                editableSubTasks = editableSubTasks.toMutableList().apply {
+                    add(to.index, removeAt(from.index))
+                }
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             }
-            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        },
+        canDragOver = { draggedOver, _ ->
+            draggedOver.index in editableSubTasks.indices
         },
         onDragEnd = { _, _ ->
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -82,7 +121,7 @@ fun SubTaskConfirmationDialog(
     )
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isRefining) onDismiss() },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false
@@ -95,7 +134,7 @@ fun SubTaskConfirmationDialog(
             Box(modifier = Modifier.fillMaxSize()) {
                 // --- 1. 顶部关闭按钮 ---
                 IconButton(
-                    onClick = onDismiss,
+                    onClick = { if (!isRefining) onDismiss() },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 48.dp, end = 24.dp)
@@ -114,14 +153,14 @@ fun SubTaskConfirmationDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 32.dp)
-                        .padding(top = 80.dp, bottom = 120.dp),
+                        .imePadding()
+                        .padding(horizontal = 24.dp)
+                        .padding(top = 64.dp, bottom = if (existingUncompletedCount > 0) 144.dp else 104.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // AI 图标
                     Box(
                         modifier = Modifier
-                            .size(72.dp)
+                            .size(56.dp)
                             .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
@@ -129,50 +168,155 @@ fun SubTaskConfirmationDialog(
                             imageVector = Icons.Filled.AutoAwesome,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    // 标题 (根据数量动态显示)
                     Text(
                         text = if (editableSubTasks.isNotEmpty())
-                            "AI 为你生成了 ${editableSubTasks.size} 个子任务"
+                            "AI 为你拆解了 ${editableSubTasks.size} 个子任务"
                         else
                             "未生成子任务",
-                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface,
                         textAlign = TextAlign.Center
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
                         text = task.title,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // 操作提示 (仅当有任务时显示)
                     if (editableSubTasks.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "可拖拽排序、点击编辑、右滑或点击删除",
+                            text = "按住左侧手柄排序 · 点击文字多行修改 · 支持手动补充或 AI 微调",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                             textAlign = TextAlign.Center
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    // 微调重生成工具条
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                items(QUICK_REFINE_OPTIONS) { (label, prompt) ->
+                                    SuggestionChip(
+                                        onClick = {
+                                            if (!isRefining) {
+                                                commitActiveEditIfAny()
+                                                onRefine(editableSubTasks.map { it.content }, prompt)
+                                            }
+                                        },
+                                        enabled = !isRefining,
+                                        label = {
+                                            Text(
+                                                text = label,
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                OutlinedTextField(
+                                    value = refineInput,
+                                    onValueChange = { refineInput = it },
+                                    placeholder = {
+                                        Text(
+                                            text = "输入微调意见（如：第2步再细一点）",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    },
+                                    enabled = !isRefining,
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodySmall,
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                                    keyboardActions = KeyboardActions(
+                                        onSend = {
+                                            if (!isRefining && refineInput.isNotBlank()) {
+                                                keyboardController?.hide()
+                                                commitActiveEditIfAny()
+                                                val feedback = refineInput.trim()
+                                                refineInput = ""
+                                                onRefine(editableSubTasks.map { it.content }, feedback)
+                                            }
+                                        }
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                FilledTonalIconButton(
+                                    onClick = {
+                                        if (!isRefining && refineInput.isNotBlank()) {
+                                            keyboardController?.hide()
+                                            commitActiveEditIfAny()
+                                            val feedback = refineInput.trim()
+                                            refineInput = ""
+                                            onRefine(editableSubTasks.map { it.content }, feedback)
+                                        }
+                                    },
+                                    enabled = !isRefining && refineInput.isNotBlank(),
+                                    modifier = Modifier.size(44.dp)
+                                ) {
+                                    if (isRefining) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Refresh,
+                                            contentDescription = "AI 微调重生成",
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            if (isRefining) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+                            if (!refinementError.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = refinementError,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // --- 列表或空状态视图 ---
                     if (editableSubTasks.isEmpty()) {
-                        // *** 空状态提示视图 ***
                         Column(
                             modifier = Modifier
                                 .weight(1f)
@@ -184,23 +328,24 @@ fun SubTaskConfirmationDialog(
                                 imageVector = Icons.Default.PlaylistRemove,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                modifier = Modifier.size(64.dp)
+                                modifier = Modifier.size(56.dp)
                             )
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "暂无子任务",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                text = "当前列表为空，可手动补加一步或上方重新生成",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center
                             )
                         }
                     } else {
-                        // *** 存在的列表视图 ***
                         LazyColumn(
                             state = reorderableState.listState,
                             modifier = Modifier
+                                .fillMaxWidth()
                                 .weight(1f)
                                 .reorderable(reorderableState),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
                             contentPadding = PaddingValues(bottom = 8.dp)
                         ) {
                             itemsIndexed(
@@ -211,12 +356,16 @@ fun SubTaskConfirmationDialog(
                                     reorderableState = reorderableState,
                                     key = item.id
                                 ) { isDragging ->
-                                    val modifier = Modifier.animateItemPlacement(
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                                            stiffness = Spring.StiffnessLow
+                                    val modifier = if (isDragging) {
+                                        Modifier
+                                    } else {
+                                        Modifier.animateItemPlacement(
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessLow
+                                            )
                                         )
-                                    )
+                                    }
 
                                     EditableSubTaskItem(
                                         modifier = modifier,
@@ -226,118 +375,196 @@ fun SubTaskConfirmationDialog(
                                         editingText = editingText,
                                         isDragging = isDragging,
                                         onStartEdit = {
+                                            commitActiveEditIfAny()
                                             editingId = item.id
                                             editingText = item.content
                                         },
                                         onTextChange = { editingText = it },
                                         onConfirmEdit = {
-                                            if (editingText.isNotBlank()) {
-                                                val newList = editableSubTasks.toMutableList()
-                                                val itemIndex = newList.indexOfFirst { it.id == item.id }
-                                                if (itemIndex != -1) {
-                                                    newList[itemIndex] = item.copy(content = editingText.trim())
-                                                    editableSubTasks = newList
-                                                }
-                                            }
-                                            editingId = null
-                                            editingText = ""
+                                            keyboardController?.hide()
+                                            commitActiveEditIfAny()
                                         },
                                         onCancelEdit = {
+                                            keyboardController?.hide()
                                             editingId = null
                                             editingText = ""
                                         },
                                         onDelete = {
-                                            editableSubTasks = editableSubTasks.toMutableList().apply {
-                                                removeAt(index)
+                                            editableSubTasks = editableSubTasks.filterNot { it.id == item.id }
+                                            if (editingId == item.id) {
+                                                editingId = null
+                                                editingText = ""
                                             }
-                                            if (editingId == item.id) editingId = null
                                         },
                                         reorderableState = reorderableState
                                     )
+                                }
+                            }
+
+                            // 末尾支持手动补加一步
+                            item(key = "manual_add_step") {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceContainer,
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        OutlinedTextField(
+                                            value = newStepDraft,
+                                            onValueChange = { newStepDraft = it },
+                                            placeholder = {
+                                                Text(
+                                                    text = "+ 手动补充遗漏步骤...",
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                            },
+                                            singleLine = true,
+                                            textStyle = MaterialTheme.typography.bodyMedium,
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Color.Transparent,
+                                                unfocusedBorderColor = Color.Transparent,
+                                                focusedContainerColor = Color.Transparent,
+                                                unfocusedContainerColor = Color.Transparent
+                                            ),
+                                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                            keyboardActions = KeyboardActions(
+                                                onDone = {
+                                                    val trimmed = newStepDraft.trim()
+                                                    if (trimmed.isNotEmpty()) {
+                                                        commitActiveEditIfAny()
+                                                        editableSubTasks = editableSubTasks + UiSubTask(content = trimmed)
+                                                        newStepDraft = ""
+                                                    }
+                                                }
+                                            ),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        IconButton(
+                                            onClick = {
+                                                val trimmed = newStepDraft.trim()
+                                                if (trimmed.isNotEmpty()) {
+                                                    commitActiveEditIfAny()
+                                                    editableSubTasks = editableSubTasks + UiSubTask(content = trimmed)
+                                                    newStepDraft = ""
+                                                }
+                                            },
+                                            enabled = newStepDraft.isNotBlank()
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.AddCircle,
+                                                contentDescription = "手动添加步骤",
+                                                tint = if (newStepDraft.isNotBlank()) {
+                                                    MaterialTheme.colorScheme.primary
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                                                }
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                // --- 3. 底部按钮 ---
+                // --- 3. 底部按钮区（已有待办时支持选择追加或替换） ---
                 Surface(
                     modifier = Modifier.align(Alignment.BottomCenter),
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     tonalElevation = 1.dp,
                     shadowElevation = 4.dp
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .navigationBarsPadding()
-                            .padding(horizontal = 24.dp, vertical = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            .padding(horizontal = 24.dp, vertical = 12.dp)
                     ) {
-                        // 取消按钮
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(56.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.onSurface
-                            ),
-                            shape = CircleShape
-                        ) {
-                            Text(text = "取消", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                        if (existingUncompletedCount > 0) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                ImportStrategyPill(
+                                    text = "追加到现有末尾",
+                                    selected = !replaceUncompleted,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { replaceUncompleted = false }
+                                )
+                                ImportStrategyPill(
+                                    text = "替换原有 $existingUncompletedCount 条待办",
+                                    selected = replaceUncompleted,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { replaceUncompleted = true }
+                                )
+                            }
                         }
 
-                        // 确认按钮
-                        Button(
-                            onClick = {
-                                if (editableSubTasks.isNotEmpty()) {
-                                    onConfirm(editableSubTasks.map { it.content }.filter { it.isNotBlank() })
-                                }
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(56.dp)
-                                .graphicsLayer {
-                                    shadowElevation = if (editableSubTasks.isNotEmpty()) 4.dp.toPx() else 0f
-                                    shape = CircleShape
-                                    spotShadowColor = Color.Black
-                                    ambientShadowColor = Color.Black
-                                },
-                            enabled = editableSubTasks.isNotEmpty(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                            ),
-                            shape = CircleShape,
-                            elevation = ButtonDefaults.buttonElevation(
-                                defaultElevation = 6.dp,
-                                pressedElevation = 2.dp
-                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
+                            OutlinedButton(
+                                onClick = { if (!isRefining) onDismiss() },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                ),
+                                shape = CircleShape
                             ) {
-                                if (editableSubTasks.isNotEmpty()) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
+                                Text(text = "取消", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            }
 
-                                Text(
-                                    text = if (editableSubTasks.isNotEmpty())
-                                        "添加 ${editableSubTasks.size} 个"
-                                    else
-                                        "列表为空",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                            val validCount = editableSubTasks.count { it.content.isNotBlank() }
+                            Button(
+                                onClick = {
+                                    commitActiveEditIfAny()
+                                    val finalSteps = editableSubTasks.map { it.content.trim() }.filter { it.isNotEmpty() }
+                                    if (finalSteps.isNotEmpty()) {
+                                        onConfirm(finalSteps, replaceUncompleted)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1.25f)
+                                    .height(52.dp),
+                                enabled = validCount > 0 && !isRefining,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                                ),
+                                shape = CircleShape
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    if (validCount > 0) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                    }
+                                    Text(
+                                        text = when {
+                                            validCount == 0 -> "列表为空"
+                                            replaceUncompleted -> "替换并写入 $validCount 个"
+                                            else -> "添加 $validCount 个"
+                                        },
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
@@ -347,7 +574,33 @@ fun SubTaskConfirmationDialog(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ImportStrategyPill(
+    text: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(10.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp)
+        )
+    }
+}
+
 @Composable
 private fun EditableSubTaskItem(
     modifier: Modifier = Modifier,
@@ -372,7 +625,7 @@ private fun EditableSubTaskItem(
     )
 
     val scale by animateFloatAsState(
-        targetValue = if (isDragging) 1.04f else 1f,
+        targetValue = if (isDragging) 1.03f else 1f,
         label = "scale"
     )
 
@@ -401,25 +654,27 @@ private fun EditableSubTaskItem(
         shadowElevation = elevation
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 拖拽手柄
+            // 拖拽手柄（直接按住拖动排序）
             Icon(
                 imageVector = Icons.Default.DragHandle,
                 contentDescription = "拖拽排序",
-                tint = if (isDragging) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                tint = if (isDragging) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
                 modifier = Modifier
                     .size(24.dp)
-                    .detectReorderAfterLongPress(reorderableState)
+                    .then(
+                        if (!isEditing) Modifier.detectReorder(reorderableState) else Modifier
+                    )
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             // 序号
             Box(
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(26.dp)
                     .background(
                         if (isDragging) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
                         CircleShape
@@ -434,7 +689,7 @@ private fun EditableSubTaskItem(
                 )
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             if (isEditing) {
                 OutlinedTextField(
@@ -446,12 +701,13 @@ private fun EditableSubTaskItem(
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
                         cursorColor = MaterialTheme.colorScheme.primary,
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
                     ),
-                    singleLine = true,
+                    singleLine = false,
+                    maxLines = 4,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(
                         onDone = {
@@ -461,8 +717,12 @@ private fun EditableSubTaskItem(
                     )
                 )
 
+                Spacer(modifier = Modifier.width(4.dp))
                 IconButton(onClick = onConfirmEdit, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Check, "保存", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                }
+                IconButton(onClick = onCancelEdit, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Close, "取消", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 }
             } else {
                 Text(
@@ -475,14 +735,15 @@ private fun EditableSubTaskItem(
                             indication = rememberRipple(),
                             interactionSource = remember { MutableInteractionSource() }
                         ) { onStartEdit() }
+                        .padding(vertical = 2.dp)
                 )
 
                 if (!isDragging) {
-                    IconButton(onClick = onStartEdit, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = onStartEdit, modifier = Modifier.size(30.dp)) {
                         Icon(Icons.Default.Edit, "编辑", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                     }
-                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Delete, "删除", tint = MaterialTheme.colorScheme.error.copy(0.7f), modifier = Modifier.size(16.dp))
+                    IconButton(onClick = onDelete, modifier = Modifier.size(30.dp)) {
+                        Icon(Icons.Default.Delete, "删除", tint = MaterialTheme.colorScheme.error.copy(0.75f), modifier = Modifier.size(16.dp))
                     }
                 }
             }

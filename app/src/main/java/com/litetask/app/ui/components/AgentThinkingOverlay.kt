@@ -111,7 +111,7 @@ fun AgentThinkingOverlay(
 
                 // 2. 当前状态
                 Text(
-                    text = status.ifBlank { "Agent 正在深度思考..." },
+                    text = status.ifBlank { "智能助手正在思考中..." },
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.ExtraBold,

@@ -2,50 +2,70 @@ package com.litetask.app.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.litetask.app.R
+import com.litetask.app.data.ai.SubTaskGenerationMode
+import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Task
-import androidx.compose.ui.draw.clip
-import coil.compose.AsyncImage
-import androidx.compose.material.icons.filled.Image
 
+private data class QuickDecomposeChip(
+    val label: String,
+    val prompt: String
+)
+
+private val QUICK_DECOMPOSE_CHIPS = listOf(
+    QuickDecomposeChip("按阶段拆解", "请按「前期准备 → 核心执行 → 核对收尾」分阶段拆解。"),
+    QuickDecomposeChip("细化下一步", "请重点将接下来最先需要动手的步骤细化到可直接执行的动作。"),
+    QuickDecomposeChip("精简为3~4步", "请高度提炼，生成 3~4 个最关键的里程碑步骤即可。"),
+    QuickDecomposeChip("含行前/提交检查", "请加入前置准备清单与交付/截止前自查确认步骤。")
+)
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SubTaskInputDialog(
     task: Task,
+    existingSubTasks: List<SubTask> = emptyList(),
+    initialMode: SubTaskGenerationMode = SubTaskGenerationMode.APPEND_NEXT,
     onDismiss: () -> Unit,
-    onAnalyze: (String, List<android.net.Uri>) -> Unit,
+    onAnalyze: (String, List<android.net.Uri>, SubTaskGenerationMode) -> Unit,
     isAnalyzing: Boolean = false,
     agentStatus: String = "",
     agentLogs: List<String> = emptyList(),
     isMultimodalModel: Boolean = false
 ) {
-    var inputText by remember { mutableStateOf("") }
-    val focusRequester = remember { FocusRequester() }
+    var inputText by remember(task.id) { mutableStateOf("") }
+    var selectedMode by remember(task.id, initialMode) { mutableStateOf(initialMode) }
     val maxCharCount = 500
-    
-    var selectedImageUris by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
+    val scrollState = rememberScrollState()
+
+    var selectedImageUris by remember(task.id) { mutableStateOf<List<android.net.Uri>>(emptyList()) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val pickMedia = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(5)
@@ -64,19 +84,16 @@ fun SubTaskInputDialog(
                     true
                 }
             }
-            // Add valid uris up to 5 total
             val remainingSlots = 5 - selectedImageUris.size
             if (remainingSlots > 0) {
                 selectedImageUris = selectedImageUris + validUris.take(remainingSlots)
             }
         }
     }
-    
-    // 自动聚焦输入框
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
-    
+
+    val existingDoneCount = remember(existingSubTasks) { existingSubTasks.count { it.isCompleted } }
+    val existingPendingCount = existingSubTasks.size - existingDoneCount
+
     Dialog(
         onDismissRequest = { if (!isAnalyzing) onDismiss() },
         properties = DialogProperties(
@@ -86,39 +103,23 @@ fun SubTaskInputDialog(
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.surfaceContainerLow // MD3 全屏背景
+            color = MaterialTheme.colorScheme.surfaceContainerLow
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                // 1. 顶部关闭按钮
-                IconButton(
-                    onClick = { if (!isAnalyzing) onDismiss() },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 48.dp, end = 24.dp)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)
-                        .size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = stringResource(R.string.close),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                // 2. 核心内容区域
+                // 1. 核心内容区域（支持小屏/键盘弹出时滚动）
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 32.dp)
-                        .padding(top = 80.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Top
+                        .verticalScroll(scrollState)
+                        .imePadding()
+                        .padding(horizontal = 28.dp)
+                        .padding(top = 72.dp, bottom = 124.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // AI 图标
                     Box(
                         modifier = Modifier
-                            .size(72.dp)
+                            .size(64.dp)
                             .background(
                                 MaterialTheme.colorScheme.primaryContainer,
                                 CircleShape
@@ -129,28 +130,67 @@ fun SubTaskInputDialog(
                             imageVector = Icons.Filled.AISparkle,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(32.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    // 任务信息卡片
+                    // 标题
+                    Text(
+                        text = "AI 子任务拆解",
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "可直接一键拆解，也可点击意图标签、输入要求或上传参考图",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 19.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // 任务信息卡片（含当前子任务进度摘要）
                     Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 120.dp), // 限制最大高度
+                        modifier = Modifier.fillMaxWidth(),
                         color = MaterialTheme.colorScheme.surfaceContainer,
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Column(
-                            modifier = Modifier.padding(16.dp)
+                            modifier = Modifier.padding(14.dp)
                         ) {
-                            Text(
-                                text = "当前任务",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "当前任务",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (existingSubTasks.isNotEmpty()) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "已有 ${existingSubTasks.size} 步（已完成 $existingDoneCount / 待办 $existingPendingCount）",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = task.title,
@@ -158,69 +198,106 @@ fun SubTaskInputDialog(
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 2,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis
                             )
                             if (!task.description.isNullOrEmpty()) {
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
                                 Text(
                                     text = task.description,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     lineHeight = 18.sp,
                                     maxLines = 3,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    // 已有子任务时提供明确的补充/重规划模式切换
+                    if (existingSubTasks.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            ModeOptionChip(
+                                label = "基于已有步骤补充后续",
+                                selected = selectedMode == SubTaskGenerationMode.APPEND_NEXT,
+                                enabled = !isAnalyzing,
+                                modifier = Modifier.weight(1f),
+                                onClick = { selectedMode = SubTaskGenerationMode.APPEND_NEXT }
+                            )
+                            ModeOptionChip(
+                                label = "重新规划待办步骤",
+                                selected = selectedMode == SubTaskGenerationMode.REFINE_ALL,
+                                enabled = !isAnalyzing,
+                                modifier = Modifier.weight(1f),
+                                onClick = { selectedMode = SubTaskGenerationMode.REFINE_ALL }
+                            )
+                        }
+                    }
 
-                    // 标题
-                    Text(
-                        text = "AI 子任务拆解",
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center
-                    )
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    // 快捷意图胶囊
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        QUICK_DECOMPOSE_CHIPS.forEach { chip ->
+                            val isSelected = inputText.contains(chip.prompt)
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    if (!isAnalyzing) {
+                                        inputText = if (isSelected) {
+                                            inputText.replace(chip.prompt, "").replace(Regex("\\n{2,}"), "\n").trim()
+                                        } else {
+                                            val joined = if (inputText.isBlank()) {
+                                                chip.prompt
+                                            } else {
+                                                "${inputText.trimEnd()}\n${chip.prompt}"
+                                            }
+                                            joined.take(maxCharCount)
+                                        }
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        text = chip.label,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                            )
+                        }
+                    }
 
-                    // 副标题
-                    Text(
-                        text = "描述更多细节，让 AI 为你生成更精准的子任务步骤",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 22.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // 文本输入框
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
                             value = inputText,
-                            onValueChange = { 
+                            onValueChange = {
                                 if (it.length <= maxCharCount) {
                                     inputText = it
                                 }
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(220.dp)
-                                .focusRequester(focusRequester),
+                                .height(180.dp),
                             enabled = !isAnalyzing,
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
                                 color = MaterialTheme.colorScheme.onSurface,
-                                lineHeight = 24.sp
+                                lineHeight = 23.sp
                             ),
                             placeholder = {
                                 Text(
-                                    text = "例如：需要准备哪些材料？分几个阶段完成？有什么注意事项？",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    text = "可选：填写背景细节、限制条件、期望粒度或需要避开的事项（留空也可直接智能拆解）",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                    fontSize = 14.sp
                                 )
                             },
                             colors = OutlinedTextFieldDefaults.colors(
@@ -233,15 +310,15 @@ fun SubTaskInputDialog(
                                 disabledContainerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.5f),
                                 disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                             ),
-                            shape = RoundedCornerShape(24.dp)
+                            shape = RoundedCornerShape(20.dp)
                         )
 
                         // 左下角：图片预览
                         if (selectedImageUris.isNotEmpty()) {
-                            androidx.compose.foundation.lazy.LazyRow(
+                            LazyRow(
                                 modifier = Modifier
                                     .align(Alignment.BottomStart)
-                                    .padding(start = 16.dp, bottom = 12.dp)
+                                    .padding(start = 14.dp, bottom = 10.dp)
                                     .fillMaxWidth(0.6f),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -249,7 +326,7 @@ fun SubTaskInputDialog(
                                     val uri = selectedImageUris[index]
                                     Box(
                                         modifier = Modifier
-                                            .size(60.dp)
+                                            .size(54.dp)
                                             .clip(RoundedCornerShape(8.dp))
                                             .background(MaterialTheme.colorScheme.surfaceVariant)
                                     ) {
@@ -281,7 +358,7 @@ fun SubTaskInputDialog(
                             }
                         }
 
-                        // 右下角：功能区（字符计数与图片上传）
+                        // 右下角：字符计数与图片上传
                         Row(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
@@ -301,7 +378,7 @@ fun SubTaskInputDialog(
                                     modifier = Modifier.size(36.dp)
                                 ) {
                                     Icon(
-                                        imageVector = androidx.compose.material.icons.Icons.Default.Image,
+                                        imageVector = Icons.Default.Image,
                                         contentDescription = "Upload Image",
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(20.dp)
@@ -309,7 +386,7 @@ fun SubTaskInputDialog(
                                 }
                                 Spacer(modifier = Modifier.width(4.dp))
                             }
-                            
+
                             Text(
                                 text = "${inputText.length}/$maxCharCount",
                                 style = MaterialTheme.typography.labelSmall,
@@ -318,7 +395,7 @@ fun SubTaskInputDialog(
                             )
                         }
 
-                        // --- Agent 思考过程覆盖层 ---
+                        // Agent 思考过程覆盖层
                         AgentThinkingOverlay(
                             visible = isAnalyzing,
                             status = agentStatus,
@@ -328,26 +405,45 @@ fun SubTaskInputDialog(
                     }
                 }
 
+                // 2. 顶部关闭按钮
+                IconButton(
+                    onClick = { if (!isAnalyzing) onDismiss() },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 48.dp, end = 24.dp)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)
+                        .size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.close),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
                 // 3. 底部分析按钮
+                val hasCustomGuidance = inputText.isNotBlank() || selectedImageUris.isNotEmpty()
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
                         .padding(
-                            bottom = 48.dp,
-                            start = 32.dp,
-                            end = 32.dp
+                            bottom = 32.dp,
+                            start = 28.dp,
+                            end = 28.dp
                         )
                         .fillMaxWidth()
                 ) {
                     Button(
-                        onClick = { 
+                        onClick = {
                             if (!isAnalyzing) {
-                                onAnalyze(inputText.trim(), selectedImageUris)
+                                onAnalyze(inputText.trim(), selectedImageUris, selectedMode)
                             }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(56.dp)
+                            .height(54.dp)
                             .graphicsLayer {
                                 shadowElevation = 4.dp.toPx()
                                 shape = CircleShape
@@ -386,7 +482,7 @@ fun SubTaskInputDialog(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "AI 分析中...",
+                                        text = "AI 拆解中...",
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -398,7 +494,7 @@ fun SubTaskInputDialog(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "生成子任务",
+                                        text = if (hasCustomGuidance) "按要求生成子任务" else "一键智能拆解",
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -409,5 +505,45 @@ fun SubTaskInputDialog(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ModeOptionChip(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainer
+        },
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+        )
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp)
+        )
     }
 }

@@ -49,6 +49,7 @@ import java.util.Date
 fun AddTaskDialog(
     initialTask: Task? = null,
     initialReminders: List<Reminder> = emptyList(),
+    initialReminderConfigs: List<ReminderConfig>? = null,
     initialComponents: List<com.litetask.app.data.model.TaskComponent> = emptyList(),
     availableCategories: List<Category> = emptyList(),
     onDismiss: () -> Unit,
@@ -92,10 +93,10 @@ fun AddTaskDialog(
     var deadlineHour by remember { mutableStateOf(deadCal.get(Calendar.HOUR_OF_DAY)) }
     var deadlineMinute by remember { mutableStateOf(deadCal.get(Calendar.MINUTE)) }
 
-    // 提醒设置 - 从已有提醒转换为ReminderConfig
+    // 提醒设置 - 优先保留未落库的 ReminderConfig，否则从已有提醒转换
     var selectedReminders by remember { 
         mutableStateOf(
-            convertRemindersToConfigs(initialReminders, initialStart, initialDead)
+            initialReminderConfigs ?: convertRemindersToConfigs(initialReminders, initialStart, initialDead)
         ) 
     }
 
@@ -439,7 +440,7 @@ fun AddTaskDialog(
                                 text = "添加扩展组件",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF1F1F1F),
+                                color = extendedColors.textPrimary,
                                 modifier = Modifier.padding(bottom = 12.dp)
                             )
                             TaskComponentAddBar(
@@ -728,15 +729,39 @@ fun MaterialDatePicker(
     onDateSelected: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val initialUtcMillis = remember(initialDate) {
+        val localCal = Calendar.getInstance().apply { timeInMillis = initialDate }
+        Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+            clear()
+            set(
+                localCal.get(Calendar.YEAR),
+                localCal.get(Calendar.MONTH),
+                localCal.get(Calendar.DAY_OF_MONTH)
+            )
+        }.timeInMillis
+    }
     val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = initialDate
+        initialSelectedDateMillis = initialUtcMillis
     )
 
     DatePickerDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = {
-                datePickerState.selectedDateMillis?.let { onDateSelected(it) }
+                datePickerState.selectedDateMillis?.let { utcMillis ->
+                    val utcCal = Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+                        timeInMillis = utcMillis
+                    }
+                    val localCal = Calendar.getInstance().apply {
+                        clear()
+                        set(
+                            utcCal.get(Calendar.YEAR),
+                            utcCal.get(Calendar.MONTH),
+                            utcCal.get(Calendar.DAY_OF_MONTH)
+                        )
+                    }
+                    onDateSelected(localCal.timeInMillis)
+                }
             }) {
                 Text(stringResource(R.string.confirm), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             }

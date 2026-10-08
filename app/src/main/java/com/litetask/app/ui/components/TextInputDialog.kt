@@ -39,9 +39,10 @@ fun TextInputDialog(
     isAnalyzing: Boolean = false,
     agentStatus: String = "",
     agentLogs: List<String> = emptyList(),
-    isMultimodalModel: Boolean = false
+    isMultimodalModel: Boolean = false,
+    initialText: String = ""
 ) {
-    var inputText by remember { mutableStateOf("") }
+    var inputText by remember(initialText) { mutableStateOf(initialText) }
     val focusRequester = remember { FocusRequester() }
     val maxCharCount = 500
     

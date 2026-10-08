@@ -264,6 +264,22 @@ fun TaskConfirmationSheet(
                                         },
                                         onDelete = {
                                             taskList = taskList.toMutableList().apply { removeAt(index) }
+                                            taskReminders = buildMap {
+                                                taskReminders.forEach { (k, v) ->
+                                                    when {
+                                                        k < index -> put(k, v)
+                                                        k > index -> put(k - 1, v)
+                                                    }
+                                                }
+                                            }
+                                            taskComponents = buildMap {
+                                                taskComponents.forEach { (k, v) ->
+                                                    when {
+                                                        k < index -> put(k, v)
+                                                        k > index -> put(k - 1, v)
+                                                    }
+                                                }
+                                            }
                                             onDeleteTask(index)
                                         }
                                     )
@@ -290,17 +306,13 @@ fun TaskConfirmationSheet(
     // 编辑对话框
     if (showEditDialog && editingTask != null) {
         val currentComponents = if (editingTaskIndex >= 0) taskComponents[editingTaskIndex] ?: emptyList() else emptyList()
-        val currentReminders = if (editingTaskIndex >= 0) taskReminders[editingTaskIndex] ?: emptyList() else emptyList()
+        val currentReminderConfigs = if (editingTaskIndex >= 0) taskReminders[editingTaskIndex] else null
         
         AddTaskDialog(
             initialTask = editingTask,
+            initialReminderConfigs = currentReminderConfigs,
             initialComponents = currentComponents,
             availableCategories = availableCategories,
-            // 暂时 AddTaskDialog 不支持 initialReminders (TODO: 需确认 AddTaskDialog 定义)
-            // 检查 AddTaskDialog 定义发现支持 initialReminders (line 51 in viewed file)
-            // 但这里为了保险起见，或者如果需要传递 ReminderConfig 转换回 Reminder... 暂不处理 Reminders 的回显，因为比较复杂
-            // 实际上 AddTaskDialog 接收 List<Reminder>，而 taskReminders 是 List<ReminderConfig>
-            // 这里为了简单，只处理 components，因为 Reminders 编辑逻辑复杂且目前需求主要是 Map
             onDismiss = { 
                 showEditDialog = false
                 editingTask = null
