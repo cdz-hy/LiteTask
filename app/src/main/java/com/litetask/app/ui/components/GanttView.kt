@@ -16,9 +16,12 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import kotlinx.coroutines.launch
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
@@ -57,7 +60,8 @@ fun GanttView(
     onTaskClick: (Task) -> Unit,
     onNavigateToFullscreen: (GanttViewMode) -> Unit,
     defaultViewMode: GanttViewMode = GanttViewMode.THREE_DAY,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    categories: List<Category> = emptyList()
 ) {
     var viewMode by remember { mutableStateOf(defaultViewMode) }
     val extendedColors = LocalExtendedColors.current
@@ -87,65 +91,109 @@ fun GanttView(
     val startOfView = startOfToday + (startOffset * 24 * 60 * 60 * 1000L)
     val endOfView = startOfView + (daysToShow * 24 * 60 * 60 * 1000L)
 
-    // Filter tasks that overlap with the view (包含所有状态的任务)
+    var selectedCategoryId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedFallbackType by rememberSaveable { mutableStateOf<TaskType?>(null) }
+    val hasActiveFilter = selectedCategoryId != null || selectedFallbackType != null
+
+    // Filter tasks that overlap with the view (支持按图例分类筛选)
     val visibleTasks = taskComposites.filter { composite ->
         val taskStart = composite.task.startTime
         val taskEnd = composite.task.deadline
-        taskStart < endOfView && taskEnd > startOfView
+        val inRange = taskStart < endOfView && taskEnd > startOfView
+        if (!inRange) return@filter false
+        when {
+            selectedCategoryId != null -> composite.category?.id == selectedCategoryId
+            selectedFallbackType != null -> composite.task.type == selectedFallbackType
+            else -> true
+        }
     }.sortedBy { it.task.startTime }
+
+    val horizontalScrollState = rememberScrollState()
+    val verticalScrollState = rememberScrollState()
+    val density = LocalDensity.current
+    val coroutineScope = rememberCoroutineScope()
+    val dayWidthPx = with(density) { dayWidth.toPx() }
+    val todayScrollX = remember(viewMode, dayWidthPx, startOfToday, now) {
+        when (viewMode) {
+            GanttViewMode.TODAY -> {
+                val msPerDay = 24f * 60 * 60 * 1000f
+                val nowRatio = ((now - startOfToday).toFloat() / msPerDay).coerceIn(0f, 1f)
+                max(0, ((nowRatio * dayWidthPx) - (dayWidthPx * 0.15f)).toInt())
+            }
+            GanttViewMode.SEVEN_DAY -> (2 * dayWidthPx).toInt()
+            GanttViewMode.ONE_MONTH -> (5 * dayWidthPx).toInt()
+            GanttViewMode.THREE_DAY -> 0
+        }
+    }
+
+    // 视图初始滚动到今天的位置
+    LaunchedEffect(viewMode, todayScrollX) {
+        horizontalScrollState.scrollTo(todayScrollX)
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
-        // 1. Legend Header with View Mode Selector
+        // 1. 顶部工具栏（模式切换 + 定位今天 + 全屏入口 + 可点按分类筛选图例）
         GanttHeader(
             viewMode = viewMode,
-            onViewModeChange = { viewMode = it }
+            onViewModeChange = { viewMode = it },
+            categories = categories,
+            onScrollToToday = {
+                coroutineScope.launch {
+                    horizontalScrollState.animateScrollTo(todayScrollX)
+                }
+            },
+            onNavigateToFullscreen = { onNavigateToFullscreen(viewMode) },
+            selectedCategoryId = selectedCategoryId,
+            onSelectCategory = { id ->
+                selectedFallbackType = null
+                selectedCategoryId = if (selectedCategoryId == id) null else id
+            },
+            selectedTaskType = selectedFallbackType,
+            onSelectTaskType = { type ->
+                selectedCategoryId = null
+                selectedFallbackType = if (selectedFallbackType == type) null else type
+            }
         )
 
         // 2. Scrollable Content
-        val horizontalScrollState = rememberScrollState()
-        val verticalScrollState = rememberScrollState()
-        val density = LocalDensity.current
-        
-        // 视图初始滚动到今天的位置
-        LaunchedEffect(viewMode) {
-            val todayOffset = when (viewMode) {
-                GanttViewMode.SEVEN_DAY -> 2 // 今天是第3天（索引2）
-                GanttViewMode.ONE_MONTH -> 5 // 今天是第6天（索引5）
-                else -> 0
-            }
-            
-            if (todayOffset > 0) {
-                val scrollToX = (todayOffset * with(density) { dayWidth.toPx() }).toInt()
-                horizontalScrollState.scrollTo(scrollToX)
-            } else {
-                horizontalScrollState.scrollTo(0)
-            }
-        }
-
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
         ) {
             if (visibleTasks.isEmpty()) {
-                EmptyStateView(
-                    icon = Icons.Default.DateRange,
-                    title = stringResource(R.string.no_tasks_yet),
-                    subtitle = stringResource(R.string.no_tasks_hint),
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            }
-
-            // Horizontal Scroll Container
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .horizontalScroll(horizontalScrollState)
-            ) {
+                Column(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    EmptyStateView(
+                        icon = Icons.Default.DateRange,
+                        title = if (hasActiveFilter) "该分类下暂无日程" else stringResource(R.string.no_tasks_yet),
+                        subtitle = if (hasActiveFilter) "可点击上方高亮图例或下方按钮恢复全部任务" else stringResource(R.string.no_tasks_hint)
+                    )
+                    if (hasActiveFilter) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        FilledTonalButton(
+                            onClick = {
+                                selectedCategoryId = null
+                                selectedFallbackType = null
+                            }
+                        ) {
+                            Text("显示全部分类")
+                        }
+                    }
+                }
+            } else {
+                // Horizontal Scroll Container
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .horizontalScroll(horizontalScrollState)
+                ) {
                 Column(
                     modifier = Modifier
                         .width(totalWidth)
@@ -227,25 +275,6 @@ fun GanttView(
                     }
                 }
             }
-            
-            // 全屏按钮（左下角悬浮）
-            FloatingActionButton(
-                onClick = { onNavigateToFullscreen(viewMode) },
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(16.dp),
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 6.dp,
-                    pressedElevation = 2.dp
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Fullscreen,
-                    contentDescription = stringResource(R.string.fullscreen),
-                    modifier = Modifier.size(24.dp)
-                )
             }
         }
     }
@@ -255,118 +284,245 @@ fun GanttView(
 @Composable
 fun GanttHeader(
     viewMode: GanttViewMode,
-    onViewModeChange: (GanttViewMode) -> Unit
+    onViewModeChange: (GanttViewMode) -> Unit,
+    categories: List<Category> = emptyList(),
+    onScrollToToday: (() -> Unit)? = null,
+    onNavigateToFullscreen: (() -> Unit)? = null,
+    selectedCategoryId: Long? = null,
+    onSelectCategory: ((Long?) -> Unit)? = null,
+    selectedTaskType: TaskType? = null,
+    onSelectTaskType: ((TaskType?) -> Unit)? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
     val extendedColors = LocalExtendedColors.current
-    
-    Row(
+    val hasActiveFilter = selectedCategoryId != null || selectedTaskType != null
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // 左侧：视图模式选择器
-        Box {
-            Surface(
-                onClick = { expanded = true },
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.height(36.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 左侧：视图模式选择器 + 「今日」快捷回定位按钮
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DateRange,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = extendedColors.ganttWork
-                    )
-                    Text(
-                        text = when (viewMode) {
-                            GanttViewMode.TODAY -> stringResource(R.string.today_view)
-                            GanttViewMode.THREE_DAY -> stringResource(R.string.three_day_view)
-                            GanttViewMode.SEVEN_DAY -> stringResource(R.string.seven_day_view)
-                            GanttViewMode.ONE_MONTH -> stringResource(R.string.one_month_view)
-                        },
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = extendedColors.ganttWork
-                    )
-                    Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = extendedColors.ganttWork
-                    )
+                Box {
+                    Surface(
+                        onClick = { expanded = true },
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DateRange,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = extendedColors.ganttWork
+                            )
+                            Text(
+                                text = when (viewMode) {
+                                    GanttViewMode.TODAY -> stringResource(R.string.today_view)
+                                    GanttViewMode.THREE_DAY -> stringResource(R.string.three_day_view)
+                                    GanttViewMode.SEVEN_DAY -> stringResource(R.string.seven_day_view)
+                                    GanttViewMode.ONE_MONTH -> stringResource(R.string.one_month_view)
+                                },
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = extendedColors.ganttWork
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = extendedColors.ganttWork
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false },
+                        modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.today_view), style = MaterialTheme.typography.bodyMedium) },
+                            onClick = {
+                                onViewModeChange(GanttViewMode.TODAY)
+                                expanded = false
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.three_day_view), style = MaterialTheme.typography.bodyMedium) },
+                            onClick = {
+                                onViewModeChange(GanttViewMode.THREE_DAY)
+                                expanded = false
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.seven_day_view), style = MaterialTheme.typography.bodyMedium) },
+                            onClick = {
+                                onViewModeChange(GanttViewMode.SEVEN_DAY)
+                                expanded = false
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.one_month_view), style = MaterialTheme.typography.bodyMedium) },
+                            onClick = {
+                                onViewModeChange(GanttViewMode.ONE_MONTH)
+                                expanded = false
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                            }
+                        )
+                    }
+                }
+
+                if (onScrollToToday != null) {
+                    Surface(
+                        onClick = onScrollToToday,
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.today),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
                 }
             }
-            
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
-            ) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.today_view), style = MaterialTheme.typography.bodyMedium) },
-                    onClick = {
-                        onViewModeChange(GanttViewMode.TODAY)
-                        expanded = false
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+
+            // 右侧：全屏按钮（彻底避免底部双 FAB 冲突）
+            if (onNavigateToFullscreen != null) {
+                Surface(
+                    onClick = onNavigateToFullscreen,
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Fullscreen,
+                            contentDescription = stringResource(R.string.fullscreen),
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "全屏",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.three_day_view), style = MaterialTheme.typography.bodyMedium) },
-                    onClick = {
-                        onViewModeChange(GanttViewMode.THREE_DAY)
-                        expanded = false
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.seven_day_view), style = MaterialTheme.typography.bodyMedium) },
-                    onClick = {
-                        onViewModeChange(GanttViewMode.SEVEN_DAY)
-                        expanded = false
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.one_month_view), style = MaterialTheme.typography.bodyMedium) },
-                    onClick = {
-                        onViewModeChange(GanttViewMode.ONE_MONTH)
-                        expanded = false
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
-                    }
-                )
+                }
             }
         }
 
-        // 右侧：图例
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            LegendItem(color = extendedColors.ganttWork, label = stringResource(R.string.task_type_work))
-            LegendItem(color = extendedColors.ganttLife, label = stringResource(R.string.task_type_life))
-            LegendItem(color = extendedColors.ganttStudy, label = stringResource(R.string.task_type_study))
-            LegendItem(color = extendedColors.ganttUrgent, label = stringResource(R.string.task_type_urgent))
+        // 第二行：图例即轻量分类筛选条（点击筛选对应分类，再次点击取消）
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (categories.isNotEmpty()) {
+                categories.forEach { category ->
+                    val isSelected = selectedCategoryId == category.id
+                    LegendItem(
+                        color = ColorUtils.parseColor(category.colorHex),
+                        label = category.name,
+                        selected = isSelected,
+                        isFilterActive = hasActiveFilter,
+                        onClick = onSelectCategory?.let { cb -> { cb(category.id) } }
+                    )
+                }
+            } else {
+                val fallbackTypes = listOf(
+                    TaskType.WORK to Pair(extendedColors.ganttWork, stringResource(R.string.task_type_work)),
+                    TaskType.LIFE to Pair(extendedColors.ganttLife, stringResource(R.string.task_type_life)),
+                    TaskType.STUDY to Pair(extendedColors.ganttStudy, stringResource(R.string.task_type_study)),
+                    TaskType.URGENT to Pair(extendedColors.ganttUrgent, stringResource(R.string.task_type_urgent))
+                )
+                fallbackTypes.forEach { (type, pair) ->
+                    val isSelected = selectedTaskType == type
+                    LegendItem(
+                        color = pair.first,
+                        label = pair.second,
+                        selected = isSelected,
+                        isFilterActive = hasActiveFilter,
+                        onClick = onSelectTaskType?.let { cb -> { cb(type) } }
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-fun LegendItem(color: Color, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+fun LegendItem(
+    color: Color,
+    label: String,
+    selected: Boolean = true,
+    isFilterActive: Boolean = false,
+    onClick: (() -> Unit)? = null
+) {
+    val contentAlpha = if (isFilterActive && !selected) 0.45f else 1f
+    val chipModifier = if (onClick != null) {
+        val bg = if (selected && isFilterActive) {
+            color.copy(alpha = 0.14f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.45f)
+        }
+        val borderColor = if (selected && isFilterActive) color.copy(alpha = 0.7f) else Color.Transparent
+        Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(bg)
+            .border(1.dp, borderColor, RoundedCornerShape(10.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    } else {
+        Modifier
+    }
+
+    Row(
+        modifier = chipModifier.alpha(contentAlpha),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
         Box(
             modifier = Modifier
                 .size(8.dp)
@@ -376,9 +532,9 @@ fun LegendItem(color: Color, label: String) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = LocalExtendedColors.current.textSecondary
+            fontSize = 11.sp,
+            fontWeight = if (selected && isFilterActive) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected && isFilterActive) color else LocalExtendedColors.current.textSecondary
         )
     }
 }
@@ -555,8 +711,9 @@ fun GanttTasksLayout(
                 visibleWidthPx = originalWidthPx + originalXPx
             }
             
-            // Ensure min width for visibility
-            visibleWidthPx = visibleWidthPx.coerceAtLeast(10)
+            // 确保窄屏或短时长任务仍保有基本可点击宽度与标题辨识度
+            val minWidthPx = 44.dp.roundToPx()
+            visibleWidthPx = visibleWidthPx.coerceAtLeast(minWidthPx)
             
             measurable.measure(
                 androidx.compose.ui.unit.Constraints.fixedWidth(visibleWidthPx)
@@ -667,7 +824,7 @@ fun GanttTaskCard(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 // Title

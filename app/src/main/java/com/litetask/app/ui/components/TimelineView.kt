@@ -42,6 +42,7 @@ import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.data.model.sortedByOrder
 import com.litetask.app.ui.home.TimelineItem
 import com.litetask.app.ui.theme.LocalExtendedColors
 import com.litetask.app.ui.util.ColorUtils
@@ -143,13 +144,36 @@ fun TimelineView(
         }
     }
 
-    // 搜索栏显示控制
-    val showSearchBar by remember {
-        derivedStateOf {
-            val firstVisibleIndex = listState.firstVisibleItemIndex
-            val firstVisibleOffset = listState.firstVisibleItemScrollOffset
-            firstVisibleIndex == 0 && firstVisibleOffset < 50
-        }
+    // 搜索栏显示控制：上滑或位于顶部时显示，下滑时隐藏
+    var showSearchBar by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        var prevIndex = listState.firstVisibleItemIndex
+        var prevOffset = listState.firstVisibleItemScrollOffset
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                if (index == 0 && offset < 40) {
+                    showSearchBar = true
+                    prevIndex = index
+                    prevOffset = offset
+                } else if (index > prevIndex) {
+                    showSearchBar = false
+                    prevIndex = index
+                    prevOffset = offset
+                } else if (index < prevIndex) {
+                    showSearchBar = true
+                    prevIndex = index
+                    prevOffset = offset
+                } else {
+                    val delta = offset - prevOffset
+                    if (delta > 24) {
+                        showSearchBar = false
+                        prevOffset = offset
+                    } else if (delta < -24) {
+                        showSearchBar = true
+                        prevOffset = offset
+                    }
+                }
+            }
     }
 
     Column(
@@ -157,7 +181,7 @@ fun TimelineView(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // 搜索框 (可点击，带滚动隐藏动画)
+        // 搜索框 (可点击，支持上滑唤出 / 下滑收起动画)
         androidx.compose.animation.AnimatedVisibility(
             visible = showSearchBar,
             enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
@@ -168,7 +192,7 @@ fun TimelineView(
                 onValueChange = {},
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
                     .shadow(elevation = 2.dp, shape = RoundedCornerShape(24.dp))
                     .clickable { onSearchClick() },
                 placeholder = { 
@@ -195,23 +219,24 @@ fun TimelineView(
             )
         }
 
-        // 空状态
+        // 空状态与列表互斥渲染
         if (filteredItems.isEmpty()) {
             EmptyStateView(
                 icon = Icons.Default.Inbox,
                 title = stringResource(R.string.no_tasks_yet),
-                subtitle = stringResource(R.string.no_tasks_hint)
+                subtitle = stringResource(R.string.no_tasks_hint),
+                modifier = Modifier.weight(1f)
             )
-        }
-
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(bottom = 100.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 16.dp),
+                contentPadding = PaddingValues(bottom = 100.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
             items(
                 items = filteredItems,
                 key = { item ->
@@ -317,6 +342,7 @@ fun TimelineView(
                 }
             }
         }
+        }
     }
 }
 
@@ -328,7 +354,7 @@ fun HtmlStyleTaskCard(
     onToggleDone: () -> Unit = {}
 ) {
     val task = composite.task
-    val subTasks = composite.subTasks
+    val subTasks = remember(composite.subTasks) { composite.subTasks.sortedByOrder() }
     val category = composite.category
     val extendedColors = LocalExtendedColors.current
 
@@ -478,15 +504,19 @@ fun HtmlStyleTaskCard(
 
                         Spacer(modifier = Modifier.width(8.dp))
 
-                        // 置顶图标或类型标签
-                        if (isPinned && !isDone) {
-                            Icon(
-                                imageVector = Icons.Default.PushPin,
-                                contentDescription = "Pinned",
-                                tint = animatedPrimaryColor,
-                                modifier = Modifier.size(16.dp).rotate(45f)
-                            )
-                        } else {
+                        // 置顶图标与分类标签同行展示，保留分类识别度
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            if (isPinned && !isDone) {
+                                Icon(
+                                    imageVector = Icons.Default.PushPin,
+                                    contentDescription = "已置顶",
+                                    tint = animatedPrimaryColor,
+                                    modifier = Modifier.size(15.dp).rotate(45f)
+                                )
+                            }
                             Surface(
                                 color = animatedPrimaryColor.copy(alpha = 0.1f),
                                 shape = RoundedCornerShape(6.dp)
@@ -613,8 +643,8 @@ fun HtmlStyleTaskCard(
                         ) {
                             composite.components.forEach { component ->
                                 val (icon, label) = when (component.type) {
-                                    ComponentType.AMAP_ROUTE -> Icons.Default.Place to "Route"
-                                    ComponentType.FILE_ATTACHMENT -> Icons.Default.AttachFile to "File"
+                                    ComponentType.AMAP_ROUTE -> Icons.Default.Place to "路线"
+                                    ComponentType.FILE_ATTACHMENT -> Icons.Default.AttachFile to "附件"
                                 }
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
