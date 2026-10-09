@@ -13,10 +13,10 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -25,6 +25,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Alarm
@@ -38,15 +41,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,12 +70,19 @@ import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.data.model.moveSubTaskItem
+import com.litetask.app.data.model.resolveSubTaskMoveIndices
+import com.litetask.app.data.model.sortedByOrder
 import com.litetask.app.ui.components.AISparkle
 import com.litetask.app.ui.theme.LocalExtendedColors
 import com.litetask.app.ui.util.ColorUtils
 import com.litetask.app.data.model.Category
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.burnoutcrew.reorderable.ReorderableItem
+import org.burnoutcrew.reorderable.detectReorder
+import org.burnoutcrew.reorderable.rememberReorderableLazyListState
+import org.burnoutcrew.reorderable.reorderable
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -126,14 +145,16 @@ fun TaskDetailSheet(
     onDelete: (Task) -> Unit,
     onUpdateTask: (Task) -> Unit,
     onUpdateSubTask: (SubTask, Boolean) -> Unit,
+    onUpdateSubTaskContent: (SubTask, String) -> Unit = { _, _ -> },
+    onReorderSubTasks: (List<SubTask>) -> Unit = {},
     onAddSubTask: (String) -> Unit,
     onDeleteSubTask: (SubTask) -> Unit,
-    onGenerateSubTasks: () -> Unit = {},
     onGenerateSubTasksWithContext: (Task) -> Unit = {},
     isGeneratingSubTasks: Boolean = false,
     onDeleteComponent: (com.litetask.app.data.model.TaskComponent) -> Unit = {},
     amapKey: String? = null,
-    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null
+    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null,
+    onStartFocus: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val extendedColors = LocalExtendedColors.current
@@ -189,11 +210,101 @@ fun TaskDetailSheet(
 
     var newSubTaskText by remember { mutableStateOf("") }
 
+    val haptic = LocalHapticFeedback.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val sortedSubTasks = remember(subTasks) { subTasks.sortedByOrder() }
+    var localSubTasks by remember(task.id) { mutableStateOf(sortedSubTasks) }
+    var isReorderingSubTasks by remember(task.id) { mutableStateOf(false) }
+    var pendingOrderIds by remember(task.id) { mutableStateOf<List<Long>?>(null) }
+    var editingSubTaskId by remember(task.id) { mutableStateOf<Long?>(null) }
+    var editingSubTaskValue by remember(task.id) { mutableStateOf(TextFieldValue("")) }
+
+    fun commitActiveSubTaskEdit() {
+        val activeId = editingSubTaskId ?: return
+        val target = localSubTasks.firstOrNull { it.id == activeId }
+        val trimmed = editingSubTaskValue.text.trim()
+        if (target != null && trimmed.isNotEmpty() && trimmed != target.content) {
+            localSubTasks = localSubTasks.map {
+                if (it.id == activeId) it.copy(content = trimmed) else it
+            }
+            onUpdateSubTaskContent(target, trimmed)
+        }
+        editingSubTaskId = null
+        editingSubTaskValue = TextFieldValue("")
+    }
+
+    LaunchedEffect(sortedSubTasks, isReorderingSubTasks, pendingOrderIds) {
+        if (isReorderingSubTasks) return@LaunchedEffect
+        val pending = pendingOrderIds
+        if (pending != null) {
+            if (sortedSubTasks.map { it.id } == pending) {
+                pendingOrderIds = null
+                localSubTasks = sortedSubTasks
+            }
+        } else {
+            localSubTasks = sortedSubTasks
+        }
+        val activeEditId = editingSubTaskId
+        if (activeEditId != null && sortedSubTasks.none { it.id == activeEditId }) {
+            editingSubTaskId = null
+            editingSubTaskValue = TextFieldValue("")
+        }
+    }
+
+    LaunchedEffect(pendingOrderIds) {
+        if (pendingOrderIds != null) {
+            delay(1000L)
+            if (pendingOrderIds != null) {
+                pendingOrderIds = null
+                localSubTasks = sortedSubTasks
+            }
+        }
+    }
+
+    val headerItemCount = 1
+    val reorderableState = rememberReorderableLazyListState(
+        onMove = { from, to ->
+            val move = resolveSubTaskMoveIndices(
+                fromLazyIndex = from.index,
+                toLazyIndex = to.index,
+                headerCount = headerItemCount,
+                subTaskCount = localSubTasks.size
+            ) ?: return@rememberReorderableLazyListState
+            if (!isReorderingSubTasks) {
+                commitActiveSubTaskEdit()
+                isReorderingSubTasks = true
+            }
+            localSubTasks = localSubTasks.moveSubTaskItem(move.first, move.second)
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        },
+        canDragOver = { draggedOver, _ ->
+            draggedOver.key?.toString()?.startsWith("subtask_") == true
+        },
+        onDragEnd = { _, _ ->
+            val finalList = localSubTasks
+            isReorderingSubTasks = false
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            if (finalList.map { it.id } != sortedSubTasks.map { it.id }) {
+                pendingOrderIds = finalList.map { it.id }
+                onReorderSubTasks(finalList)
+            }
+        }
+    )
+
+    LaunchedEffect(editingSubTaskId) {
+        val activeId = editingSubTaskId ?: return@LaunchedEffect
+        val index = localSubTasks.indexOfFirst { it.id == activeId }
+        if (index >= 0) {
+            reorderableState.listState.animateScrollToItem(headerItemCount + index)
+        }
+    }
+
     val themeColor = if (task.isDone) extendedColors.ganttDoneText else getTaskThemeColor(task.type, category)
     val surfaceColor = if (task.isDone) MaterialTheme.colorScheme.surfaceVariant else getTaskSurfaceColor(task.type, category)
 
     // 关闭动画
     fun closeSheet() {
+        commitActiveSubTaskEdit()
         isClosing = true
     }
 
@@ -303,19 +414,50 @@ fun TaskDetailSheet(
                             verticalAlignment = Alignment.Top
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                // Task Type Badge
-                                Surface(
-                                    color = surfaceColor,
-                                    shape = RoundedCornerShape(6.dp),
+                                // Task Type Badge & Focus Badge
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 ) {
-                                    Text(
-                                        text = category?.name ?: getTaskTypeName(task.type),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = themeColor,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
+                                    Surface(
+                                        color = surfaceColor,
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = category?.name ?: getTaskTypeName(task.type),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = themeColor,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+
+                                    if (task.totalFocusSeconds > 0L) {
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Timer,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Text(
+                                                    text = "已专注 ${formatFocusDurationShort(task.totalFocusSeconds)}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
 
                                 Text(
@@ -346,12 +488,14 @@ fun TaskDetailSheet(
 
                     // --- Scrollable Content ---
                     LazyColumn(
+                        state = reorderableState.listState,
+                        contentPadding = PaddingValues(horizontal = 24.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .padding(horizontal = 24.dp)
+                            .reorderable(reorderableState)
                     ) {
-                        item {
+                        item(key = "detail_header") {
                             Spacer(modifier = Modifier.height(16.dp))
 
                             // 1. Time Info Card
@@ -361,6 +505,68 @@ fun TaskDetailSheet(
                                 themeColor = themeColor,
                                 isDone = task.isDone
                             )
+
+                            // 1.5 Focus Timer Quick Entry
+                            if (!task.isDone && onStartFocus != null) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Surface(
+                                    onClick = onStartFocus,
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Timer,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column {
+                                                Text(
+                                                    text = "开启专注计时 / 番茄钟",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                if (task.totalFocusSeconds > 0L) {
+                                                    Text(
+                                                        text = "累计已专注 ${formatFocusDurationShort(task.totalFocusSeconds)}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PlayArrow,
+                                                    contentDescription = "开始专注",
+                                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
                             // 2. Reminders
                             if (reminders.isNotEmpty()) {
@@ -426,10 +632,10 @@ fun TaskDetailSheet(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                if (subTasks.isNotEmpty()) {
-                                    val completed = subTasks.count { it.isCompleted }
+                                if (localSubTasks.isNotEmpty()) {
+                                    val completed = localSubTasks.count { it.isCompleted }
                                     Text(
-                                        text = "$completed/${subTasks.size}",
+                                        text = "$completed/${localSubTasks.size}",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = Color.Gray
                                     )
@@ -437,45 +643,68 @@ fun TaskDetailSheet(
                                 
                                 Spacer(modifier = Modifier.weight(1f))
                                 
-                                // AI 子任务生成按钮
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .background(
-                                            themeColor.copy(alpha = 0.1f),
-                                            CircleShape
-                                        )
-                                        .combinedClickable(
-                                            onClick = { if (!isGeneratingSubTasks) onGenerateSubTasks() },
-                                            onLongClick = { if (!isGeneratingSubTasks) onGenerateSubTasksWithContext(task) },
-                                            indication = rememberRipple(bounded = false),
-                                            interactionSource = remember { MutableInteractionSource() }
-                                        ),
-                                    contentAlignment = Alignment.Center
+                                // AI 子任务拆解入口（点击打开带上下文、快捷意图与参考图上传的拆解面板）
+                                Surface(
+                                    onClick = {
+                                        if (!isGeneratingSubTasks) {
+                                            commitActiveSubTaskEdit()
+                                            onGenerateSubTasksWithContext(task)
+                                        }
+                                    },
+                                    enabled = !isGeneratingSubTasks,
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = themeColor.copy(alpha = 0.12f)
                                 ) {
-                                    if (isGeneratingSubTasks) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
-                                            color = themeColor,
-                                            strokeWidth = 2.dp
-                                        )
-                                    } else {
-                                        Icon(
-                                            imageVector = Icons.Filled.AISparkle,
-                                            contentDescription = "AI 生成子任务",
-                                            tint = themeColor,
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        if (isGeneratingSubTasks) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(14.dp),
+                                                color = themeColor,
+                                                strokeWidth = 2.dp
+                                            )
+                                            Text(
+                                                text = "拆解中…",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = themeColor
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Filled.AISparkle,
+                                                contentDescription = "AI 拆解子任务",
+                                                tint = themeColor,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Text(
+                                                text = "AI 拆解",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = themeColor
+                                            )
+                                        }
                                     }
                                 }
+                            }
+
+                            if (localSubTasks.isNotEmpty()) {
+                                Text(
+                                    text = "点圆圈完成 · 点文字修改 · 按住右侧手柄排序",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = extendedColors.textTertiary.copy(alpha = 0.85f),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
                             }
 
                             Spacer(modifier = Modifier.height(12.dp))
                         }
 
                         // 5. Subtasks List
-                        if (subTasks.isEmpty()) {
-                            item {
+                        if (localSubTasks.isEmpty()) {
+                            item(key = "subtask_empty") {
                                 Text(
                                     text = stringResource(R.string.no_subtasks_hint),
                                     style = MaterialTheme.typography.bodyMedium,
@@ -484,17 +713,76 @@ fun TaskDetailSheet(
                                 )
                             }
                         } else {
-                            items(items = subTasks.sortedBy { it.id }, key = { it.id }) { subTask ->
-                                SubTaskItem(
-                                    subTask = subTask,
-                                    themeColor = themeColor,
-                                    onToggleComplete = { onUpdateSubTask(subTask, it) },
-                                    onDelete = { onDeleteSubTask(subTask) }
-                                )
+                            items(
+                                items = localSubTasks,
+                                key = { "subtask_${it.id}" }
+                            ) { subTask ->
+                                val itemKey = "subtask_${subTask.id}"
+                                val isEditingThis = editingSubTaskId == subTask.id
+                                ReorderableItem(
+                                    reorderableState = reorderableState,
+                                    key = itemKey
+                                ) { isItemDragging ->
+                                    val placementModifier = if (isItemDragging) {
+                                        Modifier
+                                    } else {
+                                        Modifier.animateItemPlacement(
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            )
+                                        )
+                                    }
+                                    SubTaskItem(
+                                        modifier = placementModifier,
+                                        subTask = subTask,
+                                        themeColor = themeColor,
+                                        isDragging = isItemDragging,
+                                        canReorder = localSubTasks.size > 1 && editingSubTaskId == null,
+                                        isEditing = isEditingThis,
+                                        editingValue = if (isEditingThis) editingSubTaskValue else TextFieldValue(""),
+                                        dragHandleModifier = if (localSubTasks.size > 1 && editingSubTaskId == null) {
+                                            Modifier.detectReorder(reorderableState)
+                                        } else {
+                                            Modifier
+                                        },
+                                        onToggleComplete = { completed ->
+                                            commitActiveSubTaskEdit()
+                                            onUpdateSubTask(subTask, completed)
+                                        },
+                                        onStartEdit = {
+                                            if (!isReorderingSubTasks) {
+                                                commitActiveSubTaskEdit()
+                                                editingSubTaskId = subTask.id
+                                                editingSubTaskValue = TextFieldValue(
+                                                    text = subTask.content,
+                                                    selection = TextRange(subTask.content.length)
+                                                )
+                                            }
+                                        },
+                                        onEditValueChange = { editingSubTaskValue = it },
+                                        onCommitEdit = {
+                                            keyboardController?.hide()
+                                            commitActiveSubTaskEdit()
+                                        },
+                                        onCancelEdit = {
+                                            keyboardController?.hide()
+                                            editingSubTaskId = null
+                                            editingSubTaskValue = TextFieldValue("")
+                                        },
+                                        onDelete = {
+                                            if (editingSubTaskId == subTask.id) {
+                                                editingSubTaskId = null
+                                                editingSubTaskValue = TextFieldValue("")
+                                            }
+                                            onDeleteSubTask(subTask)
+                                        }
+                                    )
+                                }
                             }
                         }
 
-                        item {
+                        item(key = "detail_footer") {
                             Spacer(modifier = Modifier.height(12.dp))
                         }
                     }
@@ -542,12 +830,23 @@ fun TaskDetailSheet(
                                             unfocusedIndicatorColor = Color.Transparent,
                                             cursorColor = themeColor
                                         ),
-                                        singleLine = true
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                        keyboardActions = KeyboardActions(
+                                            onDone = {
+                                                if (newSubTaskText.isNotBlank()) {
+                                                    commitActiveSubTaskEdit()
+                                                    onAddSubTask(newSubTaskText.trim())
+                                                    newSubTaskText = ""
+                                                }
+                                            }
+                                        )
                                     )
                                     IconButton(
                                         onClick = {
                                             if (newSubTaskText.isNotBlank()) {
-                                                onAddSubTask(newSubTaskText)
+                                                commitActiveSubTaskEdit()
+                                                onAddSubTask(newSubTaskText.trim())
                                                 newSubTaskText = ""
                                             }
                                         },
@@ -863,14 +1162,25 @@ private fun CompactReminderRow(
 
 @Composable
 private fun SubTaskItem(
+    modifier: Modifier = Modifier,
     subTask: SubTask,
     themeColor: Color,
+    isDragging: Boolean = false,
+    canReorder: Boolean = true,
+    isEditing: Boolean = false,
+    editingValue: TextFieldValue = TextFieldValue(""),
+    dragHandleModifier: Modifier = Modifier,
     onToggleComplete: (Boolean) -> Unit,
+    onStartEdit: () -> Unit = {},
+    onEditValueChange: (TextFieldValue) -> Unit = {},
+    onCommitEdit: () -> Unit = {},
+    onCancelEdit: () -> Unit = {},
     onDelete: () -> Unit
 ) {
     var isDeleting by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val extendedColors = LocalExtendedColors.current
+    val focusRequester = remember { FocusRequester() }
 
     // 删除动画
     val dismissProgress by animateFloatAsState(
@@ -879,14 +1189,23 @@ private fun SubTaskItem(
         label = "dismissProgress"
     )
 
-    // 完成状态动画
+    // 完成状态动画（拖拽时轻微放大提升质感）
     val completionScale by animateFloatAsState(
-        targetValue = if (subTask.isCompleted) 0.98f else 1f,
+        targetValue = when {
+            isDragging -> 1.02f
+            subTask.isCompleted -> 0.98f
+            else -> 1f
+        },
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessLow
         ),
         label = "completionScale"
+    )
+
+    val dragElevation by animateDpAsState(
+        targetValue = if (isDragging) 8.dp else 0.dp,
+        label = "dragElevation"
     )
 
     // Checkbox 动画
@@ -903,19 +1222,31 @@ private fun SubTaskItem(
     val backgroundColor by animateColorAsState(
         targetValue = when {
             isDeleting -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+            isDragging -> MaterialTheme.colorScheme.surfaceContainerHigh
+            isEditing -> MaterialTheme.colorScheme.surfaceContainer
             subTask.isCompleted -> themeColor.copy(alpha = 0.05f)
             else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         },
-        animationSpec = tween(durationMillis = 300),
+        animationSpec = tween(durationMillis = 220),
         label = "backgroundColor"
     )
 
     // 左侧指示条颜色
     val indicatorColor by animateColorAsState(
-        targetValue = if (subTask.isCompleted) themeColor.copy(alpha = 0.6f) else themeColor,
-        animationSpec = tween(durationMillis = 300),
+        targetValue = when {
+            isDragging -> themeColor
+            subTask.isCompleted -> themeColor.copy(alpha = 0.6f)
+            else -> themeColor
+        },
+        animationSpec = tween(durationMillis = 250),
         label = "indicatorColor"
     )
+
+    LaunchedEffect(isEditing) {
+        if (isEditing) {
+            focusRequester.requestFocus()
+        }
+    }
 
     LaunchedEffect(isDeleting) {
         if (isDeleting) {
@@ -924,11 +1255,11 @@ private fun SubTaskItem(
         }
     }
 
-    // 滑动删除 + 点击完成
     AnimatedVisibility(
         visible = !isDeleting || dismissProgress < 1f,
+        modifier = modifier,
         enter = fadeIn() + expandVertically(),
-        exit = fadeOut(animationSpec = tween(200)) + 
+        exit = fadeOut(animationSpec = tween(200)) +
                shrinkVertically(animationSpec = tween(350))
     ) {
         Box(
@@ -939,55 +1270,57 @@ private fun SubTaskItem(
                     scaleX = completionScale
                     scaleY = completionScale
                     alpha = 1f - dismissProgress
-                    translationX = dismissProgress * 100f  // 向右滑出
+                    translationX = dismissProgress * 100f
                 }
         ) {
             Surface(
                 color = backgroundColor,
                 shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = rememberRipple(
-                            bounded = true,
-                            color = themeColor
-                        )
-                    ) { onToggleComplete(!subTask.isCompleted) }
+                shadowElevation = dragElevation,
+                border = if (isEditing || isDragging) {
+                    BorderStroke(
+                        width = if (isDragging) 1.5.dp else 1.dp,
+                        color = themeColor.copy(alpha = if (isDragging) 0.55f else 0.45f)
+                    )
+                } else null,
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // 左侧彩色指示条
                     Box(
                         modifier = Modifier
                             .width(4.dp)
-                            .height(36.dp)
+                            .height(34.dp)
                             .clip(RoundedCornerShape(2.dp))
                             .background(indicatorColor)
                     )
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
 
-                    // 自定义 Checkbox - 缩小尺寸
+                    // 自定义 Checkbox（仅点击圆圈切换完成状态）
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(40.dp)
                             .graphicsLayer {
                                 scaleX = checkboxScale
                                 scaleY = checkboxScale
                             }
                             .clip(CircleShape)
                             .background(
-                                if (subTask.isCompleted) themeColor.copy(alpha = 0.1f) 
+                                if (subTask.isCompleted) themeColor.copy(alpha = 0.1f)
                                 else Color.Transparent
                             )
-                            .clickable { onToggleComplete(!subTask.isCompleted) },
+                            .clickable(
+                                enabled = !isDragging,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = rememberRipple(bounded = true, color = themeColor)
+                            ) { onToggleComplete(!subTask.isCompleted) },
                         contentAlignment = Alignment.Center
                     ) {
                         if (subTask.isCompleted) {
-                            // 完成状态：实心圆 + 勾
                             Box(
                                 modifier = Modifier
                                     .size(20.dp)
@@ -996,20 +1329,19 @@ private fun SubTaskItem(
                             ) {
                                 Icon(
                                     Icons.Default.Check,
-                                    contentDescription = null,
+                                    contentDescription = "标记未完成",
                                     tint = Color.White,
                                     modifier = Modifier.size(14.dp)
                                 )
                             }
                         } else {
-                            // 未完成：空心圆
                             Box(
                                 modifier = Modifier
                                     .size(20.dp)
                                     .background(Color.Transparent, CircleShape)
                                     .drawBehind {
                                         drawCircle(
-                                            color = themeColor.copy(alpha = 0.5f),
+                                            color = themeColor.copy(alpha = 0.55f),
                                             radius = size.minDimension / 2,
                                             style = Stroke(width = 2.dp.toPx())
                                         )
@@ -1018,64 +1350,154 @@ private fun SubTaskItem(
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
 
-                    // 子任务内容 - 显示全部文字
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = subTask.content,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = if (subTask.isCompleted) FontWeight.Normal else FontWeight.Medium,
-                            color = if (subTask.isCompleted) extendedColors.textTertiary else extendedColors.textPrimary,
-                            textDecoration = if (subTask.isCompleted) TextDecoration.LineThrough else null
-                        )
-                        
-                        // 完成状态标签
-                        if (subTask.isCompleted) {
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "✓ " + stringResource(R.string.mark_done),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = themeColor.copy(alpha = 0.7f),
-                                fontSize = 10.sp
+                    if (isEditing) {
+                        // 行内多行文本编辑
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            BasicTextField(
+                                value = editingValue,
+                                onValueChange = onEditValueChange,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(focusRequester),
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                    color = extendedColors.textPrimary
+                                ),
+                                cursorBrush = SolidColor(themeColor),
+                                maxLines = 5,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(
+                                    onDone = { onCommitEdit() }
+                                )
+                            )
+                            if (editingValue.text.isEmpty()) {
+                                Text(
+                                    text = "输入子任务内容…",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = extendedColors.textTertiary.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        IconButton(
+                            onClick = onCommitEdit,
+                            enabled = editingValue.text.isNotBlank(),
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "保存修改",
+                                tint = if (editingValue.text.isNotBlank()) themeColor else extendedColors.textTertiary.copy(alpha = 0.35f),
+                                modifier = Modifier.size(19.dp)
                             )
                         }
-                    }
 
-                    // 删除按钮 - 带确认状态
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (showDeleteConfirm) MaterialTheme.colorScheme.errorContainer
-                                else Color.Transparent
+                        IconButton(
+                            onClick = onCancelEdit,
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "取消修改",
+                                tint = extendedColors.textTertiary,
+                                modifier = Modifier.size(18.dp)
                             )
-                            .clickable {
-                                if (showDeleteConfirm) {
-                                    isDeleting = true
-                                } else {
-                                    showDeleteConfirm = true
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            if (showDeleteConfirm) Icons.Default.DeleteForever else Icons.Default.Close,
-                            contentDescription = stringResource(R.string.delete),
-                            tint = if (showDeleteConfirm) MaterialTheme.colorScheme.error else extendedColors.divider,
-                            modifier = Modifier.size(if (showDeleteConfirm) 20.dp else 16.dp)
-                        )
+                        }
+                    } else {
+                        // 中间文字区：点击进入行内多行修改
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(
+                                    enabled = !isDragging,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = rememberRipple(bounded = true, color = themeColor)
+                                ) { onStartEdit() }
+                                .padding(horizontal = 4.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = subTask.content,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (subTask.isCompleted) FontWeight.Normal else FontWeight.Medium,
+                                color = if (subTask.isCompleted) extendedColors.textTertiary else extendedColors.textPrimary,
+                                textDecoration = if (subTask.isCompleted) TextDecoration.LineThrough else null
+                            )
+
+                            if (subTask.isCompleted) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "✓ " + stringResource(R.string.mark_done),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = themeColor.copy(alpha = 0.7f),
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+
+                        // 内侧：删除按钮（2秒二次确认）
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (showDeleteConfirm) MaterialTheme.colorScheme.errorContainer
+                                    else Color.Transparent
+                                )
+                                .clickable(enabled = !isDragging) {
+                                    if (showDeleteConfirm) {
+                                        isDeleting = true
+                                    } else {
+                                        showDeleteConfirm = true
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                if (showDeleteConfirm) Icons.Default.DeleteForever else Icons.Default.Close,
+                                contentDescription = stringResource(R.string.delete),
+                                tint = if (showDeleteConfirm) MaterialTheme.colorScheme.error else extendedColors.divider,
+                                modifier = Modifier.size(if (showDeleteConfirm) 19.dp else 15.dp)
+                            )
+                        }
+
+                        // 最右侧：拖拽手柄（按住直接上下拖排，避免与滚动或删除误触）
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .then(dragHandleModifier),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DragHandle,
+                                contentDescription = "拖拽排序",
+                                tint = when {
+                                    isDragging -> themeColor
+                                    canReorder -> extendedColors.textTertiary.copy(alpha = 0.65f)
+                                    else -> extendedColors.divider.copy(alpha = 0.35f)
+                                },
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    // 点击其他地方取消删除确认
     LaunchedEffect(showDeleteConfirm) {
         if (showDeleteConfirm) {
-            delay(2000)  // 2秒后自动取消确认状态
+            delay(2000)
             showDeleteConfirm = false
         }
     }
