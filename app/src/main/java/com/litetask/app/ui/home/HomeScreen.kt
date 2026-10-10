@@ -28,11 +28,13 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.*
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -50,6 +52,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -91,14 +94,23 @@ fun HomeScreen(
     shouldCheckPermissions: Boolean = true,
     onPermissionChecked: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
+    initialTaskId: Long? = null,
+    onTaskHandled: () -> Unit = {},
     initialAction: String? = null,
-    onActionHandled: () -> Unit = {}
+    onActionHandled: () -> Unit = {},
+    initialExternalView: String? = null,
+    onViewHandled: () -> Unit = {},
+    openFocusTrigger: Boolean = false,
+    onFocusTriggerHandled: () -> Unit = {},
+    initialAiPrompt: String? = null,
+    onAiPromptHandled: () -> Unit = {}
 ) {
     // ViewModel 数据流
     val todayTasks by viewModel.tasks.collectAsState()
     val amapKey by viewModel.amapKey.collectAsState() // Collect AMap Key
     val timelineItems by viewModel.timelineItems.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
+    val focusTimerState by viewModel.focusTimerState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val categories by viewModel.categories.collectAsState()
     var currentView by androidx.compose.runtime.saveable.rememberSaveable { 
@@ -126,6 +138,32 @@ fun HomeScreen(
     // 视图切换时的处理（数据已在 ViewModel 初始化时加载，无需额外操作）
     LaunchedEffect(currentView) {
         onViewChanged(currentView)
+    }
+
+    // 处理外部（如桌面小组件）传入的视图切换指令
+    LaunchedEffect(initialExternalView) {
+        if (initialExternalView != null) {
+            currentView = initialExternalView
+            onViewHandled()
+        }
+    }
+
+    var selectedTaskId by remember { mutableStateOf<Long?>(null) }
+
+    // 处理外部（通知/小组件任务项）传入的任务详情跳转
+    LaunchedEffect(initialTaskId) {
+        if (initialTaskId != null && initialTaskId > 0) {
+            selectedTaskId = initialTaskId
+            onTaskHandled()
+        }
+    }
+
+    // 处理专注计时通知点击拉起弹窗
+    LaunchedEffect(openFocusTrigger) {
+        if (openFocusTrigger) {
+            viewModel.openFocusSheet(null)
+            onFocusTriggerHandled()
+        }
     }
     
     // 从 timelineItems 提取任务数据
@@ -162,9 +200,18 @@ fun HomeScreen(
     var showAddTaskDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showTextInputDialog by remember { mutableStateOf(false) }
+    var initialTextForDialog by remember { mutableStateOf("") }
     var selectedTask by remember { mutableStateOf<Task?>(null) }
+
+    LaunchedEffect(initialAiPrompt) {
+        if (!initialAiPrompt.isNullOrBlank()) {
+            initialTextForDialog = initialAiPrompt
+            showTextInputDialog = true
+            onAiPromptHandled()
+        }
+    }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
-    var selectedTaskId by remember { mutableStateOf<Long?>(null) }
+    var pendingRouteDestination by remember { mutableStateOf<String?>(null) }
     
     // 统一权限弹窗状态
     var showPermissionDialog by remember { mutableStateOf(false) }
@@ -243,145 +290,111 @@ fun HomeScreen(
 
                 HorizontalDivider()
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "常用工具",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 4.dp)
+                )
+
+                val runDrawerAction: (() -> Unit) -> Unit = { action ->
+                    if (!isDrawerAnimating) {
+                        isDrawerAnimating = true
+                        scope.launch {
+                            try {
+                                drawerState.close()
+                                action()
+                            } finally {
+                                isDrawerAnimating = false
+                            }
+                        }
+                    }
+                }
+
+                // 专注计时 / 番茄钟入口
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Timer, contentDescription = null) },
+                    label = { Text("专注计时 / 番茄钟") },
+                    selected = focusTimerState.isActive,
+                    onClick = {
+                        runDrawerAction {
+                            viewModel.openFocusSheet(
+                                if (focusTimerState.isActive) uiState.focusTargetTask else null
+                            )
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                )
+
+                // 用户数据选项
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    label = { Text("用户数据与画像") },
+                    selected = false,
+                    onClick = { runDrawerAction(onNavigateToUserData) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                )
 
                 // AI 分析历史记录选项
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.History, contentDescription = null) },
                     label = { Text(stringResource(R.string.ai_history)) },
                     selected = false,
-                    onClick = {
-                        if (!isDrawerAnimating) {
-                            isDrawerAnimating = true
-                            scope.launch {
-                                try {
-                                    drawerState.close()
-                                    onNavigateToHistory()
-                                } finally {
-                                    isDrawerAnimating = false
-                                }
-                            }
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    onClick = { runDrawerAction(onNavigateToHistory) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // 用户数据选项
-                NavigationDrawerItem(
-                    icon = { Icon(Icons.Default.Person, contentDescription = null) },
-                    label = { Text("用户数据") },
-                    selected = false,
-                    onClick = {
-                        if (!isDrawerAnimating) {
-                            isDrawerAnimating = true
-                            scope.launch {
-                                try {
-                                    drawerState.close()
-                                    onNavigateToUserData()
-                                } finally {
-                                    isDrawerAnimating = false
-                                }
-                            }
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "设置与管理",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 4.dp)
+                )
 
                 // 数据管理
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.Storage, contentDescription = null) },
                     label = { Text(stringResource(R.string.data_backup)) },
                     selected = false,
-                    onClick = {
-                        if (!isDrawerAnimating) {
-                            isDrawerAnimating = true
-                            scope.launch {
-                                try {
-                                    drawerState.close()
-                                    onNavigateToBackup()
-                                } finally {
-                                    isDrawerAnimating = false
-                                }
-                            }
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    onClick = { runDrawerAction(onNavigateToBackup) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                 )
-
-                Spacer(modifier = Modifier.height(8.dp))
 
                 // 设置选项
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
                     label = { Text(stringResource(R.string.settings)) },
                     selected = false,
-                    onClick = {
-                        if (!isDrawerAnimating) {
-                            isDrawerAnimating = true
-                            scope.launch {
-                                try {
-                                    drawerState.close()
-                                    onNavigateToSettings()
-                                } finally {
-                                    isDrawerAnimating = false
-                                }
-                            }
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    onClick = { runDrawerAction(onNavigateToSettings) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                 )
-
-                Spacer(modifier = Modifier.height(8.dp))
 
                 // 应用权限选项
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.Security, contentDescription = null) },
                     label = { Text("应用权限") },
                     selected = false,
-                    onClick = {
-                        if (!isDrawerAnimating) {
-                            isDrawerAnimating = true
-                            scope.launch {
-                                try {
-                                    drawerState.close()
-                                    onNavigateToPermissions()
-                                } finally {
-                                    isDrawerAnimating = false
-                                }
-                            }
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    onClick = { runDrawerAction(onNavigateToPermissions) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                 )
-
-                Spacer(modifier = Modifier.height(8.dp))
 
                 // 关于选项
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.Info, contentDescription = null) },
                     label = { Text("关于") },
                     selected = false,
-                    onClick = {
-                        if (!isDrawerAnimating) {
-                            isDrawerAnimating = true
-                            scope.launch {
-                                try {
-                                    drawerState.close()
-                                    onNavigateToAbout()
-                                } finally {
-                                    isDrawerAnimating = false
-                                }
-                            }
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    onClick = { runDrawerAction(onNavigateToAbout) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
             }
         }
     ) {
@@ -396,7 +409,9 @@ fun HomeScreen(
                                     stringResource(R.string.app_name),
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -438,6 +453,45 @@ fun HomeScreen(
                             }
                         },
                         actions = {
+                            // 快捷搜索（三大核心视图均可直接触达）
+                            IconButton(onClick = onNavigateToSearch) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = stringResource(R.string.search_hint),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            // 专注计时快捷入口
+                            BadgedBox(
+                                badge = {
+                                    if (focusTimerState.isActive) {
+                                        Badge(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(8.dp).offset(x = (-4).dp, y = 4.dp)
+                                        )
+                                    }
+                                }
+                            ) {
+                                IconButton(
+                                    onClick = {
+                                        viewModel.openFocusSheet(
+                                            if (focusTimerState.isActive) uiState.focusTargetTask else null
+                                        )
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Timer,
+                                        contentDescription = "专注计时",
+                                        tint = if (focusTimerState.isActive) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+                                }
+                            }
+
                             if (uiState.isGeneratingScheduleAdvice) {
                                 val infiniteTransition = rememberInfiniteTransition(label = "schedule")
                                 val alpha by infiniteTransition.animateFloat(
@@ -567,6 +621,24 @@ fun HomeScreen(
                         }
                     }
 
+                    // 进行中的专注计时悬浮横幅
+                    AnimatedVisibility(
+                        visible = focusTimerState.isActive || focusTimerState.status == com.litetask.app.util.FocusStatus.FINISHED
+                    ) {
+                        com.litetask.app.ui.components.ActiveFocusBanner(
+                            timerState = focusTimerState,
+                            onOpenSheet = { viewModel.openFocusSheet(uiState.focusTargetTask) },
+                            onTogglePause = {
+                                if (focusTimerState.status == com.litetask.app.util.FocusStatus.RUNNING) {
+                                    viewModel.pauseFocus()
+                                } else {
+                                    viewModel.resumeFocus()
+                                }
+                            },
+                            onDismissFinished = { viewModel.resetFocusToIdle() }
+                        )
+                    }
+
                 }
             },
             floatingActionButton = {
@@ -598,6 +670,7 @@ fun HomeScreen(
                             Toast.makeText(context, context.getString(R.string.api_key_not_configured), Toast.LENGTH_LONG).show()
                         }
                         is ApiKeyCheckResult.Valid -> {
+                            initialTextForDialog = ""
                             showTextInputDialog = true
                         }
                     }
@@ -614,13 +687,18 @@ fun HomeScreen(
                     modifier = Modifier.padding(bottom = 16.dp, end = 16.dp)
                 )
 
-                // 处理从外部（如小组件）传来的动作
+                // 处理从外部（如小组件、快捷方式、快速设置磁贴）传来的动作
                 LaunchedEffect(initialAction) {
-                    if (initialAction == "add_task") {
-                        when (defaultFabAction) {
-                            "voice" -> onVoiceClickAction()
-                            "text" -> onTextInputClickAction()
-                            "manual" -> showAddTaskDialog = true
+                    if (initialAction != null) {
+                        when (initialAction) {
+                            "add_task" -> when (defaultFabAction) {
+                                "voice" -> onVoiceClickAction()
+                                "text" -> onTextInputClickAction()
+                                "manual" -> showAddTaskDialog = true
+                            }
+                            "voice_add" -> onVoiceClickAction()
+                            "text_add" -> onTextInputClickAction()
+                            "manual_add" -> showAddTaskDialog = true
                         }
                         onActionHandled() // 标记动作已处理
                     }
@@ -660,7 +738,8 @@ fun HomeScreen(
                         taskComposites = ganttTasks,
                         onTaskClick = { selectedTaskId = it.id },
                         onNavigateToFullscreen = { viewMode -> onNavigateToGanttFullscreen(viewMode) },
-                        defaultViewMode = stringToGanttViewMode(viewModel.getGanttDefaultMode())
+                        defaultViewMode = stringToGanttViewMode(viewModel.getGanttDefaultMode()),
+                        categories = categories
                     )
                     "deadline" -> DeadlineView(
                         tasks = allLoadedTasks,
@@ -723,6 +802,7 @@ fun HomeScreen(
                     onDismiss = { 
                         if (!uiState.isAnalyzing) {
                             showTextInputDialog = false 
+                            initialTextForDialog = ""
                         }
                     },
                     onAnalyze = { text, uri ->
@@ -732,7 +812,8 @@ fun HomeScreen(
                     isAnalyzing = uiState.isAnalyzing,
                     agentStatus = uiState.agentStatus,
                     agentLogs = uiState.agentLogs,
-                    isMultimodalModel = viewModel.isMultimodalModel()
+                    isMultimodalModel = viewModel.isMultimodalModel(),
+                    initialText = initialTextForDialog
                 )
             }
             
@@ -740,6 +821,7 @@ fun HomeScreen(
             LaunchedEffect(uiState.showAiResult, uiState.showAiError) {
                 if ((uiState.showAiResult || uiState.showAiError) && showTextInputDialog) {
                     showTextInputDialog = false
+                    initialTextForDialog = ""
                 }
             }
             
@@ -752,13 +834,34 @@ fun HomeScreen(
             LaunchedEffect(taskToEdit) {
                 if (taskToEdit != null && !showEditDialog) {
                     isLoadingTaskData = true
-                    // 并行加载提醒和组件
-                    val remindersDeferred = viewModel.getRemindersForTaskSync(taskToEdit!!.id)
-                    val componentsDeferred = viewModel.getComponentsForTaskSync(taskToEdit!!.id)
-                    
+                    val currentTask = taskToEdit!!
+                    // 加载提醒和组件
+                    val remindersDeferred = viewModel.getRemindersForTaskSync(currentTask.id)
+                    val componentsDeferred = viewModel.getComponentsForTaskSync(currentTask.id)
+
+                    val routeDest = pendingRouteDestination
+                    pendingRouteDestination = null
+                    val finalComponents = if (!routeDest.isNullOrBlank() &&
+                        componentsDeferred.none { it is com.litetask.app.data.model.TaskComponent.AMapComponent }
+                    ) {
+                        val geo = viewModel.geocodeLocation(routeDest)
+                            ?: viewModel.searchLocations(routeDest).firstOrNull()
+                        if (geo != null) {
+                            componentsDeferred + com.litetask.app.data.model.TaskComponent.AMapComponent(
+                                id = 0,
+                                taskId = currentTask.id,
+                                data = geo
+                            )
+                        } else {
+                            componentsDeferred
+                        }
+                    } else {
+                        componentsDeferred
+                    }
+
                     editTaskReminders = remindersDeferred
-                    editTaskComponents = componentsDeferred
-                    
+                    editTaskComponents = finalComponents
+
                     isLoadingTaskData = false
                     showEditDialog = true
                 }
@@ -833,9 +936,15 @@ fun HomeScreen(
                         viewModel.deleteTask(it)
                         selectedTaskId = null
                     },
-                    onUpdateTask = { viewModel.updateTask(it) },
+                    onUpdateTask = { viewModel.updateTaskWithStatusTracking(composite.task, it) },
                     onUpdateSubTask = { sub, isCompleted ->
                         viewModel.updateSubTaskStatus(sub.id, isCompleted)
+                    },
+                    onUpdateSubTaskContent = { sub, newContent ->
+                        viewModel.updateSubTaskContent(composite.task.id, sub.id, newContent)
+                    },
+                    onReorderSubTasks = { orderedSubTasks ->
+                        viewModel.reorderSubTasks(composite.task.id, orderedSubTasks)
                     },
                     onAddSubTask = { content ->
                         viewModel.addSubTask(composite.task.id, content)
@@ -843,16 +952,42 @@ fun HomeScreen(
                     onDeleteSubTask = { subTask ->
                         viewModel.deleteSubTask(subTask)
                     },
-                    onGenerateSubTasks = {
-                        viewModel.generateSubTasks(composite.task)
-                    },
                     onGenerateSubTasksWithContext = { task ->
                         viewModel.showSubTaskInputDialog(task)
                     },
                     isGeneratingSubTasks = uiState.isAnalyzing,
                     onDeleteComponent = { component ->
                         viewModel.deleteComponent(component)
+                    },
+                    onStartFocus = {
+                        selectedTaskId = null
+                        viewModel.openFocusSheet(composite.task)
                     }
+                )
+            }
+
+            if (uiState.showFocusSheet) {
+                com.litetask.app.ui.components.FocusTimerSheet(
+                    timerState = focusTimerState,
+                    targetTask = uiState.focusTargetTask,
+                    onDismiss = { viewModel.dismissFocusSheet() },
+                    onStart = { task, mode, minutes ->
+                        viewModel.startFocus(task, mode, minutes)
+                    },
+                    onRestart = { mode, minutes ->
+                        viewModel.restartFocus(mode, minutes)
+                    },
+                    onPause = { viewModel.pauseFocus() },
+                    onResume = { viewModel.resumeFocus() },
+                    onFinishAndSave = {
+                        viewModel.finishFocusAndSave()
+                        viewModel.dismissFocusSheet()
+                    },
+                    onAbandon = {
+                        viewModel.abandonFocus()
+                        viewModel.dismissFocusSheet()
+                    },
+                    onResetToIdle = { viewModel.resetFocusToIdle() }
                 )
             }
 
@@ -900,8 +1035,39 @@ fun HomeScreen(
                     advice = uiState.currentAdvice,
                     isGenerating = uiState.isGeneratingScheduleAdvice,
                     agentLogs = uiState.scheduleAdviceLogs,
+                    errorMessage = uiState.scheduleAdviceError,
+                    allTasks = allLoadedTasks,
+                    hasAmapKey = !amapKey.isNullOrBlank(),
                     onDismiss = { viewModel.toggleScheduleAdviceSheet(false) },
-                    onRefresh = { viewModel.refreshScheduleAdvice() }
+                    onRefresh = { viewModel.refreshScheduleAdvice() },
+                    onOpenTaskDetail = { task ->
+                        viewModel.toggleScheduleAdviceSheet(false)
+                        selectedTaskId = task.id
+                    },
+                    onStartFocusTask = { task ->
+                        viewModel.toggleScheduleAdviceSheet(false)
+                        viewModel.openFocusSheet(task)
+                    },
+                    onAiDecomposeTask = { task ->
+                        viewModel.toggleScheduleAdviceSheet(false)
+                        viewModel.showSubTaskInputDialog(task)
+                    },
+                    onAdjustTaskTime = { task, suggestedStart, suggestedDeadline ->
+                        viewModel.toggleScheduleAdviceSheet(false)
+                        val oldDuration = (task.deadline - task.startTime).coerceAtLeast(3600_000L)
+                        val newStart = suggestedStart ?: task.startTime
+                        val newDeadline = when {
+                            suggestedDeadline != null && suggestedDeadline >= newStart -> suggestedDeadline
+                            suggestedStart != null -> newStart + oldDuration
+                            else -> task.deadline
+                        }
+                        taskToEdit = task.copy(startTime = newStart, deadline = newDeadline)
+                    },
+                    onAddTaskRoute = { task, suggestedDestination ->
+                        viewModel.toggleScheduleAdviceSheet(false)
+                        pendingRouteDestination = suggestedDestination
+                        taskToEdit = task
+                    }
                 )
             }
 
@@ -923,9 +1089,11 @@ fun HomeScreen(
                 if (currentTask != null) {
                     SubTaskInputDialog(
                         task = currentTask,
+                        existingSubTasks = uiState.currentTaskSubTasks,
+                        initialMode = uiState.subTaskGenerationMode,
                         onDismiss = { viewModel.dismissSubTaskInput() },
-                        onAnalyze = { contextText, imageUri ->
-                            viewModel.generateSubTasksWithContext(currentTask, contextText, imageUri)
+                        onAnalyze = { contextText, imageUri, mode ->
+                            viewModel.generateSubTasksWithContext(currentTask, contextText, mode, imageUri)
                         },
                         isAnalyzing = uiState.isAnalyzing,
                         agentStatus = uiState.agentStatus,
@@ -942,9 +1110,16 @@ fun HomeScreen(
                     SubTaskConfirmationDialog(
                         task = currentTask,
                         subTasks = uiState.generatedSubTasks,
+                        existingSubTasks = uiState.currentTaskSubTasks,
+                        initialMode = uiState.subTaskGenerationMode,
+                        isRefining = uiState.isRefiningSubTasks,
+                        refinementError = uiState.subTaskRefinementError,
+                        onRefine = { draftSteps, feedback ->
+                            viewModel.refineGeneratedSubTasks(draftSteps, feedback)
+                        },
                         onDismiss = { viewModel.dismissSubTaskResult() },
-                        onConfirm = { editedSubTasks -> 
-                            viewModel.confirmAddSubTasks(editedSubTasks)
+                        onConfirm = { editedSubTasks, replaceUncompleted ->
+                            viewModel.confirmAddSubTasks(editedSubTasks, replaceUncompleted)
                         }
                     )
                 }
@@ -1273,19 +1448,6 @@ private fun checkMissingPermissions(
                 name = "自启动权限",
                 description = "后台被清理后仍能收到提醒",
                 settingsIntent = PermissionHelper.getAutoStartSettingsIntent(context)
-            )
-        )
-    }
-
-    // 地理位置权限 (用于 AI 辅助地址解析)
-    if (!PermissionHelper.hasLocationPermission(context)) {
-        missing.add(
-            MissingPermission(
-                name = "地理位置权限",
-                description = "用于 AI 自动寻找附近的地点",
-                settingsIntent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = android.net.Uri.parse("package:${context.packageName}")
-                }
             )
         )
     }
