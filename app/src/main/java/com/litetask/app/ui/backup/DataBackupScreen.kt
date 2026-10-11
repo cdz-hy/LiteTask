@@ -1,28 +1,39 @@
 package com.litetask.app.ui.backup
 
-import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.EventAvailable
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.litetask.app.R
+import com.litetask.app.ui.components.CalendarSyncGuideDialog
+import com.litetask.app.ui.components.CalendarSyncSettingsPanel
+import com.litetask.app.ui.components.formatSyncTime
+import com.litetask.app.ui.components.rememberCalendarPermissionRequester
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -36,10 +47,15 @@ fun DataBackupScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
+    val calendarState by viewModel.calendarSyncStore.state.collectAsState()
     val scope = rememberCoroutineScope()
-    
+
     // 防抖状态
     var isNavigating by remember { mutableStateOf(false) }
+    var showGuideDialog by remember { mutableStateOf(false) }
+    var showSyncSettingsSheet by remember { mutableStateOf(false) }
+
+    val runWithCalendarPermission = rememberCalendarPermissionRequester(viewModel.calendarSyncStore)
     
     // 导出文件选择器
     val exportLauncher = rememberLauncherForActivityResult(
@@ -70,6 +86,40 @@ fun DataBackupScreen(
                     }
                 } catch (e: Exception) {
                     Toast.makeText(context, "导入失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    // 导出 ICS 日历文件选择器
+    val exportIcsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/calendar")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    context.contentResolver.openOutputStream(uri)?.let { outputStream ->
+                        viewModel.exportIcs(outputStream)
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "ICS 导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    // 导入 ICS 日历文件选择器
+    val importIcsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    context.contentResolver.openInputStream(uri)?.let { inputStream ->
+                        viewModel.importIcs(inputStream)
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "ICS 导入失败: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -107,6 +157,14 @@ fun DataBackupScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    IconButton(onClick = { showSyncSettingsSheet = true }) {
+                        Icon(Icons.Default.Tune, contentDescription = "日历同步设置")
+                    }
+                    IconButton(onClick = { showGuideDialog = true }) {
+                        Icon(Icons.Default.HelpOutline, contentDescription = "日历互通说明")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -132,8 +190,8 @@ fun DataBackupScreen(
 
             item {
                 BackupActionCard(
-                    title = "导出数据",
-                    description = "将所有任务、分类及设置导出为 JSON 文件，用于备份或迁移。",
+                    title = "导出完整数据备份",
+                    description = "把全部任务、分类、专注统计、常去地点、个人画像、AI 解析历史与日程建议打包成一份本地备份文件（.json），方便换机或防丢失。",
                     icon = Icons.Default.CloudUpload,
                     onClick = {
                         val timestamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())
@@ -144,11 +202,221 @@ fun DataBackupScreen(
 
             item {
                 BackupActionCard(
-                    title = "导入数据",
-                    description = "从 JSON 文件恢复数据。系统会自动识别并跳过重复任务。",
+                    title = "从备份文件恢复",
+                    description = "选择之前导出的 LiteTask 备份文件恢复数据，已有任务和常去地点会自动合并去重。",
                     icon = Icons.Default.CloudDownload,
                     onClick = {
                         importLauncher.launch(arrayOf("application/json"))
+                    }
+                )
+            }
+
+            item {
+                val targetCalendarSummary = remember(
+                    calendarState.targetCalendarId,
+                    calendarState.targetCalendarName,
+                    calendarState.writableCalendars
+                ) {
+                    if (calendarState.targetCalendarId <= 0L) {
+                        "自动选择主日历（无账户则创建 LiteTask）"
+                    } else {
+                        calendarState.writableCalendars
+                            .firstOrNull { it.id == calendarState.targetCalendarId }
+                            ?.let { "${it.displayName} (${it.accountName})" }
+                            ?: calendarState.targetCalendarName.ifBlank { "自动选择主日历" }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "日历互通与当前策略",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Surface(
+                                onClick = {
+                                    if (!calendarState.hasCalendarPermission) {
+                                        runWithCalendarPermission {}
+                                    } else {
+                                        showSyncSettingsSheet = true
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (calendarState.hasCalendarPermission) {
+                                    Color(0xFF4CAF50).copy(alpha = 0.14f)
+                                } else {
+                                    MaterialTheme.colorScheme.errorContainer
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (calendarState.hasCalendarPermission) {
+                                            Icons.Default.CheckCircle
+                                        } else {
+                                            Icons.Default.WarningAmber
+                                        },
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = if (calendarState.hasCalendarPermission) {
+                                            Color(0xFF2E7D32)
+                                        } else {
+                                            MaterialTheme.colorScheme.error
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (calendarState.hasCalendarPermission) "日历已授权" else "待授权限",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (calendarState.hasCalendarPermission) {
+                                            Color(0xFF2E7D32)
+                                        } else {
+                                            MaterialTheme.colorScheme.error
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "目标系统日历：$targetCalendarSummary",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "同步策略：自动推送 ${if (calendarState.autoPushEnabled) "已开启" else "未开启"} · " +
+                                "导入未来 ${calendarState.pullDaysAhead} 天 · " +
+                                "同步提醒 ${if (calendarState.syncReminders) "开启" else "关闭"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "最近同步：推送 ${formatSyncTime(calendarState.lastPushAt)} · 导入 ${formatSyncTime(calendarState.lastPullAt)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                        ) {
+                            OutlinedButton(onClick = { showGuideDialog = true }) {
+                                Text("完整说明")
+                            }
+                            FilledTonalButton(onClick = { showSyncSettingsSheet = true }) {
+                                Text("同步设置")
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "通用日历文件导入与导出",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+
+            item {
+                BackupActionCard(
+                    title = "导出为通用日历文件 (.ics)",
+                    description = "生成苹果日历、Google 日历、Outlook 等都能打开的日程文件（${if (calendarState.icsExportIncludeDone) "包含已完成/已过期任务" else "只导进行中任务"}，${if (calendarState.syncReminders) "附带提醒时间" else "不附带提醒"}）。",
+                    icon = Icons.Default.CalendarMonth,
+                    onClick = {
+                        val timestamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())
+                        exportIcsLauncher.launch("LiteTask_Schedule_$timestamp.ics")
+                    }
+                )
+            }
+
+            item {
+                BackupActionCard(
+                    title = "从日历文件导入日程",
+                    description = "从其他日历软件导出的文件导入日程并自动恢复提醒；软件里已有同时间同名任务会自动跳过。",
+                    icon = Icons.Default.FileDownload,
+                    onClick = {
+                        importIcsLauncher.launch(arrayOf("text/calendar", "application/ics", "*/*"))
+                    }
+                )
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "手机系统日历双向同步",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+
+            item {
+                val pushTargetLabel = remember(calendarState.targetCalendarId, calendarState.targetCalendarName, calendarState.writableCalendars) {
+                    if (calendarState.targetCalendarId <= 0L) {
+                        "默认手机日历"
+                    } else {
+                        calendarState.writableCalendars
+                            .firstOrNull { it.id == calendarState.targetCalendarId }
+                            ?.displayName
+                            ?: calendarState.targetCalendarName.ifBlank { "默认手机日历" }
+                    }
+                }
+                BackupActionCard(
+                    title = "同步任务到手机日历",
+                    description = "把${if (calendarState.pushIncludeDone) "全部任务（已完成会自动标出）" else "进行中任务"}写入「$pushTargetLabel」" +
+                        "（修改后再次同步会直接更新原条目${if (calendarState.syncReminders) "，附带系统提醒" else ""}）。",
+                    icon = Icons.Default.Sync,
+                    onClick = {
+                        runWithCalendarPermission {
+                            scope.launch { viewModel.pushToSystemCalendar() }
+                        }
+                    }
+                )
+            }
+
+            item {
+                BackupActionCard(
+                    title = "从系统日历导入日程",
+                    description = "读取系统日历未来 ${calendarState.pullDaysAhead} 天内的外部日程并导入 LiteTask（自动过滤本应用同步事件并防重）。",
+                    icon = Icons.Default.EventAvailable,
+                    onClick = {
+                        runWithCalendarPermission {
+                            scope.launch { viewModel.importFromSystemCalendar() }
+                        }
                     }
                 )
             }
@@ -164,6 +432,41 @@ fun DataBackupScreen(
                 }
             }
         }
+    }
+
+    if (showSyncSettingsSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showSyncSettingsSheet = false },
+            sheetState = sheetState
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "日历互通与同步设置",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                CalendarSyncSettingsPanel(
+                    store = viewModel.calendarSyncStore,
+                    onRequestCalendarPermission = { runWithCalendarPermission {} },
+                    onOpenGuide = {
+                        showSyncSettingsSheet = false
+                        showGuideDialog = true
+                    }
+                )
+            }
+        }
+    }
+
+    if (showGuideDialog) {
+        CalendarSyncGuideDialog(onDismiss = { showGuideDialog = false })
     }
 }
 

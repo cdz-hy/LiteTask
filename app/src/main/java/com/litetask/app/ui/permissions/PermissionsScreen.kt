@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -25,7 +27,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
@@ -47,6 +51,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,6 +65,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.litetask.app.reminder.PermissionHelper
+import com.litetask.app.ui.components.CalendarSyncGuideDialog
+import com.litetask.app.ui.components.rememberCalendarPermissionRequester
 import com.litetask.app.ui.settings.SettingsViewModel
 
 /**
@@ -68,6 +75,7 @@ import com.litetask.app.ui.settings.SettingsViewModel
  * 集中管理应用所需的各项系统权限，包括：
  * - 提醒相关权限（通知、精确闹钟、后台弹出、锁屏显示等）
  * - 定位权限（用于地图和位置相关功能）
+ * - 日历读写权限（用于系统日历双向同步）
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,6 +88,7 @@ fun PermissionsScreen(
     
     // 防抖状态
     var isNavigating by remember { mutableStateOf(false) }
+    var showCalendarGuide by remember { mutableStateOf(false) }
     
     Scaffold(
         topBar = {
@@ -114,9 +123,20 @@ fun PermissionsScreen(
             
             // 定位权限卡片
             LocationPermissionsCard(context, viewModel)
+
+            // 日历权限卡片
+            CalendarPermissionsCard(
+                context = context,
+                viewModel = viewModel,
+                onShowGuide = { showCalendarGuide = true }
+            )
             
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    if (showCalendarGuide) {
+        CalendarSyncGuideDialog(onDismiss = { showCalendarGuide = false })
     }
 }
 
@@ -336,6 +356,12 @@ private fun LocationPermissionsCard(
     LaunchedEffect(refreshTrigger) {
         hasLocationPermission = PermissionHelper.hasLocationPermission(context)
     }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        hasLocationPermission = PermissionHelper.hasLocationPermission(context)
+    }
     
     PermissionCard(
         title = "定位权限",
@@ -349,7 +375,7 @@ private fun LocationPermissionsCard(
             verticalAlignment = Alignment.Top
         ) {
             Text(
-                text = "用于任务地图预览、路线规划等位置相关功能",
+                text = "用于搜索周边地点、生成出行路线建议，以及在您确认含地点任务时统计常去地点足迹",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -363,20 +389,127 @@ private fun LocationPermissionsCard(
             // 位置权限
             PermissionItem(
                 title = "位置权限",
-                description = "允许访问设备位置信息",
+                description = "允许获取设备大概或精确位置",
                 isGranted = hasLocationPermission,
                 onClick = {
-                    val intent = PermissionHelper.getLocationSettingsIntent(context)
-                    context.startActivity(intent)
+                    if (hasLocationPermission) {
+                        context.startActivity(PermissionHelper.getLocationSettingsIntent(context))
+                    } else {
+                        locationPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    }
                 }
             )
         }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(onClick = {
+                context.startActivity(PermissionHelper.getLocationSettingsIntent(context))
+            }) {
+                Text("前往系统设置")
+            }
+        }
         
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         
         // 提示信息
         Text(
-            text = "注意：定位权限仅在使用地图相关功能时需要，不会在后台收集位置信息",
+            text = "注意：仅在您主动搜索附近地点、询问出行日程或确认含位置任务时读取位置，不会在后台持续定位；足迹记录仅存于本机，也可随时在设置中关闭或清空。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/**
+ * 日历权限卡片
+ */
+@Composable
+private fun CalendarPermissionsCard(
+    context: android.content.Context,
+    viewModel: SettingsViewModel,
+    onShowGuide: () -> Unit
+) {
+    val calendarState by viewModel.calendarSyncStore.state.collectAsState()
+    val runWithCalendarPermission = rememberCalendarPermissionRequester(viewModel.calendarSyncStore)
+
+    fun openAppSettings() {
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", context.packageName, null)
+        )
+        context.startActivity(intent)
+    }
+
+    PermissionCard(
+        title = "日历权限",
+        icon = Icons.Default.CalendarMonth
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Text(
+                text = "用于手机系统日历双向同步（把任务与提醒写入手机日历、选择写入账户，以及从手机日历导入日程）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            PermissionItem(
+                title = "日历读写权限",
+                description = "允许读取和写入手机系统日历中的日程",
+                isGranted = calendarState.hasCalendarPermission,
+                onClick = {
+                    if (calendarState.hasCalendarPermission) {
+                        openAppSettings()
+                    } else {
+                        runWithCalendarPermission {}
+                    }
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = { openAppSettings() }) {
+                Text("前往系统设置")
+            }
+            TextButton(onClick = onShowGuide) {
+                Icon(
+                    imageVector = Icons.Default.HelpOutline,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("同步说明与隐私")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = "注意：日历权限仅在您启用自动推送或手动执行系统日历双向同步时读取或写入本地设备日历，不会上传任何日程至外部服务器；若系统不再弹出授权框，请点「前往系统设置」手动开启。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

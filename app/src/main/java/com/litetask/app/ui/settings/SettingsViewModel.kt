@@ -7,6 +7,7 @@ import com.litetask.app.R
 import com.litetask.app.data.ai.AIProviderFactory
 import com.litetask.app.data.local.PreferenceManager
 import com.litetask.app.data.speech.SpeechProviderFactory
+import com.litetask.app.util.CalendarSyncPreferencesStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +25,8 @@ class SettingsViewModel @Inject constructor(
     private val preferenceManager: PreferenceManager,
     private val aiProviderFactory: AIProviderFactory,
     private val speechProviderFactory: SpeechProviderFactory,
-    private val categoryRepository: CategoryRepository
+    private val categoryRepository: CategoryRepository,
+    val calendarSyncStore: CalendarSyncPreferencesStore
 ) : ViewModel() {
 
     // ========== 通用状态 ==========
@@ -45,11 +47,19 @@ class SettingsViewModel @Inject constructor(
     val connectionState: StateFlow<ConnectionState> = _aiConnectionState
 
     fun getApiKey(): String? = preferenceManager.getApiKey()
+    fun getApiKey(providerId: String): String? = preferenceManager.getApiKey(providerId)
     fun saveApiKey(key: String) = preferenceManager.saveApiKey(key)
+    fun saveApiKey(providerId: String, key: String) = preferenceManager.saveApiKey(providerId, key)
     fun getAiProvider(): String = preferenceManager.getAiProvider()
     fun saveAiProvider(provider: String) = preferenceManager.saveAiProvider(provider)
     fun getAiModel(): String = preferenceManager.getAiModel()
     fun saveAiModel(model: String) = preferenceManager.saveAiModel(model)
+    fun getCustomBaseUrl(): String = preferenceManager.getCustomBaseUrl()
+    fun saveCustomBaseUrl(baseUrl: String) = preferenceManager.saveCustomBaseUrl(baseUrl)
+    fun isMultimodalEnabled(providerId: String, modelId: String): Boolean =
+        preferenceManager.isMultimodalEnabled(providerId, modelId)
+    fun setMultimodalEnabled(providerId: String, modelId: String, enabled: Boolean) =
+        preferenceManager.setMultimodalEnabled(providerId, modelId, enabled)
     
     fun isAiDestinationEnabled(): Boolean = preferenceManager.isAiDestinationEnabled()
     fun setAiDestinationEnabled(enabled: Boolean) = preferenceManager.setAiDestinationEnabled(enabled)
@@ -69,10 +79,23 @@ class SettingsViewModel @Inject constructor(
         _aiConnectionState.value = ConnectionState.Idle
     }
 
-    fun testConnection(apiKey: String, providerId: String, modelId: String) {
-        if (apiKey.isBlank()) {
+    fun testConnection(
+        apiKey: String,
+        providerId: String,
+        modelId: String,
+        customBaseUrl: String? = null
+    ) {
+        if (apiKey.isBlank() && providerId != "custom_openai") {
             _aiConnectionState.value = ConnectionState.Error(application.getString(R.string.please_enter_api_key))
             return
+        }
+        if (providerId == "custom_openai") {
+            val baseUrl = customBaseUrl?.trim().orEmpty()
+            if (baseUrl.isBlank()) {
+                _aiConnectionState.value = ConnectionState.Error("请先填写 Base URL")
+                return
+            }
+            preferenceManager.saveCustomBaseUrl(baseUrl)
         }
 
         viewModelScope.launch {
@@ -189,6 +212,8 @@ class SettingsViewModel @Inject constructor(
 
     fun getAMapKey(): String? = preferenceManager.getAMapKey()
     fun saveAMapKey(key: String) = preferenceManager.saveAMapKey(key)
+    fun isLocationFootprintEnabled(): Boolean = preferenceManager.isLocationFootprintEnabled()
+    fun setLocationFootprintEnabled(enabled: Boolean) = preferenceManager.setLocationFootprintEnabled(enabled)
 
     fun resetAMapConnectionState() {
         _amapConnectionState.value = ConnectionState.Idle

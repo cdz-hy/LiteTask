@@ -1,11 +1,17 @@
 package com.litetask.app.ui.settings
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -16,6 +22,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -79,13 +86,17 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.litetask.app.data.model.Category
+import com.litetask.app.ui.components.SegmentedTabBar
 import com.litetask.app.ui.util.ColorUtils
 import androidx.compose.material3.Switch
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
@@ -114,15 +125,24 @@ import com.litetask.app.R
 import com.litetask.app.data.speech.CredentialField
 import com.litetask.app.reminder.FloatingReminderService
 import com.litetask.app.reminder.PermissionHelper
+import com.litetask.app.ui.components.CalendarSyncGuideDialog
+import com.litetask.app.ui.components.CalendarSyncSettingsPanel
+import com.litetask.app.ui.components.rememberCalendarPermissionRequester
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onNavigateToBackup: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val scrollState = rememberScrollState()
+    val prefsScrollState = rememberScrollState()
+    val servicesScrollState = rememberScrollState()
+    var selectedSettingsTab by rememberSaveable { mutableStateOf(0) }
+    var aiConfigExpanded by remember { mutableStateOf(true) }
+    var speechConfigExpanded by remember { mutableStateOf(true) }
+    var amapConfigExpanded by remember { mutableStateOf(true) }
     
     // 防抖状态
     var isNavigating by remember { mutableStateOf(false) }
@@ -133,7 +153,9 @@ fun SettingsScreen(
     // ========== AI 配置状态 ==========
     var apiKey by remember { mutableStateOf("") }
     var selectedAiProvider by remember { mutableStateOf("deepseek") }
-    var selectedAiModel by remember { mutableStateOf("deepseek-chat") }
+    var selectedAiModel by remember { mutableStateOf("deepseek-flash") }
+    var customBaseUrl by remember { mutableStateOf("") }
+    var isMultimodalEnabled by remember { mutableStateOf(true) }
     var aiProviderExpanded by remember { mutableStateOf(false) }
     var aiModelExpanded by remember { mutableStateOf(false) }
     var showCustomModelDialog by remember { mutableStateOf(false) }
@@ -146,6 +168,10 @@ fun SettingsScreen(
     LaunchedEffect(aiConnectionState) {
         if (aiConnectionState is SettingsViewModel.ConnectionState.Success) {
             modelsRefreshTrigger++
+            if (selectedAiProvider == "custom_openai" && selectedAiModel.isBlank()) {
+                selectedAiModel = viewModel.getSupportedAiModels("custom_openai")
+                    .firstOrNull()?.first.orEmpty()
+            }
         }
     }
 
@@ -162,12 +188,61 @@ fun SettingsScreen(
     var amapKey by remember { mutableStateOf("") }
     val amapConnectionState by viewModel.amapConnectionState.collectAsState()
     
-    // ========== AI 智能目的地状态 ==========
+    // ========== AI 智能目的地与足迹状态 ==========
     var isAiDestinationEnabled by remember { mutableStateOf(false) }
+    var isLocationFootprintEnabled by remember { mutableStateOf(true) }
     var isAiAgentEnabled by remember { mutableStateOf(false) }
     
     // ========== 分类管理状态 ==========
     var showCategoryDialog by remember { mutableStateOf(false) }
+    var showCalendarGuide by remember { mutableStateOf(false) }
+    val requestCalendarPermission = rememberCalendarPermissionRequester(viewModel.calendarSyncStore)
+
+    // ========== 系统定位权限（按需申请） ==========
+    fun checkLocationPerm(): Boolean {
+        val fine = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        return fine || coarse
+    }
+    var hasLocationPermission by remember { mutableStateOf(checkLocationPerm()) }
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                hasLocationPermission = checkLocationPerm()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        val granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        hasLocationPermission = granted || checkLocationPerm()
+        if (hasLocationPermission) {
+            Toast.makeText(context, "已获取系统定位权限，位置识别与足迹记录已就绪", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "未授予系统定位权限，仍可手动输入目的地", Toast.LENGTH_SHORT).show()
+        }
+    }
+    val requestLocationPermissionIfNeeded = {
+        if (!checkLocationPerm()) {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
     
     val speechProviders = viewModel.getSupportedSpeechProviders()
     val speechCredentialFields = remember(selectedSpeechProvider) {
@@ -176,19 +251,36 @@ fun SettingsScreen(
     
     // 初始化数据
     LaunchedEffect(Unit) {
-        apiKey = viewModel.getApiKey() ?: ""
         selectedAiProvider = viewModel.getAiProvider()
         selectedAiModel = viewModel.getAiModel()
-        selectedSpeechProvider = viewModel.getSpeechProvider()
+        apiKey = viewModel.getApiKey(selectedAiProvider) ?: ""
+        customBaseUrl = viewModel.getCustomBaseUrl()
+        isMultimodalEnabled = viewModel.isMultimodalEnabled(selectedAiProvider, selectedAiModel)
         selectedSpeechProvider = viewModel.getSpeechProvider()
         amapKey = viewModel.getAMapKey() ?: ""
         isAiDestinationEnabled = viewModel.isAiDestinationEnabled()
+        isLocationFootprintEnabled = viewModel.isLocationFootprintEnabled()
         isAiAgentEnabled = viewModel.isAiAgentEnabled()
         
         // 加载语音识别凭证
         val savedCredentials = viewModel.getSpeechCredentials(selectedSpeechProvider)
         speechCredentials.clear()
         speechCredentials.putAll(savedCredentials)
+
+        // 若凭证已完整配置，默认折叠输入表单仅保留状态摘要，降低视觉负担
+        val initialAiReady = if (selectedAiProvider == "custom_openai") {
+            customBaseUrl.isNotBlank() && selectedAiModel.isNotBlank()
+        } else {
+            apiKey.isNotBlank()
+        }
+        val initialSpeechFields = viewModel.getSpeechCredentialFields(selectedSpeechProvider)
+        val initialSpeechReady = initialSpeechFields.all { field ->
+            !field.isRequired || !savedCredentials[field.id].isNullOrBlank()
+        }
+        val initialAmapReady = amapKey.isNotBlank()
+        aiConfigExpanded = !initialAiReady
+        speechConfigExpanded = !initialSpeechReady
+        amapConfigExpanded = !initialAmapReady
         
         // 标记数据加载完成
         isDataLoaded = true
@@ -202,18 +294,17 @@ fun SettingsScreen(
         viewModel.resetSpeechConnectionState()
     }
 
-    // 当 AI Key 或 Provider/Model 改变时，重置测试状态
-    LaunchedEffect(apiKey, selectedAiProvider, selectedAiModel) {
+    // 当 AI Key 或 Provider/Model/BaseURL 改变时，重置测试状态
+    LaunchedEffect(apiKey, selectedAiProvider, selectedAiModel, customBaseUrl) {
         if (aiConnectionState !is SettingsViewModel.ConnectionState.Idle) {
             viewModel.resetConnectionState()
         }
     }
 
-    // 当 Provider 改变时，如果当前选中的模型不在新提供商支持列表中，则默认选中第一个
-    LaunchedEffect(selectedAiProvider) {
-        val models = viewModel.getSupportedAiModels(selectedAiProvider)
-        if (models.none { it.first == selectedAiModel }) {
-            selectedAiModel = models.firstOrNull()?.first ?: ""
+    // 当 Provider/Model 改变时，刷新多模态开关状态
+    LaunchedEffect(selectedAiProvider, selectedAiModel) {
+        if (isDataLoaded) {
+            isMultimodalEnabled = viewModel.isMultimodalEnabled(selectedAiProvider, selectedAiModel)
         }
     }
 
@@ -248,441 +339,717 @@ fun SettingsScreen(
         if (!isDataLoaded) {
             return@Scaffold
         }
-        
+
+        val isAiConfigured = if (selectedAiProvider == "custom_openai") {
+            customBaseUrl.isNotBlank() && selectedAiModel.isNotBlank()
+        } else {
+            apiKey.isNotBlank()
+        }
+        val isSpeechConfigured = speechCredentialFields.all { field ->
+            !field.isRequired || !speechCredentials[field.id].isNullOrBlank()
+        }
+        val isAmapConfigured = amapKey.isNotBlank()
+        val aiProviderName = aiProviders.find { it.first == selectedAiProvider }?.second ?: "AI"
+        val speechProviderName = speechProviders.find { it.first == selectedSpeechProvider }?.second ?: "在线语音"
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(scrollState)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ========== AI 配置卡片 ==========
-            SettingsCard(
-                title = stringResource(R.string.ai_config),
-                icon = Icons.Default.SmartToy
-            ) {
-                // AI 提供商选择
-                ExposedDropdownMenuBox(
-                    expanded = aiProviderExpanded,
-                    onExpandedChange = { aiProviderExpanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = aiProviders.find { it.first == selectedAiProvider }?.second ?: "DeepSeek V3.2",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text(stringResource(R.string.ai_provider)) },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = aiProviderExpanded) },
-                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
-                    )
-                    
-                    ExposedDropdownMenu(
-                        expanded = aiProviderExpanded,
-                        onDismissRequest = { aiProviderExpanded = false }
-                    ) {
-                        aiProviders.forEach { (value, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    selectedAiProvider = value
-                                    aiProviderExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(12.dp))
+            // 顶部两栏分组切换：分离“常规偏好”和“AI 与外部接口服务”
+            SegmentedTabBar(
+                tabs = listOf("常规偏好", "AI 与接口服务"),
+                selectedIndex = selectedSettingsTab,
+                onSelectTab = { selectedSettingsTab = it },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+            )
 
-                // AI 模型选择
-                ExposedDropdownMenuBox(
-                    expanded = aiModelExpanded,
-                    onExpandedChange = { aiModelExpanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = aiModels.find { it.first == selectedAiModel }?.second ?: selectedAiModel,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("AI 模型") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = aiModelExpanded) },
-                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
-                    )
-                    
-                    ExposedDropdownMenu(
-                        expanded = aiModelExpanded,
-                        onDismissRequest = { aiModelExpanded = false },
-                        modifier = Modifier.heightIn(max = 320.dp)
+            Crossfade(
+                targetState = selectedSettingsTab,
+                label = "SettingsTabCrossfade",
+                modifier = Modifier.weight(1f)
+            ) { tabIndex ->
+                if (tabIndex == 0) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(prefsScrollState)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // 自定义模型（如果在预设列表里，也会带 (自定义) 后缀，由 AIProviderFactory 处理）
-                        aiModels.forEach { (value, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    selectedAiModel = value
-                                    aiModelExpanded = false
+                        // ========== 用户偏好设置卡片 ==========
+                        UserPreferencesCard(viewModel)
+
+                        // ========== 分类设置卡片 ==========
+                        CategorySettingsCard(
+                            onManageCategories = { showCategoryDialog = true }
+                        )
+
+                        // ========== 提醒方式设置卡片 ==========
+                        ReminderMethodsCard(viewModel)
+
+                        // ========== 日历导出与手机日历同步卡片 ==========
+                        SettingsCard(
+                            title = "日历导出与手机日历同步",
+                            icon = Icons.Default.CalendarMonth
+                        ) {
+                            Text(
+                                text = "设置通用日历文件导出范围，以及与手机系统日历双向同步的偏好。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+
+                            CalendarSyncSettingsPanel(
+                                store = viewModel.calendarSyncStore,
+                                onRequestCalendarPermission = { requestCalendarPermission {} },
+                                onOpenGuide = { showCalendarGuide = true }
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedButton(
+                                onClick = onNavigateToBackup,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("前往数据管理执行日历文件导入导出 / 立即同步")
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(servicesScrollState)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        ServiceStatusOverviewStrip(
+                            aiReady = isAiConfigured,
+                            speechReady = isSpeechConfigured,
+                            mapReady = isAmapConfigured
+                        )
+
+                        // ========== AI 配置卡片 ==========
+                        SettingsCard(
+                            title = stringResource(R.string.ai_config),
+                            icon = Icons.Default.SmartToy
+                        ) {
+                            CollapsibleCredentialSection(
+                                title = "接口与模型凭证（修改后请点击保存）",
+                                summary = if (isAiConfigured) {
+                                    "已配置 · $aiProviderName" +
+                                        if (selectedAiModel.isNotBlank()) " ($selectedAiModel)" else ""
+                                } else {
+                                    "未配置 · 点击填写密钥与模型"
                                 },
-                                trailingIcon = if (label.endsWith("(自定义)")) {
-                                    {
-                                        IconButton(onClick = {
-                                            viewModel.deleteCustomModel(selectedAiProvider)
-                                            if (selectedAiModel == value) {
-                                                selectedAiModel = aiModels.firstOrNull { !it.second.endsWith("(自定义)") }?.first ?: ""
-                                            }
-                                            modelsRefreshTrigger++
-                                        }) {
-                                            Icon(Icons.Default.Delete, contentDescription = "删除自定义模型", tint = MaterialTheme.colorScheme.error)
+                                configured = isAiConfigured,
+                                expanded = aiConfigExpanded,
+                                onToggleExpand = { aiConfigExpanded = !aiConfigExpanded }
+                            ) {
+                                // AI 提供商选择
+                                ExposedDropdownMenuBox(
+                                    expanded = aiProviderExpanded,
+                                    onExpandedChange = { aiProviderExpanded = it },
+                                ) {
+                                    OutlinedTextField(
+                                        value = aiProviderName,
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        label = { Text(stringResource(R.string.ai_provider)) },
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = aiProviderExpanded) },
+                                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                                    )
+
+                                    ExposedDropdownMenu(
+                                        expanded = aiProviderExpanded,
+                                        onDismissRequest = { aiProviderExpanded = false }
+                                    ) {
+                                        aiProviders.forEach { (value, label) ->
+                                            DropdownMenuItem(
+                                                text = { Text(label) },
+                                                onClick = {
+                                                    selectedAiProvider = value
+                                                    aiProviderExpanded = false
+                                                    apiKey = viewModel.getApiKey(value) ?: ""
+                                                    val newModels = viewModel.getSupportedAiModels(value)
+                                                    if (newModels.none { it.first == selectedAiModel }) {
+                                                        selectedAiModel = newModels.firstOrNull()?.first ?: ""
+                                                    }
+                                                    isMultimodalEnabled = viewModel.isMultimodalEnabled(value, selectedAiModel)
+                                                }
+                                            )
                                         }
                                     }
-                                } else null
-                            )
-                        }
-                        
-                        HorizontalDivider()
-                        
-                        // 恢复预设模型
-                        DropdownMenuItem(
-                            text = { Text("恢复预设模型列表", color = MaterialTheme.colorScheme.primary) },
-                            onClick = {
-                                viewModel.clearFetchedModels(selectedAiProvider)
-                                modelsRefreshTrigger++
-                                aiModelExpanded = false
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Default.Refresh, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            }
-                        )
-                        
-                        // 所有提供商都支持自定义模型名称
-                        DropdownMenuItem(
-                            text = { Text("自定义模型...") },
-                            onClick = {
-                                aiModelExpanded = false
-                                // 预填充当前模型名称（如果不在预定义列表中）
-                                customModelInput = if (aiModels.none { it.first == selectedAiModel }) {
-                                    selectedAiModel
+                                }
+
+                                // 仅当选择 OpenAI 兼容接口时显示 Base URL 输入框
+                                AnimatedVisibility(
+                                    visible = selectedAiProvider == "custom_openai",
+                                    enter = expandVertically() + fadeIn(),
+                                    exit = shrinkVertically() + fadeOut()
+                                ) {
+                                    Column {
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        OutlinedTextField(
+                                            value = customBaseUrl,
+                                            onValueChange = { customBaseUrl = it },
+                                            label = { Text("接口地址 (Base URL)") },
+                                            placeholder = { Text("https://your-endpoint.com/v1") },
+                                            leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+                                            supportingText = {
+                                                Text("填写服务商提供的请求地址（支持各类第三方中转或本地部署接口）")
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            singleLine = true
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // AI 模型选择：custom_openai 允许直接自由输入，也可通过测试连接拉取列表后选择；官方提供方走预设下拉
+                                if (selectedAiProvider == "custom_openai") {
+                                    OutlinedTextField(
+                                        value = selectedAiModel,
+                                        onValueChange = { selectedAiModel = it },
+                                        label = { Text("模型名称 (Model ID)") },
+                                        placeholder = { Text("输入要使用的模型名称（也可点下方测试连接自动获取）") },
+                                        singleLine = true,
+                                        trailingIcon = if (aiModels.isNotEmpty()) {
+                                            {
+                                                Box {
+                                                    IconButton(onClick = { aiModelExpanded = true }) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.ArrowDropDown,
+                                                            contentDescription = "选择已拉取的模型"
+                                                        )
+                                                    }
+                                                    DropdownMenu(
+                                                        expanded = aiModelExpanded,
+                                                        onDismissRequest = { aiModelExpanded = false },
+                                                        modifier = Modifier.heightIn(max = 320.dp)
+                                                    ) {
+                                                        AiModelMenuItems(
+                                                            aiModels = aiModels,
+                                                            resetLabel = "清空缓存模型列表",
+                                                            onSelect = { value ->
+                                                                selectedAiModel = value
+                                                                aiModelExpanded = false
+                                                            },
+                                                            onDeleteCustom = { value ->
+                                                                viewModel.deleteCustomModel(selectedAiProvider)
+                                                                if (selectedAiModel == value) {
+                                                                    selectedAiModel = aiModels.firstOrNull { !it.second.endsWith("(自定义)") }?.first ?: ""
+                                                                }
+                                                                modelsRefreshTrigger++
+                                                            },
+                                                            onResetModels = {
+                                                                viewModel.clearFetchedModels(selectedAiProvider)
+                                                                modelsRefreshTrigger++
+                                                                aiModelExpanded = false
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        } else null,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
                                 } else {
-                                    ""
+                                    ExposedDropdownMenuBox(
+                                        expanded = aiModelExpanded,
+                                        onExpandedChange = { aiModelExpanded = it },
+                                    ) {
+                                        OutlinedTextField(
+                                            value = aiModels.find { it.first == selectedAiModel }?.second ?: selectedAiModel,
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            label = { Text("AI 模型") },
+                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = aiModelExpanded) },
+                                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                                            modifier = Modifier.fillMaxWidth().menuAnchor()
+                                        )
+
+                                        ExposedDropdownMenu(
+                                            expanded = aiModelExpanded,
+                                            onDismissRequest = { aiModelExpanded = false },
+                                            modifier = Modifier.heightIn(max = 320.dp)
+                                        ) {
+                                            AiModelMenuItems(
+                                                aiModels = aiModels,
+                                                resetLabel = "恢复预设模型列表",
+                                                onSelect = { value ->
+                                                    selectedAiModel = value
+                                                    aiModelExpanded = false
+                                                },
+                                                onDeleteCustom = { value ->
+                                                    viewModel.deleteCustomModel(selectedAiProvider)
+                                                    if (selectedAiModel == value) {
+                                                        selectedAiModel = aiModels.firstOrNull { !it.second.endsWith("(自定义)") }?.first ?: ""
+                                                    }
+                                                    modelsRefreshTrigger++
+                                                },
+                                                onResetModels = {
+                                                    viewModel.clearFetchedModels(selectedAiProvider)
+                                                    modelsRefreshTrigger++
+                                                    aiModelExpanded = false
+                                                },
+                                                onCustomModelClick = {
+                                                    aiModelExpanded = false
+                                                    customModelInput = if (aiModels.none { it.first == selectedAiModel }) {
+                                                        selectedAiModel
+                                                    } else {
+                                                        ""
+                                                    }
+                                                    showCustomModelDialog = true
+                                                }
+                                            )
+                                        }
+                                    }
                                 }
-                                showCustomModelDialog = true
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // API Key 输入框
+                                OutlinedTextField(
+                                    value = apiKey,
+                                    onValueChange = { apiKey = it },
+                                    label = { Text(stringResource(R.string.api_key)) },
+                                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    isError = aiConnectionState is SettingsViewModel.ConnectionState.Error
+                                )
+
+                                // 测试状态显示
+                                ConnectionStateIndicator(state = aiConnectionState)
+
+                                // 辅助说明与测试按钮
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "密钥仅保存在本地设备",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.testConnection(
+                                                apiKey = apiKey,
+                                                providerId = selectedAiProvider,
+                                                modelId = selectedAiModel,
+                                                customBaseUrl = if (selectedAiProvider == "custom_openai") customBaseUrl else null
+                                            )
+                                        },
+                                        enabled = (apiKey.isNotBlank() || selectedAiProvider == "custom_openai") &&
+                                            aiConnectionState !is SettingsViewModel.ConnectionState.Testing
+                                    ) {
+                                        Text(stringResource(R.string.test_connection))
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Button(
+                                    onClick = {
+                                        val trimmedModel = selectedAiModel.trim()
+                                        val trimmedBaseUrl = customBaseUrl.trim()
+                                        if (selectedAiProvider == "custom_openai") {
+                                            if (trimmedBaseUrl.isBlank()) {
+                                                Toast.makeText(context, "请先填写 Base URL", Toast.LENGTH_SHORT).show()
+                                                return@Button
+                                            }
+                                            if (trimmedModel.isBlank()) {
+                                                Toast.makeText(context, "请先填写模型 ID", Toast.LENGTH_SHORT).show()
+                                                return@Button
+                                            }
+                                            viewModel.saveCustomBaseUrl(trimmedBaseUrl)
+                                            viewModel.saveCustomModel("custom_openai", trimmedModel)
+                                        }
+                                        // 保存当前服务商独立 Key 与模型配置
+                                        viewModel.saveAiProvider(selectedAiProvider)
+                                        viewModel.saveAiModel(trimmedModel)
+                                        viewModel.saveApiKey(selectedAiProvider, apiKey)
+                                        viewModel.setMultimodalEnabled(selectedAiProvider, trimmedModel, isMultimodalEnabled)
+                                        modelsRefreshTrigger++
+                                        Toast.makeText(context, context.getString(R.string.settings_saved), Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text(stringResource(R.string.ai_save_settings))
+                                }
                             }
-                        )
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                // API Key 输入框
-                OutlinedTextField(
-                    value = apiKey,
-                    onValueChange = { apiKey = it },
-                    label = { Text(stringResource(R.string.api_key)) },
-                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    isError = aiConnectionState is SettingsViewModel.ConnectionState.Error
-                )
-                
-                // 测试状态显示
-                ConnectionStateIndicator(state = aiConnectionState)
-                
-                // 辅助说明与测试按钮
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "密钥仅保存在本地设备",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    
-                    TextButton(
-                        onClick = { viewModel.testConnection(apiKey, selectedAiProvider, selectedAiModel) },
-                        enabled = apiKey.isNotBlank() && aiConnectionState !is SettingsViewModel.ConnectionState.Testing
-                    ) {
-                        Text(stringResource(R.string.test_connection))
-                    }
-                }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
+                            HorizontalDivider()
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                Button(
-                    onClick = { 
-                        // 允许保存空值，空值表示不使用 AI 分析功能
-                        viewModel.saveApiKey(apiKey)
-                        viewModel.saveAiProvider(selectedAiProvider)
-                        viewModel.saveAiModel(selectedAiModel)
-                        Toast.makeText(context, context.getString(R.string.settings_saved), Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(stringResource(R.string.ai_save_settings))
-                }
+                            InstantToggleSectionHeader("AI 能力开关（切换后立即生效）")
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Agent 模式开关
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.enable_ai_agent),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = stringResource(R.string.enable_ai_agent_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = isAiAgentEnabled,
-                        onCheckedChange = { checked ->
-                            isAiAgentEnabled = checked
-                            viewModel.setAiAgentEnabled(checked)
-                        }
-                    )
-                }
-                
-            }
-            
-            // ========== 语音识别配置卡片 ==========
-            SettingsCard(
-                title = stringResource(R.string.speech_config),
-                icon = Icons.Default.Mic
-            ) {
-                
-                // 语音识别说明文字
-                Text(
-                    text = "此项用于改善语音识别效果，若不设置将调用安卓自带STT",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                
-                // 语音识别服务选择
-                ExposedDropdownMenuBox(
-                    expanded = speechProviderExpanded,
-                    onExpandedChange = { speechProviderExpanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = speechProviders.find { it.first == selectedSpeechProvider }?.second ?: "",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text(stringResource(R.string.speech_provider)) },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = speechProviderExpanded) },
-                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
-                    )
-                    
-                    ExposedDropdownMenu(
-                        expanded = speechProviderExpanded,
-                        onDismissRequest = { speechProviderExpanded = false }
-                    ) {
-                        speechProviders.forEach { (value, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    selectedSpeechProvider = value
-                                    speechProviderExpanded = false
+                            // 多模态视觉输入开关（按当前服务商+模型记忆）
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "支持看图识别（上传图片建任务）",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = "开启后可在录入任务或拆解子任务时上传截图或照片让 AI 识别",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
+                                Switch(
+                                    checked = isMultimodalEnabled,
+                                    onCheckedChange = { checked ->
+                                        isMultimodalEnabled = checked
+                                        viewModel.setMultimodalEnabled(selectedAiProvider, selectedAiModel, checked)
+                                    }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Agent 模式开关
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.enable_ai_agent),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.enable_ai_agent_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = isAiAgentEnabled,
+                                    onCheckedChange = { checked ->
+                                        isAiAgentEnabled = checked
+                                        viewModel.setAiAgentEnabled(checked)
+                                    }
+                                )
+                            }
+                        }
+
+                        // ========== 语音识别配置卡片 ==========
+                        SettingsCard(
+                            title = stringResource(R.string.speech_config),
+                            icon = Icons.Default.Mic
+                        ) {
+                            Text(
+                                text = "配置第三方在线语音接口可明显提高长段语音与口语的识别准确率；未配置时将使用手机系统自带的语音识别",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 10.dp)
                             )
+
+                            CollapsibleCredentialSection(
+                                title = "在线语音服务凭证（修改后请点击保存）",
+                                summary = if (isSpeechConfigured) {
+                                    "已配置 · $speechProviderName"
+                                } else {
+                                    "未配置 · 默认使用系统语音识别"
+                                },
+                                configured = isSpeechConfigured,
+                                expanded = speechConfigExpanded,
+                                onToggleExpand = { speechConfigExpanded = !speechConfigExpanded }
+                            ) {
+                                // 语音识别服务选择
+                                ExposedDropdownMenuBox(
+                                    expanded = speechProviderExpanded,
+                                    onExpandedChange = { speechProviderExpanded = it },
+                                ) {
+                                    OutlinedTextField(
+                                        value = speechProviderName,
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        label = { Text(stringResource(R.string.speech_provider)) },
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = speechProviderExpanded) },
+                                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                                    )
+
+                                    ExposedDropdownMenu(
+                                        expanded = speechProviderExpanded,
+                                        onDismissRequest = { speechProviderExpanded = false }
+                                    ) {
+                                        speechProviders.forEach { (value, label) ->
+                                            DropdownMenuItem(
+                                                text = { Text(label) },
+                                                onClick = {
+                                                    selectedSpeechProvider = value
+                                                    speechProviderExpanded = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // 动态凭证输入字段
+                                speechCredentialFields.forEach { field ->
+                                    OutlinedTextField(
+                                        value = speechCredentials[field.id] ?: "",
+                                        onValueChange = { speechCredentials[field.id] = it },
+                                        label = { Text(field.displayName) },
+                                        leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
+                                        visualTransformation = if (field.isSecret) PasswordVisualTransformation() else VisualTransformation.None,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        isError = speechConnectionState is SettingsViewModel.ConnectionState.Error
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
+
+                                // 测试状态显示
+                                ConnectionStateIndicator(state = speechConnectionState)
+
+                                // 辅助说明与测试按钮
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "密钥仅保存在本地设备",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.testSpeechConnection(selectedSpeechProvider, speechCredentials.toMap())
+                                        },
+                                        enabled = speechCredentialFields.all { field ->
+                                            !field.isRequired || !speechCredentials[field.id].isNullOrBlank()
+                                        } && speechConnectionState !is SettingsViewModel.ConnectionState.Testing
+                                    ) {
+                                        Text(stringResource(R.string.speech_test_connection))
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Button(
+                                    onClick = {
+                                        // 允许保存空值，空值表示不使用该服务
+                                        viewModel.saveSpeechProvider(selectedSpeechProvider)
+                                        viewModel.saveSpeechCredentials(selectedSpeechProvider, speechCredentials.toMap())
+                                        Toast.makeText(context, context.getString(R.string.speech_settings_saved), Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text(stringResource(R.string.speech_save_settings))
+                                }
+                            }
                         }
+
+                        // ========== 高德地图配置卡片 ==========
+                        SettingsCard(
+                            title = "地图与定位配置",
+                            icon = Icons.Default.Map
+                        ) {
+                            Text(
+                                text = "用于开启任务路线规划与地图预览功能",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 10.dp)
+                            )
+
+                            CollapsibleCredentialSection(
+                                title = "高德地图 Web Key（修改后请点击保存）",
+                                summary = if (isAmapConfigured) {
+                                    "已配置高德 Web 服务密钥"
+                                } else {
+                                    "未配置 · 点击填入密钥以启用路线规划"
+                                },
+                                configured = isAmapConfigured,
+                                expanded = amapConfigExpanded,
+                                onToggleExpand = { amapConfigExpanded = !amapConfigExpanded }
+                            ) {
+                                OutlinedTextField(
+                                    value = amapKey,
+                                    onValueChange = { amapKey = it },
+                                    label = { Text("高德开放平台密钥 (Key)") },
+                                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    placeholder = { Text("在此粘贴您的高德 Web 服务 Key") },
+                                    singleLine = true,
+                                    isError = amapConnectionState is SettingsViewModel.ConnectionState.Error
+                                )
+
+                                // 测试状态显示
+                                ConnectionStateIndicator(state = amapConnectionState)
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "密钥仅保存在本地设备",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    Row {
+                                        TextButton(
+                                            onClick = { viewModel.testAMapConnection(amapKey) },
+                                            enabled = amapKey.isNotBlank() && amapConnectionState !is SettingsViewModel.ConnectionState.Testing
+                                        ) {
+                                            Text("测试连接")
+                                        }
+
+                                        TextButton(
+                                            onClick = {
+                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://console.amap.com/dev/key/app"))
+                                                context.startActivity(intent)
+                                            }
+                                        ) {
+                                            Text("获取 Key")
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Button(
+                                    onClick = {
+                                        viewModel.saveAMapKey(amapKey)
+                                        Toast.makeText(context, "地图设置已保存", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("保存地图设置")
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+                            HorizontalDivider()
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            InstantToggleSectionHeader("定位与行程开关（切换后立即生效）")
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // 智能目的地开关
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "识别任务目的地",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = if (amapKey.isBlank()) "需先配置高德地图密钥" else "自动搜索并挂载任务的地点与路线卡片",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (amapKey.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = isAiDestinationEnabled && amapKey.isNotBlank(),
+                                    onCheckedChange = { checked ->
+                                        if (amapKey.isBlank()) {
+                                            Toast.makeText(context, "请先配置高德地图密钥", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            isAiDestinationEnabled = checked
+                                            viewModel.setAiDestinationEnabled(checked) // 自动保存
+                                            if (checked) requestLocationPermissionIfNeeded()
+                                        }
+                                    },
+                                    enabled = amapKey.isNotBlank()
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // 常去地点足迹记录开关
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "记录常去地点足迹",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = "仅在您确认添加带地点的任务时，在本地统计常在地和常去地，用于丰富个人画像与出行建议（可随时在个人数据页查看或清空）",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = isLocationFootprintEnabled,
+                                    onCheckedChange = { checked ->
+                                        isLocationFootprintEnabled = checked
+                                        viewModel.setLocationFootprintEnabled(checked)
+                                        if (checked) requestLocationPermissionIfNeeded()
+                                    }
+                                )
+                            }
+
+                            if ((isAiDestinationEnabled || isLocationFootprintEnabled) && !hasLocationPermission) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                TextButton(
+                                    onClick = { requestLocationPermissionIfNeeded() },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.LocationOn,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("尚未开启系统定位权限，点击授权以自动识别出发地")
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
-                }
-                
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 动态凭证输入字段
-                speechCredentialFields.forEach { field ->
-                    OutlinedTextField(
-                        value = speechCredentials[field.id] ?: "",
-                        onValueChange = { speechCredentials[field.id] = it },
-                        label = { Text(field.displayName) },
-                        leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
-                        visualTransformation = if (field.isSecret) PasswordVisualTransformation() else VisualTransformation.None,
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        isError = speechConnectionState is SettingsViewModel.ConnectionState.Error
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-                
-                // 测试状态显示
-                ConnectionStateIndicator(state = speechConnectionState)
-                
-                // 辅助说明与测试按钮
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "密钥仅保存在本地设备",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    
-                    TextButton(
-                        onClick = { 
-                            viewModel.testSpeechConnection(selectedSpeechProvider, speechCredentials.toMap())
-                        },
-                        enabled = speechCredentialFields.all { field ->
-                            !field.isRequired || !speechCredentials[field.id].isNullOrBlank()
-                        } && speechConnectionState !is SettingsViewModel.ConnectionState.Testing
-                    ) {
-                        Text(stringResource(R.string.speech_test_connection))
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = { 
-                        // 允许保存空值，空值表示不使用该服务
-                        viewModel.saveSpeechProvider(selectedSpeechProvider)
-                        viewModel.saveSpeechCredentials(selectedSpeechProvider, speechCredentials.toMap())
-                        Toast.makeText(context, context.getString(R.string.speech_settings_saved), Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(stringResource(R.string.speech_save_settings))
                 }
             }
-            
-            // ========== 高德地图配置卡片 ==========
-            SettingsCard(
-                title = "地图与定位配置",
-                icon = Icons.Default.Map
-            ) {
-                Text(
-                    text = "用于开启任务路线规划与地图预览功能",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-
-                OutlinedTextField(
-                    value = amapKey,
-                    onValueChange = { amapKey = it },
-                    label = { Text("高德地图 Web 服务 Key") },
-                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("在此输入您的 AMap Web Key") },
-                    singleLine = true,
-                    isError = amapConnectionState is SettingsViewModel.ConnectionState.Error
-                )
-
-                // 测试状态显示
-                ConnectionStateIndicator(state = amapConnectionState)
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "密钥仅保存在本地设备",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    
-                    Row {
-                        TextButton(
-                            onClick = { viewModel.testAMapConnection(amapKey) },
-                            enabled = amapKey.isNotBlank() && amapConnectionState !is SettingsViewModel.ConnectionState.Testing
-                        ) {
-                            Text("测试连接")
-                        }
-                        
-                        TextButton(
-                            onClick = { 
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://console.amap.com/dev/key/app"))
-                                context.startActivity(intent)
-                            }
-                        ) {
-                            Text("获取 Key")
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = { 
-                        viewModel.saveAMapKey(amapKey)
-                        Toast.makeText(context, "地图设置已保存", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("保存地图设置")
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 智能目的地开关
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "识别任务目的地",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = if (amapKey.isBlank()) "需先配置高德地图 Key" else "自动为任务添加地图组件",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (amapKey.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = isAiDestinationEnabled && amapKey.isNotBlank(),
-                        onCheckedChange = { checked ->
-                            if (amapKey.isBlank()) {
-                                Toast.makeText(context, "请先配置高德地图 Key", Toast.LENGTH_SHORT).show()
-                            } else {
-                                isAiDestinationEnabled = checked
-                                viewModel.setAiDestinationEnabled(checked) // 自动保存
-                            }
-                        },
-                        enabled = amapKey.isNotBlank()
-                    )
-                }
-            }
-            
-            // ========== 分类设置卡片 ==========
-            CategorySettingsCard(
-                onManageCategories = { showCategoryDialog = true }
-            )
-            
-            // ========== 提醒方式设置卡片 ==========
-            ReminderMethodsCard(viewModel)
-            
-            // ========== 用户偏好设置卡片 ==========
-            UserPreferencesCard(viewModel)
-            
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 
@@ -692,13 +1059,18 @@ fun SettingsScreen(
             onDismiss = { showCategoryDialog = false }
         )
     }
+
+    if (showCalendarGuide) {
+        CalendarSyncGuideDialog(onDismiss = { showCalendarGuide = false })
+    }
     
     // 自定义模型输入对话框
     if (showCustomModelDialog) {
         val providerName = aiProviders.find { it.first == selectedAiProvider }?.second ?: "AI"
         val placeholderText = when (selectedAiProvider) {
             "deepseek" -> "deepseek-v4-pro"
-            "xiaomi" -> "mimo-v2.5-pro"
+            "xiaomi" -> "mimo-v2.6-pro"
+            "custom_openai" -> "请输入服务商提供的模型名称"
             else -> "model-name"
         }
         
@@ -752,6 +1124,51 @@ fun SettingsScreen(
                     Text("取消")
                 }
             }
+        )
+    }
+}
+
+@Composable
+private fun ColumnScope.AiModelMenuItems(
+    aiModels: List<Pair<String, String>>,
+    resetLabel: String,
+    onSelect: (String) -> Unit,
+    onDeleteCustom: (String) -> Unit,
+    onResetModels: () -> Unit,
+    onCustomModelClick: (() -> Unit)? = null
+) {
+    aiModels.forEach { (value, label) ->
+        DropdownMenuItem(
+            text = { Text(label) },
+            onClick = { onSelect(value) },
+            trailingIcon = if (label.endsWith("(自定义)")) {
+                {
+                    IconButton(onClick = { onDeleteCustom(value) }) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "删除自定义模型",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            } else null
+        )
+    }
+
+    HorizontalDivider()
+
+    DropdownMenuItem(
+        text = { Text(resetLabel, color = MaterialTheme.colorScheme.primary) },
+        onClick = onResetModels,
+        leadingIcon = {
+            Icon(Icons.Default.Refresh, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        }
+    )
+
+    if (onCustomModelClick != null) {
+        DropdownMenuItem(
+            text = { Text("自定义模型...") },
+            onClick = onCustomModelClick
         )
     }
 }
@@ -944,12 +1361,12 @@ private fun UserPreferencesCard(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        text = "甘特视图默认时间粒度",
+                        text = "时间表视图默认展示天数",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium
                     )
                     Text(
-                        text = "打开甘特视图时的默认时间范围",
+                        text = "打开甘特时间表时默认显示的日期跨度",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1001,12 +1418,12 @@ private fun UserPreferencesCard(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        text = "截止视图时间范围",
+                        text = "截止紧急度提醒标准",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium
                     )
                     Text(
-                        text = "自定义紧急和即将截止的时间阈值",
+                        text = "设置距离截止多少小时内算作「紧急」或「即将到期」",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1366,6 +1783,163 @@ private fun SettingsCard(
             content()
         }
     }
+}
+
+@Composable
+private fun ServiceStatusOverviewStrip(
+    aiReady: Boolean,
+    speechReady: Boolean,
+    mapReady: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        val items = listOf(
+            "AI 对话" to aiReady,
+            "在线语音" to speechReady,
+            "高德地图" to mapReady
+        )
+        items.forEach { (label, ready) ->
+            val tint = if (ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            val bg = if (ready) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            }
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = bg,
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = if (ready) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                        contentDescription = null,
+                        tint = tint,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (ready) FontWeight.SemiBold else FontWeight.Normal,
+                        color = tint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CollapsibleCredentialSection(
+    title: String,
+    summary: String,
+    configured: Boolean,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val bannerContainer = if (configured) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    }
+    val statusColor = if (configured) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Surface(
+            onClick = onToggleExpand,
+            shape = RoundedCornerShape(12.dp),
+            color = bannerContainer,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (configured) Icons.Default.CheckCircle else Icons.Default.Key,
+                        contentDescription = null,
+                        tint = statusColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = summary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = statusColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (expanded) "收起" else "展开修改",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = statusColor
+                    )
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "收起" else "展开",
+                        tint = statusColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp)
+            ) {
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+private fun InstantToggleSectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary
+    )
 }
 
 /**
