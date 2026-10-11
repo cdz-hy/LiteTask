@@ -612,17 +612,28 @@ fun FilterBottomSheet(
                     }
 
                     val calendar = Calendar.getInstance()
-                    val today = calendar.timeInMillis
-                    
+                    calendar.set(Calendar.HOUR_OF_DAY, 0)
+                    calendar.set(Calendar.MINUTE, 0)
+                    calendar.set(Calendar.SECOND, 0)
+                    calendar.set(Calendar.MILLISECOND, 0)
+                    val todayStart = calendar.timeInMillis
+
+                    calendar.set(Calendar.HOUR_OF_DAY, 23)
+                    calendar.set(Calendar.MINUTE, 59)
+                    calendar.set(Calendar.SECOND, 59)
+                    calendar.set(Calendar.MILLISECOND, 999)
+                    val todayEnd = calendar.timeInMillis
+
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        DateRangeOption(stringResource(R.string.today), today, today, dateRange, onDateRangeSelected)
-                        
-                        calendar.add(Calendar.DAY_OF_YEAR, -7)
-                        DateRangeOption(stringResource(R.string.recent_7_days), calendar.timeInMillis, today, dateRange, onDateRangeSelected)
-                        
-                        calendar.timeInMillis = today
-                        calendar.add(Calendar.DAY_OF_YEAR, -30)
-                        DateRangeOption(stringResource(R.string.recent_30_days), calendar.timeInMillis, today, dateRange, onDateRangeSelected)
+                        DateRangeOption(stringResource(R.string.today), todayStart, todayEnd, dateRange, onDateRangeSelected)
+
+                        calendar.timeInMillis = todayStart
+                        calendar.add(Calendar.DAY_OF_YEAR, -6)
+                        DateRangeOption(stringResource(R.string.recent_7_days), calendar.timeInMillis, todayEnd, dateRange, onDateRangeSelected)
+
+                        calendar.timeInMillis = todayStart
+                        calendar.add(Calendar.DAY_OF_YEAR, -29)
+                        DateRangeOption(stringResource(R.string.recent_30_days), calendar.timeInMillis, todayEnd, dateRange, onDateRangeSelected)
                     }
                 }
             }
