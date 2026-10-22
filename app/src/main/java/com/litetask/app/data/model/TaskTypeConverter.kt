@@ -22,4 +22,15 @@ class TaskTypeConverter {
     fun toAIHistorySource(source: String?): AIHistorySource? {
         return if (source == null) null else AIHistorySource.valueOf(source)
     }
+
+    @TypeConverter
+    fun fromComponentType(type: ComponentType?): String? {
+        return type?.name
+    }
+
+    @TypeConverter
+    fun toComponentType(value: String?): ComponentType? {
+        if (value == null) return null
+        return ComponentType.entries.firstOrNull { it.name == value } ?: ComponentType.UNKNOWN
+    }
 }
