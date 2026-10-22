@@ -208,11 +208,13 @@ abstract class TaskDao {
     @Query("""
         SELECT DISTINCT t.* FROM tasks t
         LEFT JOIN sub_tasks st ON t.id = st.task_id
+        LEFT JOIN task_components tc ON t.id = tc.task_id
         WHERE (
             :query = '' OR
             t.title LIKE '%' || :query || '%' OR
             t.description LIKE '%' || :query || '%' OR
-            st.content LIKE '%' || :query || '%'
+            st.content LIKE '%' || :query || '%' OR
+            tc.data_payload LIKE '%' || :query || '%'
         )
         AND (:typesEmpty = 1 OR t.type IN (:types))
         AND (:categoriesEmpty = 1 OR t.category_id IN (:categoryIds))
@@ -252,11 +254,13 @@ abstract class TaskDao {
     @Query("""
         SELECT DISTINCT t.* FROM tasks t
         LEFT JOIN sub_tasks st ON t.id = st.task_id
+        LEFT JOIN task_components tc ON t.id = tc.task_id
         WHERE (
             :query = '' OR
             t.title LIKE '%' || :query || '%' OR
             t.description LIKE '%' || :query || '%' OR
-            st.content LIKE '%' || :query || '%'
+            st.content LIKE '%' || :query || '%' OR
+            tc.data_payload LIKE '%' || :query || '%'
         )
         ORDER BY t.is_done ASC, t.deadline ASC
         LIMIT 50

@@ -117,7 +117,16 @@ data class Task(
         else -> "进行中"
     }
     
-    // AI 解析目的地 (临时字段，不入库)
+    // AI 解析目的地与快捷组件草稿 (临时字段，不入库)
     @androidx.room.Ignore
     var parsedDestination: String? = null
+
+    @androidx.room.Ignore
+    var parsedLinks: List<LinkBookmarkData> = emptyList()
+
+    @androidx.room.Ignore
+    var parsedPasses: List<AccessPassData> = emptyList()
+
+    @androidx.room.Ignore
+    var parsedRecurrence: RecurrenceRuleData? = null
 }
