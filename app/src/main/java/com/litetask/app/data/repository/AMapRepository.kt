@@ -1,5 +1,6 @@
 package com.litetask.app.data.repository
 
+import com.google.gson.JsonParser
 import com.litetask.app.data.local.PreferenceManager
 import com.litetask.app.data.model.AMapRouteData
 import kotlinx.coroutines.Dispatchers
@@ -53,27 +54,30 @@ class AMapRepository @Inject constructor(
     }
 
     /**
-     * 搜索地点建议
+     * 搜索地点建议（支持位置偏向与城市限定）
      */
-    suspend fun searchLocations(keyword: String): List<AMapRouteData> = withContext(Dispatchers.IO) {
+    suspend fun searchLocations(
+        keyword: String,
+        biasLocation: String? = null,
+        city: String? = null
+    ): List<AMapRouteData> = withContext(Dispatchers.IO) {
         val key = preferenceManager.getAMapKey()
         if (key.isNullOrBlank() || keyword.isBlank()) return@withContext emptyList()
-        
+
         try {
-            val encodedKeyword = URLEncoder.encode(keyword, "UTF-8")
-            val urlString = "https://restapi.amap.com/v3/assistant/inputtips?keywords=$encodedKeyword&output=JSON&key=$key"
+            val urlString = buildInputTipsUrl(keyword, key, biasLocation, city)
             val response = makeGetRequest(urlString) ?: return@withContext emptyList()
             val json = JSONObject(response)
-            
+
             if (json.optString("status") == "1") {
                 val tips = json.optJSONArray("tips") ?: return@withContext emptyList()
                 val result = mutableListOf<AMapRouteData>()
-                
+
                 for (i in 0 until tips.length()) {
                     val tip = tips.getJSONObject(i)
                     val locationStr = tip.optString("location")
                     if (locationStr.isNullOrBlank()) continue
-                    
+
                     val parts = locationStr.split(",")
                     if (parts.size == 2) {
                         val district = (tip.opt("district") as? String) ?: ""
@@ -249,6 +253,8 @@ class AMapRepository @Inject constructor(
     /**
      * 路线规划
      * @param mode 模式: driving, walking, bicycling, transit
+     * @param strategy 驾车策略: 0=速度优先, 1=少收费, 2=距离优先
+     * @param cityHint 已知城市/区域码（可选，避免无定位城市时误填假默认值）
      * @return Pair(耗时秒数, 距离米数) 或 null
      */
     suspend fun calculateRoute(
@@ -256,7 +262,9 @@ class AMapRepository @Inject constructor(
         originLat: Double,
         destLng: Double,
         destLat: Double,
-        mode: String = "driving"
+        mode: String = "driving",
+        strategy: Int = 0,
+        cityHint: String? = null
     ): Pair<Int, Int>? = withContext(Dispatchers.IO) {
         val key = preferenceManager.getAMapKey()
         if (key.isNullOrBlank()) return@withContext null
@@ -264,11 +272,22 @@ class AMapRepository @Inject constructor(
         try {
             val normalizedMode = mode.lowercase()
             val city = if (normalizedMode == "transit") {
-                resolveCityForCoord(originLng, originLat) ?: "北京"
+                resolveCityForCoord(originLng, originLat)
+                    ?: resolveCityForCoord(destLng, destLat)
+                    ?: cityHint?.takeIf { it.isNotBlank() }
             } else {
                 null
             }
-            val urlString = buildRouteUrl(originLng, originLat, destLng, destLat, normalizedMode, key, city)
+            val urlString = buildRouteUrl(
+                originLng = originLng,
+                originLat = originLat,
+                destLng = destLng,
+                destLat = destLat,
+                mode = normalizedMode,
+                key = key,
+                city = city,
+                strategy = strategy
+            ) ?: return@withContext null
             val response = makeGetRequest(urlString) ?: return@withContext null
             return@withContext parseRouteResponse(response, normalizedMode)
         } catch (e: Exception) {
@@ -278,6 +297,26 @@ class AMapRepository @Inject constructor(
     }
 
     companion object {
+        internal fun buildInputTipsUrl(
+            keyword: String,
+            key: String,
+            biasLocation: String? = null,
+            city: String? = null
+        ): String {
+            val encodedKeyword = URLEncoder.encode(keyword, "UTF-8")
+            return buildString {
+                append("https://restapi.amap.com/v3/assistant/inputtips?keywords=")
+                append(encodedKeyword)
+                biasLocation?.trim()?.takeIf { it.contains(",") }?.let {
+                    append("&location=").append(URLEncoder.encode(it, "UTF-8"))
+                }
+                city?.trim()?.takeIf { it.isNotBlank() }?.let {
+                    append("&city=").append(URLEncoder.encode(it, "UTF-8"))
+                }
+                append("&output=JSON&key=").append(key)
+            }
+        }
+
         internal fun buildRouteUrl(
             originLng: Double,
             originLat: Double,
@@ -285,8 +324,9 @@ class AMapRepository @Inject constructor(
             destLat: Double,
             mode: String,
             key: String,
-            city: String? = null
-        ): String {
+            city: String? = null,
+            strategy: Int = 0
+        ): String? {
             val origin = "$originLng,$originLat"
             val dest = "$destLng,$destLat"
             return when (mode.lowercase()) {
@@ -295,43 +335,48 @@ class AMapRepository @Inject constructor(
                 "bicycling" ->
                     "https://restapi.amap.com/v4/direction/bicycling?origin=$origin&destination=$dest&key=$key"
                 "transit" -> {
-                    val encodedCity = URLEncoder.encode(city?.takeIf { it.isNotBlank() } ?: "北京", "UTF-8")
+                    val resolvedCity = city?.trim()?.takeIf { it.isNotBlank() } ?: return null
+                    val encodedCity = URLEncoder.encode(resolvedCity, "UTF-8")
                     "https://restapi.amap.com/v3/direction/transit/integrated?origin=$origin&destination=$dest&city=$encodedCity&key=$key"
                 }
                 else ->
-                    "https://restapi.amap.com/v3/direction/driving?origin=$origin&destination=$dest&key=$key"
+                    "https://restapi.amap.com/v3/direction/driving?origin=$origin&destination=$dest&strategy=${strategy.coerceIn(0, 20)}&key=$key"
             }
         }
 
         internal fun parseWeatherForecastResponse(response: String): AMapWeatherReport? {
+            fun com.google.gson.JsonObject.optStr(key: String): String {
+                val el = get(key) ?: return ""
+                return if (el.isJsonPrimitive) el.asString else ""
+            }
             return try {
-                val json = JSONObject(response)
-                if (json.optString("status") != "1") return null
-                val forecasts = json.optJSONArray("forecasts") ?: return null
-                if (forecasts.length() == 0) return null
-                val first = forecasts.getJSONObject(0)
-                val casts = first.optJSONArray("casts") ?: return null
+                val root = JsonParser.parseString(response).asJsonObject
+                if (root.optStr("status") != "1") return null
+                val forecasts = root.getAsJsonArray("forecasts") ?: return null
+                if (forecasts.size() == 0) return null
+                val first = forecasts[0].asJsonObject
+                val casts = first.getAsJsonArray("casts") ?: return null
                 val days = mutableListOf<AMapWeatherForecastDay>()
-                for (i in 0 until casts.length()) {
-                    val cast = casts.getJSONObject(i)
+                for (el in casts) {
+                    val cast = el.asJsonObject
                     days.add(
                         AMapWeatherForecastDay(
-                            date = cast.optString("date", ""),
-                            week = cast.optString("week", ""),
-                            dayWeather = cast.optString("dayweather", ""),
-                            nightWeather = cast.optString("nightweather", ""),
-                            dayTemp = cast.optString("daytemp", ""),
-                            nightTemp = cast.optString("nighttemp", ""),
-                            dayWind = cast.optString("daywind", ""),
-                            nightWind = cast.optString("nightwind", "")
+                            date = cast.optStr("date"),
+                            week = cast.optStr("week"),
+                            dayWeather = cast.optStr("dayweather"),
+                            nightWeather = cast.optStr("nightweather"),
+                            dayTemp = cast.optStr("daytemp"),
+                            nightTemp = cast.optStr("nighttemp"),
+                            dayWind = cast.optStr("daywind"),
+                            nightWind = cast.optStr("nightwind")
                         )
                     )
                 }
                 if (days.isEmpty()) return null
                 AMapWeatherReport(
-                    city = first.optString("city", ""),
-                    adcode = first.optString("adcode", ""),
-                    reportTime = first.optString("reporttime", ""),
+                    city = first.optStr("city"),
+                    adcode = first.optStr("adcode"),
+                    reportTime = first.optStr("reporttime"),
                     forecasts = days
                 )
             } catch (_: Exception) {

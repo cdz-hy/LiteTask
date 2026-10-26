@@ -41,6 +41,39 @@ class LocationProvider @Inject constructor(
     }
 
     /**
+     * 快速读取最近 2 小时内的系统定位缓存（已转 GCJ-02），不主动触发硬件定位。
+     */
+    @SuppressLint("MissingPermission")
+    fun getCachedLocationOnly(maxAgeMs: Long = FALLBACK_MAX_AGE_MS): Location? {
+        if (!hasLocationPermission()) return null
+        val best = findBestCachedLocation(maxAgeMs)?.first ?: return null
+        return toGcj02Location(best)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun findBestCachedLocation(maxAgeMs: Long): Pair<Location, Long>? {
+        val providers = locationManager.getProviders(true)
+        if (providers.isEmpty()) return null
+        val now = System.currentTimeMillis()
+        var best: Location? = null
+        for (provider in providers) {
+            val last = try {
+                locationManager.getLastKnownLocation(provider)
+            } catch (_: Exception) {
+                null
+            } ?: continue
+            if (now - last.time > maxAgeMs) continue
+            if (best == null ||
+                last.time > best.time + 60_000L ||
+                last.accuracy < best.accuracy
+            ) {
+                best = last
+            }
+        }
+        return best?.let { it to (now - it.time) }
+    }
+
+    /**
      * 获取当前位置（返回 GCJ-02 坐标系供高德与足迹使用）。
      * @param maxAgeMs 允许直接复用系统缓存定位的最大年龄，默认 3 分钟。
      */
@@ -59,30 +92,14 @@ class LocationProvider @Inject constructor(
             return@suspendCancellableCoroutine
         }
 
-        val now = System.currentTimeMillis()
-        var bestFreshOrRecent: Location? = null
-        for (provider in providers) {
-            val last = try {
-                locationManager.getLastKnownLocation(provider)
-            } catch (_: Exception) {
-                null
-            } ?: continue
-            if (now - last.time > FALLBACK_MAX_AGE_MS) continue
-            if (bestFreshOrRecent == null ||
-                last.time > bestFreshOrRecent.time + 60_000L ||
-                last.accuracy < bestFreshOrRecent.accuracy
-            ) {
-                bestFreshOrRecent = last
-            }
-        }
-
+        val cachedWithAge = findBestCachedLocation(FALLBACK_MAX_AGE_MS)
         // maxAgeMs 内的缓存直接复用（减少频繁唤醒 GPS/网络定位）
-        if (bestFreshOrRecent != null && now - bestFreshOrRecent.time < maxAgeMs) {
-            continuation.resume(toGcj02Location(bestFreshOrRecent))
+        if (cachedWithAge != null && cachedWithAge.second < maxAgeMs) {
+            continuation.resume(toGcj02Location(cachedWithAge.first))
             return@suspendCancellableCoroutine
         }
 
-        val fallbackLocation = bestFreshOrRecent?.let(::toGcj02Location)
+        val fallbackLocation = cachedWithAge?.first?.let(::toGcj02Location)
         var isResolved = false
         val mainHandler = Handler(Looper.getMainLooper())
         val cancellationSignal = CancellationSignal()
