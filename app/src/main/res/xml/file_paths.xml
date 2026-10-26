@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path
+        name="managed_attachments"
+        path="attachments/" />
+    <files-path
+        name="voice_notes"
+        path="voice_notes/" />
+    <cache-path
+        name="camera_cache"
+        path="camera_temp/" />
+</paths>
