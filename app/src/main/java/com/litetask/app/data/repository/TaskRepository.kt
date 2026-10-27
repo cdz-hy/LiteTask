@@ -8,8 +8,13 @@ import com.litetask.app.data.local.TaskDao
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.SubTask
 import com.litetask.app.data.model.Reminder
+import com.litetask.app.data.model.TaskComponent
+import com.litetask.app.data.model.TaskComponentEntity
+import com.litetask.app.data.model.TaskComponentRegistry
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.data.model.toEntity
+import com.litetask.app.data.model.toTaskComponentsSafe
 import com.litetask.app.reminder.ReminderScheduler
 import com.litetask.app.util.CalendarSyncHelper
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -17,6 +22,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -101,7 +107,7 @@ class TaskRepositoryImpl @Inject constructor(
         triggerCalendarAutoSync(taskId)
     }
     
-    suspend fun updateTask(task: Task) {
+    suspend fun updateTask(task: Task, syncToCalendar: Boolean = true) {
         // 如果截止时间在未来，自动清除过期状态（防止 UI 传回过时的过期标记）
         var taskToUpdate = if (task.isExpired && task.deadline > System.currentTimeMillis()) {
             task.copy(isExpired = false, expiredAt = null)
@@ -115,7 +121,9 @@ class TaskRepositoryImpl @Inject constructor(
         }
         
         taskDao.updateTask(taskToUpdate)
-        triggerCalendarAutoSync(taskToUpdate.id)
+        if (syncToCalendar) {
+            triggerCalendarAutoSync(taskToUpdate.id)
+        }
     }
     suspend fun deleteTask(task: Task) {
         taskDao.deleteTask(task)
@@ -213,7 +221,10 @@ class TaskRepositoryImpl @Inject constructor(
         categoryIds = categoryIds,
         startDate = startDate,
         endDate = endDate
-    )
+    ).map { list ->
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) list else list.filter { TaskComponentRegistry.matchesSearchQuery(it, trimmed) }
+    }
     
     // 兼容
     fun getAllTasks() = taskDao.getAllTasks()
@@ -228,11 +239,138 @@ class TaskRepositoryImpl @Inject constructor(
     suspend fun deleteReminder(reminder: Reminder) = taskDao.deleteReminder(reminder)
     suspend fun updateReminderFired(reminderId: Long, fired: Boolean) = taskDao.updateReminderFired(reminderId, fired)
     suspend fun getPendingReminders(currentTime: Long) = taskDao.getPendingReminders(currentTime)
+
+    /**
+     * 为指定任务新增单条提醒并注册系统闹钟（90 秒内防重）。
+     */
+    suspend fun addAndScheduleReminder(taskId: Long, triggerAt: Long, label: String): Boolean {
+        if (taskId <= 0L || triggerAt <= System.currentTimeMillis()) return false
+        val task = taskDao.getTaskById(taskId) ?: return false
+        if (task.isDone) return false
+        val existing = taskDao.getRemindersByTaskIdSync(taskId)
+        if (existing.any { kotlin.math.abs(it.triggerAt - triggerAt) < 90_000L }) {
+            return false
+        }
+        val insertedId = taskDao.insertReminder(
+            Reminder(
+                taskId = taskId,
+                triggerAt = triggerAt,
+                label = label
+            )
+        )
+        val savedReminder = Reminder(
+            id = insertedId,
+            taskId = taskId,
+            triggerAt = triggerAt,
+            label = label
+        )
+        val category = categoryDao.getCategoryById(task.categoryId)
+        reminderScheduler.scheduleReminderWithTaskInfo(
+            reminder = savedReminder,
+            taskTitle = task.title,
+            taskType = @Suppress("DEPRECATION") task.type.name,
+            categoryName = category?.name,
+            categoryColor = category?.colorHex
+        )
+        triggerCalendarAutoSync(taskId)
+        return true
+    }
     
     // --- 组件相关操作 ---
     fun getComponentsByTaskId(taskId: Long) = taskComponentDao.getComponentsByTaskId(taskId)
-    suspend fun insertComponent(component: com.litetask.app.data.model.TaskComponentEntity) = taskComponentDao.insertComponent(component)
-    suspend fun deleteComponent(component: com.litetask.app.data.model.TaskComponentEntity) = taskComponentDao.deleteComponent(component)
+
+    suspend fun getComponentsByTaskIdSync(taskId: Long) = taskComponentDao.getComponentsByTaskIdSync(taskId)
+
+    fun triggerCalendarAutoSyncForTask(taskId: Long) = triggerCalendarAutoSync(taskId)
+
+    suspend fun insertComponent(
+        component: TaskComponentEntity,
+        syncCalendar: Boolean = true
+    ): Long {
+        val safeEntity = if (component.id > 0L) component else component.copy(id = 0L)
+        val id = taskComponentDao.insertComponent(safeEntity)
+        if (syncCalendar) {
+            triggerCalendarAutoSync(safeEntity.taskId)
+        }
+        return id
+    }
+
+    suspend fun updateComponent(
+        component: TaskComponentEntity,
+        syncCalendar: Boolean = true
+    ) {
+        if (component.id <= 0L) return
+        taskComponentDao.updateComponent(component)
+        if (syncCalendar) {
+            triggerCalendarAutoSync(component.taskId)
+        }
+    }
+
+    suspend fun deleteComponent(
+        component: TaskComponentEntity,
+        syncCalendar: Boolean = true
+    ) {
+        taskComponentDao.deleteComponent(component)
+        if (syncCalendar) {
+            triggerCalendarAutoSync(component.taskId)
+        }
+    }
+
+    suspend fun isManagedFileStillReferenced(managedPath: String?): Boolean {
+        val target = managedPath?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        val attachmentReferenced = taskComponentDao
+            .getComponentsByTypeSync(com.litetask.app.data.model.ComponentType.FILE_ATTACHMENT)
+            .any { entity ->
+                val comp = entity.toTaskComponent()
+                comp is TaskComponent.FileComponent && comp.data.managedFilePath == target
+            }
+        if (attachmentReferenced) return true
+        return taskComponentDao
+            .getComponentsByTypeSync(com.litetask.app.data.model.ComponentType.VOICE_NOTE)
+            .any { entity ->
+                val comp = entity.toTaskComponent()
+                comp is TaskComponent.VoiceNoteComponent && comp.data.filePath == target
+            }
+    }
+
+    /**
+     * 增量同步任务下的组件集合（保留未更改记录的 id 与 createdAt），返回同步前的旧组件列表。
+     */
+    suspend fun syncTaskComponents(
+        taskId: Long,
+        newComponents: List<TaskComponent>,
+        syncCalendar: Boolean = true
+    ): List<TaskComponent> {
+        val oldEntities = taskComponentDao.getComponentsByTaskIdSync(taskId)
+        val oldComponents = oldEntities.toTaskComponentsSafe()
+        val diff = TaskComponentRegistry.computeIncrementalDiff(oldEntities, newComponents, taskId)
+
+        diff.toDelete.forEach { taskComponentDao.deleteComponent(it) }
+        diff.toUpdate.forEach { taskComponentDao.updateComponent(it) }
+        diff.toInsert.forEach { taskComponentDao.insertComponent(it) }
+
+        if (syncCalendar) {
+            triggerCalendarAutoSync(taskId)
+        }
+        return oldComponents
+    }
+
+    suspend fun insertTaskWithComponentsAndReminders(
+        task: Task,
+        reminders: List<Reminder>,
+        components: List<TaskComponent>
+    ): Long {
+        val newTaskId = insertTaskWithRemindersAndReturnId(
+            task = task,
+            reminders = reminders,
+            syncToCalendar = false
+        )
+        components.forEach { comp ->
+            taskComponentDao.insertComponent(comp.toEntity(newTaskId))
+        }
+        triggerCalendarAutoSync(newTaskId)
+        return newTaskId
+    }
     
     /**
      * 更新任务及其提醒
@@ -242,7 +380,11 @@ class TaskRepositoryImpl @Inject constructor(
      * 2. 更新数据库中的任务和提醒
      * 3. 如果任务未完成，注册新的闹钟（带任务信息）
      */
-    suspend fun updateTaskWithReminders(task: Task, reminders: List<Reminder>) {
+    suspend fun updateTaskWithReminders(
+        task: Task,
+        reminders: List<Reminder>,
+        syncToCalendar: Boolean = true
+    ) {
         Log.i(TAG, "★ updateTaskWithReminders: task=${task.title}, reminders=${reminders.size}")
         
         // 1. 取消旧闹钟
@@ -281,7 +423,9 @@ class TaskRepositoryImpl @Inject constructor(
                 )
             }
         }
-        triggerCalendarAutoSync(task.id)
+        if (syncToCalendar) {
+            triggerCalendarAutoSync(task.id)
+        }
     }
     
     /**
@@ -292,7 +436,11 @@ class TaskRepositoryImpl @Inject constructor(
      * 2. 插入提醒到数据库
      * 3. 注册闹钟（带任务信息，避免 Receiver 查询数据库）
      */
-    suspend fun insertTaskWithReminders(task: Task, reminders: List<Reminder>): Long {
+    suspend fun insertTaskWithReminders(
+        task: Task,
+        reminders: List<Reminder>,
+        syncToCalendar: Boolean = true
+    ): Long {
         Log.i(TAG, "★ insertTaskWithReminders: task=${task.title}, reminders=${reminders.size}")
         
         // 1. 插入任务
@@ -324,28 +472,52 @@ class TaskRepositoryImpl @Inject constructor(
             }
         }
         
-        return taskId.also { triggerCalendarAutoSync(it) }
+        return taskId.also {
+            if (syncToCalendar) {
+                triggerCalendarAutoSync(it)
+            }
+        }
     }
     
     /**
      * 删除任务（同时取消相关闹钟）
      */
     suspend fun deleteTaskWithReminders(task: Task) {
+        val attachedComponents = runCatching {
+            taskComponentDao.getComponentsByTaskIdSync(task.id).toTaskComponentsSafe()
+        }.getOrDefault(emptyList())
+
         // 取消闹钟
         val reminders = taskDao.getRemindersByTaskIdSync(task.id)
         if (reminders.isNotEmpty()) {
             reminderScheduler.cancelRemindersForTask(task.id, reminders.map { it.id })
         }
         
-        // 删除任务（提醒会通过外键级联删除）
+        // 删除任务（提醒与组件行会通过外键级联删除）
         taskDao.deleteTask(task)
         triggerCalendarDeleteSync(task.id)
+
+        attachedComponents.forEach { comp ->
+            when (comp) {
+                is TaskComponent.FileComponent -> {
+                    if (!isManagedFileStillReferenced(comp.data.managedFilePath)) {
+                        com.litetask.app.util.AttachmentStorageHelper.deleteManagedFileIfOwned(context, comp.data)
+                    }
+                }
+                is TaskComponent.VoiceNoteComponent -> {
+                    if (!isManagedFileStillReferenced(comp.data.filePath)) {
+                        com.litetask.app.util.AttachmentStorageHelper.deleteManagedVoiceNoteIfOwned(context, comp.data)
+                    }
+                }
+                else -> Unit
+            }
+        }
     }
     
     /**
-     * 标记任务完成（同时取消相关闹钟并记录完成时间）
+     * 标记任务完成（同时取消相关闹钟、记录完成时间，并在命中周期规则时幂等生成下一期任务）
      */
-    suspend fun markTaskDone(task: Task) {
+    suspend fun markTaskDone(task: Task): com.litetask.app.data.model.RecurrenceEngine.RecurrenceSpawnResult? {
         // 取消闹钟
         val reminders = taskDao.getRemindersByTaskIdSync(task.id)
         if (reminders.isNotEmpty()) {
@@ -355,6 +527,31 @@ class TaskRepositoryImpl @Inject constructor(
         // 更新任务状态，记录完成时间
         taskDao.markTaskCompleted(task.id, System.currentTimeMillis())
         triggerCalendarAutoSync(task.id)
+
+        val freshTask = taskDao.getTaskById(task.id) ?: task
+        val spawned = RecurrenceSpawnHelper.spawnNextOccurrenceIfEligible(
+            taskDao = taskDao,
+            taskComponentDao = taskComponentDao,
+            categoryDao = categoryDao,
+            reminderScheduler = reminderScheduler,
+            sourceTask = freshTask
+        )
+        if (spawned != null) {
+            triggerCalendarAutoSync(spawned.nextTask.id)
+        }
+        return spawned
+    }
+
+    suspend fun undoGeneratedRecurrence(spawn: com.litetask.app.data.model.RecurrenceEngine.RecurrenceSpawnResult) {
+        val targetTask = taskDao.getTaskById(spawn.nextTask.id)
+        if (targetTask != null) {
+            deleteTaskWithReminders(targetTask)
+        }
+        RecurrenceSpawnHelper.clearGeneratedNextTaskLink(
+            taskComponentDao = taskComponentDao,
+            sourceTaskId = spawn.sourceTaskId,
+            expectedNextTaskId = spawn.nextTask.id
+        )
     }
     
     /**
@@ -402,9 +599,13 @@ class TaskRepositoryImpl @Inject constructor(
     }
     
     /**
-     * 更新任务状态（处理完成状态变化时的时间记录）
+     * 更新任务状态（处理完成状态变化时的时间记录，并在完成时按需触发周期实例生成）
      */
-    suspend fun updateTaskWithStatusTracking(oldTask: Task, newTask: Task) {
+    suspend fun updateTaskWithStatusTracking(
+        oldTask: Task,
+        newTask: Task
+    ): com.litetask.app.data.model.RecurrenceEngine.RecurrenceSpawnResult? {
+        var spawnedResult: com.litetask.app.data.model.RecurrenceEngine.RecurrenceSpawnResult? = null
         when {
             // 从未完成变为完成：记录完成时间，取消闹钟
             !oldTask.isDone && newTask.isDone -> {
@@ -416,6 +617,17 @@ class TaskRepositoryImpl @Inject constructor(
                     completedAt = System.currentTimeMillis(),
                     isPinned = false  // 完成时自动取消置顶
                 ))
+                val freshTask = taskDao.getTaskById(oldTask.id) ?: newTask
+                spawnedResult = RecurrenceSpawnHelper.spawnNextOccurrenceIfEligible(
+                    taskDao = taskDao,
+                    taskComponentDao = taskComponentDao,
+                    categoryDao = categoryDao,
+                    reminderScheduler = reminderScheduler,
+                    sourceTask = freshTask
+                )
+                if (spawnedResult != null) {
+                    triggerCalendarAutoSync(spawnedResult.nextTask.id)
+                }
             }
             // 从完成变为未完成：清除完成时间，重新注册闹钟
             oldTask.isDone && !newTask.isDone -> {
@@ -454,6 +666,7 @@ class TaskRepositoryImpl @Inject constructor(
             }
         }
         triggerCalendarAutoSync(newTask.id)
+        return spawnedResult
     }
 
     // --- Agent 模式支持 ---
@@ -482,6 +695,8 @@ class TaskRepositoryImpl @Inject constructor(
     }
 
     suspend fun searchTasksSync(query: String): List<TaskDetailComposite> {
-        return taskDao.searchTasksSync(query)
+        val raw = taskDao.searchTasksSync(query)
+        val trimmed = query.trim()
+        return if (trimmed.isEmpty()) raw else raw.filter { TaskComponentRegistry.matchesSearchQuery(it, trimmed) }
     }
 }
