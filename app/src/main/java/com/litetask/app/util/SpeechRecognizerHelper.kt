@@ -136,6 +136,48 @@ class SpeechRecognizerHelper @Inject constructor(
     }
 
     /**
+     * 对本地语音备忘录音频文件（`.m4a` 等）执行解码并调用已配置的云端 ASR 转文字。
+     */
+    suspend fun transcribeAudioFile(filePath: String): Result<String> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val file = java.io.File(filePath)
+        if (!file.exists() || !file.isFile || !file.canRead()) {
+            return@withContext Result.failure(Exception("语音文件不存在或无法读取"))
+        }
+
+        val providerId = resolveOfflineAsrProviderId()
+            ?: return@withContext Result.failure(Exception("请先在设置中配置讯飞或 MiMo 语音转写服务"))
+        val credentials = getCredentials(providerId)
+
+        val pcmData = AudioPcmDecoder.decodeTo16kMonoPcm(file)
+            ?: return@withContext Result.failure(Exception("音频解码失败，无法提取语音波形"))
+
+        when (providerId) {
+            MimoAsrProvider.PROVIDER_ID -> mimoAsrProvider.transcribePcm(pcmData, credentials)
+            XunfeiSpeechProvider.PROVIDER_ID -> xunfeiProvider.transcribePcm(pcmData, credentials)
+            else -> Result.failure(Exception("当前语音源暂不支持音频文件转写"))
+        }
+    }
+
+    private fun resolveOfflineAsrProviderId(): String? {
+        if (preferenceManager.isSpeechConfigured()) {
+            val current = preferenceManager.getSpeechProvider()
+            if (current == MimoAsrProvider.PROVIDER_ID || current == XunfeiSpeechProvider.PROVIDER_ID) {
+                return current
+            }
+        }
+        val mimoKey = getCredentials(MimoAsrProvider.PROVIDER_ID)[MimoAsrProvider.FIELD_API_KEY]
+        if (!mimoKey.isNullOrBlank()) return MimoAsrProvider.PROVIDER_ID
+
+        val xfCreds = getCredentials(XunfeiSpeechProvider.PROVIDER_ID)
+        if (!xfCreds[XunfeiSpeechProvider.FIELD_APP_ID].isNullOrBlank() &&
+            !xfCreds[XunfeiSpeechProvider.FIELD_API_KEY].isNullOrBlank()
+        ) {
+            return XunfeiSpeechProvider.PROVIDER_ID
+        }
+        return null
+    }
+
+    /**
      * 释放资源
      */
     fun release() {

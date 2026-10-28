@@ -350,6 +350,46 @@ class MimoAsrProvider @Inject constructor(
         }
 
     /**
+     * 离线音频文件转文字（输入为 16kHz 16-bit 单声道 PCM，自动按 25 秒分片转 WAV 上传识别）。
+     */
+    suspend fun transcribePcm(pcmData: ByteArray, credentials: Map<String, String>): Result<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val baseUrl = credentials[FIELD_BASE_URL]?.takeIf { it.isNotBlank() } ?: DEFAULT_BASE_URL
+                val apiKey = credentials[FIELD_API_KEY] ?: ""
+                if (apiKey.isBlank()) {
+                    return@withContext Result.failure(Exception("请配置 MiMo API Key"))
+                }
+                if (pcmData.isEmpty()) {
+                    return@withContext Result.failure(Exception("音频内容为空"))
+                }
+
+                val chunkBytes = SAMPLE_RATE * 2 * 25 // ~25 秒/片
+                val sb = StringBuilder()
+                var offset = 0
+                while (offset < pcmData.size) {
+                    val end = (offset + chunkBytes).coerceAtMost(pcmData.size)
+                    val slice = pcmData.copyOfRange(offset, end)
+                    val wav = convertPcmToWav(slice)
+                    val text = recognizeAudio(wav, baseUrl, apiKey)
+                    if (!text.isNullOrBlank()) {
+                        sb.append(text.trim())
+                    }
+                    offset = end
+                }
+                val finalText = sb.toString().trim()
+                if (finalText.isBlank()) {
+                    Result.failure(Exception("未识别出有效语音内容"))
+                } else {
+                    Result.success(finalText)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "transcribePcm error", e)
+                Result.failure(e)
+            }
+        }
+
+    /**
      * 生成指定时长的静音 WAV 音频（用于测试连接）
      */
     private fun generateSilentWav(durationMs: Int): ByteArray {

@@ -132,31 +132,22 @@ class XunfeiSpeechProvider @Inject constructor(
 
                     if (action == "result") {
                         val dataStr = json.optString("data", "")
-                        if (dataStr.isNotEmpty()) {
-                            // 解析数据，可能是 JSON 字符串或 Base64 编码
-                            val resultJsonStr = if (dataStr.trim().startsWith("{")) dataStr else {
-                                try { String(android.util.Base64.decode(dataStr, android.util.Base64.DEFAULT)) }
-                                catch (e: Exception) { dataStr }
-                            }
-
-                            val frame = parseContent(resultJsonStr) ?: return
-
-                            synchronized(committedText) {
-                                if (frame.type == 0) {
-                                    // 最终结果：追加到已确认文本，清空草稿
-                                    committedText.append(frame.text)
-                                    currentDraft = ""
+                        val frame = extractFrameFromDataStr(dataStr) ?: return
+                        synchronized(committedText) {
+                            if (frame.type == 0) {
+                                // 最终结果：追加到已确认文本，清空草稿
+                                committedText.append(frame.text)
+                                currentDraft = ""
+                            } else {
+                                // 中间结果：更新草稿
+                                currentDraft = if (frame.pgs == "apd") {
+                                    currentDraft + frame.text
                                 } else {
-                                    // 中间结果：更新草稿
-                                    currentDraft = if (frame.pgs == "apd") {
-                                        currentDraft + frame.text
-                                    } else {
-                                        frame.text  // 默认替换模式
-                                    }
+                                    frame.text  // 默认替换模式
                                 }
                             }
-                            emitUpdate()
                         }
+                        emitUpdate()
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Message parse error", e)
@@ -175,6 +166,119 @@ class XunfeiSpeechProvider @Inject constructor(
 
         awaitClose { stopRecognition() }
     }
+
+    private fun extractFrameFromDataStr(dataStr: String): ParsedFrame? {
+        if (dataStr.isEmpty()) return null
+        val resultJsonStr = if (dataStr.trim().startsWith("{")) dataStr else {
+            try { String(android.util.Base64.decode(dataStr, android.util.Base64.DEFAULT)) }
+            catch (_: Exception) { dataStr }
+        }
+        return parseContent(resultJsonStr)
+    }
+
+    /**
+     * 离线音频文件（16kHz 16-bit 单声道 PCM）通过讯飞 RT-ASR WebSocket 转文字。
+     */
+    suspend fun transcribePcm(pcmData: ByteArray, credentials: Map<String, String>): Result<String> =
+        withContext(Dispatchers.IO) {
+            val appId = credentials[FIELD_APP_ID] ?: ""
+            val apiKey = credentials[FIELD_API_KEY] ?: ""
+            if (appId.isBlank() || apiKey.isBlank()) {
+                return@withContext Result.failure(Exception("请配置讯飞 AppID 和 API Key"))
+            }
+            if (pcmData.isEmpty()) {
+                return@withContext Result.failure(Exception("音频内容为空"))
+            }
+
+            val deferred = kotlinx.coroutines.CompletableDeferred<Result<String>>()
+            val committed = StringBuilder()
+            var draft = ""
+            val url = generateAuthUrl(appId, apiKey)
+            val request = Request.Builder().url(url).build()
+
+            val ws = client.newWebSocket(request, object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) {
+                    Thread {
+                        try {
+                            var offset = 0
+                            while (offset < pcmData.size && !deferred.isCompleted) {
+                                val end = (offset + FRAME_SIZE).coerceAtMost(pcmData.size)
+                                val slice = pcmData.copyOfRange(offset, end)
+                                webSocket.send(slice.toByteString())
+                                offset = end
+                                Thread.sleep(FRAME_INTERVAL)
+                            }
+                            webSocket.send("{\"end\": true}")
+                        } catch (e: Exception) {
+                            if (!deferred.isCompleted) {
+                                deferred.complete(Result.failure(e))
+                            }
+                        }
+                    }.start()
+                }
+
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    try {
+                        val json = JSONObject(text)
+                        val action = json.optString("action")
+                        if (action == "error") {
+                            if (!deferred.isCompleted) {
+                                deferred.complete(Result.failure(Exception(json.optString("desc", "讯飞识别错误"))))
+                            }
+                            webSocket.close(1000, "Error")
+                            return
+                        }
+                        if (action == "result") {
+                            val frame = extractFrameFromDataStr(json.optString("data", "")) ?: return
+                            synchronized(committed) {
+                                if (frame.type == 0) {
+                                    committed.append(frame.text)
+                                    draft = ""
+                                } else {
+                                    draft = if (frame.pgs == "apd") draft + frame.text else frame.text
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    completeSuccess()
+                }
+
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    completeSuccess()
+                }
+
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                    if (!deferred.isCompleted) {
+                        deferred.complete(Result.failure(t))
+                    }
+                }
+
+                private fun completeSuccess() {
+                    if (deferred.isCompleted) return
+                    val fullText = synchronized(committed) { (committed.toString() + draft).trim() }
+                    deferred.complete(
+                        if (fullText.isBlank()) Result.failure(Exception("未识别出有效语音内容"))
+                        else Result.success(fullText)
+                    )
+                }
+            })
+
+            val timed = kotlinx.coroutines.withTimeoutOrNull(45_000L) {
+                deferred.await()
+            }
+            if (timed == null) {
+                runCatching { ws.cancel() }
+                val partial = synchronized(committed) { (committed.toString() + draft).trim() }
+                if (partial.isNotBlank()) Result.success(partial)
+                else Result.failure(Exception("讯飞转写超时"))
+            } else {
+                timed
+            }
+        }
 
     /**
      * 解析讯飞返回的 JSON 识别结果
