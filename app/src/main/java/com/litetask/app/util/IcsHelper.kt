@@ -1,7 +1,9 @@
 package com.litetask.app.util
 
+import com.litetask.app.data.model.TaskComponentRegistry
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.sortedByOrder
+import com.litetask.app.data.model.toTaskComponentsSafe
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -60,6 +62,10 @@ object IcsHelper {
             appendFoldedProperty(sb, "DTEND", formatUtcDateTime(safeEnd))
             appendFoldedProperty(sb, "SUMMARY", escapeText(task.title))
 
+            val parsedComponents = detail.components.toTaskComponentsSafe()
+            val locationText = TaskComponentRegistry.extractCalendarLocation(parsedComponents)
+            val componentLines = TaskComponentRegistry.formatCalendarDescriptionLines(parsedComponents)
+
             val fullDescription = buildString {
                 if (!task.description.isNullOrBlank()) {
                     append(task.description.trim())
@@ -72,9 +78,17 @@ object IcsHelper {
                         append("- $mark ${sub.content}\n")
                     }
                 }
+                if (componentLines.isNotEmpty()) {
+                    if (isNotEmpty()) append("\n\n")
+                    append("扩展组件:\n")
+                    componentLines.forEach { line -> append("- $line\n") }
+                }
             }.trimEnd()
             if (fullDescription.isNotBlank()) {
                 appendFoldedProperty(sb, "DESCRIPTION", escapeText(fullDescription))
+            }
+            if (!locationText.isNullOrBlank()) {
+                appendFoldedProperty(sb, "LOCATION", escapeText(locationText))
             }
 
             detail.category?.name?.takeIf { it.isNotBlank() }?.let { catName ->

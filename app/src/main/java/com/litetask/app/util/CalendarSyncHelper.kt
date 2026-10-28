@@ -9,8 +9,10 @@ import android.content.pm.PackageManager
 import android.provider.CalendarContract
 import androidx.core.content.ContextCompat
 import com.litetask.app.data.local.PreferenceManager
+import com.litetask.app.data.model.TaskComponentRegistry
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.sortedByOrder
+import com.litetask.app.data.model.toTaskComponentsSafe
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -309,6 +311,10 @@ object CalendarSyncHelper {
             task.isExpired -> "[已过期] ${task.title}"
             else -> task.title
         }
+        val parsedComponents = detail.components.toTaskComponentsSafe()
+        val eventLocation = TaskComponentRegistry.extractCalendarLocation(parsedComponents)
+        val componentLines = TaskComponentRegistry.formatCalendarDescriptionLines(parsedComponents)
+
         val description = buildString {
             detail.category?.name?.let { append("分类: $it\n") }
             if (!task.description.isNullOrBlank()) {
@@ -320,6 +326,10 @@ object CalendarSyncHelper {
                     val mark = if (sub.isCompleted) "[x]" else "[ ]"
                     append("- $mark ${sub.content}\n")
                 }
+            }
+            if (componentLines.isNotEmpty()) {
+                append("\n扩展组件:\n")
+                componentLines.forEach { line -> append("- $line\n") }
             }
         }.trim()
 
@@ -338,6 +348,7 @@ object CalendarSyncHelper {
             put(CalendarContract.Events.CALENDAR_ID, calendarId)
             put(CalendarContract.Events.TITLE, displayTitle)
             put(CalendarContract.Events.DESCRIPTION, description)
+            put(CalendarContract.Events.EVENT_LOCATION, eventLocation.orEmpty())
             put(CalendarContract.Events.DTSTART, safeStart)
             put(CalendarContract.Events.DTEND, safeEnd)
             put(CalendarContract.Events.EVENT_TIMEZONE, timezoneId)
