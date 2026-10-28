@@ -1,5 +1,6 @@
 package com.litetask.app.data.repository
 
+import android.content.Context
 import com.google.gson.Gson
 import com.litetask.app.data.local.AIHistoryDao
 import com.litetask.app.data.local.CategoryDao
@@ -13,7 +14,9 @@ import com.litetask.app.data.model.AIHistory
 import com.litetask.app.data.model.AIHistorySource
 import com.litetask.app.data.model.BackupData
 import com.litetask.app.data.model.Category
+import com.litetask.app.data.model.ComponentType
 import com.litetask.app.data.model.DailyScheduleAdviceEntity
+import com.litetask.app.data.model.FileAttachmentData
 import com.litetask.app.data.model.FocusSessionEntity
 import com.litetask.app.data.model.Reminder
 import com.litetask.app.data.model.SubTask
@@ -21,13 +24,21 @@ import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskComponentEntity
 import com.litetask.app.data.model.UserLocationEntity
 import com.litetask.app.data.model.UserProfileHistoryEntity
+import com.litetask.app.data.model.VoiceNoteData
+import com.litetask.app.util.AttachmentStorageHelper
+import com.litetask.app.util.BackupArchiveHelper
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class BackupRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val taskDao: TaskDao,
     private val categoryDao: CategoryDao,
     private val componentDao: TaskComponentDao,
@@ -39,7 +50,7 @@ class BackupRepository @Inject constructor(
 ) {
     private val gson = Gson()
 
-    suspend fun createBackupJson(): String = withContext(Dispatchers.IO) {
+    private suspend fun collectBackupData(): BackupData {
         val allComposites = taskDao.getAllTaskDetailsSync()
         val allCategories = categoryDao.getAllCategoriesSync()
         val allFocusSessions = focusSessionDao.getAllSessionsSync()
@@ -60,7 +71,7 @@ class BackupRepository @Inject constructor(
             reminders.addAll(composite.reminders)
         }
 
-        val backupData = BackupData(
+        return BackupData(
             tasks = tasks,
             subTasks = subTasks,
             taskComponents = components,
@@ -72,13 +83,86 @@ class BackupRepository @Inject constructor(
             aiHistory = allAiHistory,
             dailyScheduleAdvice = allDailyAdvice
         )
-        
-        gson.toJson(backupData)
+    }
+
+    suspend fun createBackupJson(): String = withContext(Dispatchers.IO) {
+        gson.toJson(collectBackupData())
+    }
+
+    suspend fun exportBackupArchive(outputStream: OutputStream) = withContext(Dispatchers.IO) {
+        val backupData = collectBackupData()
+        val json = gson.toJson(backupData)
+
+        val attachmentFiles = backupData.taskComponents
+            .filter { it.type == ComponentType.FILE_ATTACHMENT }
+            .mapNotNull { entity ->
+                runCatching { gson.fromJson(entity.dataJson, FileAttachmentData::class.java) }
+                    .getOrNull()
+                    ?.managedFilePath
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { File(it) }
+                    ?.takeIf { it.exists() && it.isFile && it.canRead() }
+            }
+            .distinctBy { it.canonicalPath }
+
+        val componentVoiceFiles = backupData.taskComponents
+            .filter { it.type == ComponentType.VOICE_NOTE }
+            .mapNotNull { entity ->
+                runCatching { gson.fromJson(entity.dataJson, VoiceNoteData::class.java) }
+                    .getOrNull()
+                    ?.filePath
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { File(it) }
+                    ?.takeIf { it.exists() && it.isFile && it.canRead() }
+            }
+        val dirVoiceFiles = AttachmentStorageHelper.voiceNotesDir(context)
+            .listFiles()
+            ?.filter { it.isFile && it.canRead() }
+            .orEmpty()
+        val voiceFiles = (componentVoiceFiles + dirVoiceFiles)
+            .distinctBy { runCatching { it.canonicalPath }.getOrDefault(it.absolutePath) }
+
+        outputStream.use { out ->
+            BackupArchiveHelper.writeZipArchive(
+                outputStream = out,
+                backupJson = json,
+                attachmentFiles = attachmentFiles,
+                voiceNoteFiles = voiceFiles
+            )
+        }
+    }
+
+    suspend fun restoreBackupAuto(inputStream: InputStream): RestoreResult = withContext(Dispatchers.IO) {
+        try {
+            val archive = inputStream.use { stream ->
+                BackupArchiveHelper.readArchiveAuto(
+                    inputStream = stream,
+                    targetAttachmentsDir = AttachmentStorageHelper.attachmentsDir(context),
+                    targetVoiceNotesDir = AttachmentStorageHelper.voiceNotesDir(context)
+                )
+            }
+            restoreBackupInternal(
+                json = archive.json,
+                extractedAttachments = archive.extractedAttachments,
+                extractedVoiceNotes = archive.extractedVoiceNotes
+            )
+        } catch (e: Exception) {
+            RestoreResult.Error(e)
+        }
     }
 
     suspend fun restoreBackup(json: String): RestoreResult = withContext(Dispatchers.IO) {
-        try {
+        restoreBackupInternal(json, emptyMap(), emptyMap())
+    }
+
+    private suspend fun restoreBackupInternal(
+        json: String,
+        extractedAttachments: Map<String, File>,
+        extractedVoiceNotes: Map<String, File> = emptyMap()
+    ): RestoreResult {
+        return try {
             val backupData = gson.fromJson(json, BackupData::class.java)
+                ?: return RestoreResult.Error(IllegalArgumentException("备份文件内容无效"))
             
             // 1. Restore Categories
             val categoryIdMap = mutableMapOf<Long, Long>() // Old ID -> New ID
@@ -152,7 +236,13 @@ class BackupRepository @Inject constructor(
                 // Components
                 val relatedComponents = backupData.taskComponents.filter { it.taskId == importedTask.id }
                 relatedComponents.forEach { comp ->
-                    componentDao.insertComponent(comp.copy(id = 0, taskId = newTaskId))
+                    val remapped = BackupArchiveHelper.remapRestoredComponent(
+                        entity = comp.copy(id = 0, taskId = newTaskId),
+                        extractedAttachments = extractedAttachments,
+                        fileUriResolver = { file -> AttachmentStorageHelper.fileProviderUri(context, file).toString() },
+                        extractedVoiceNotes = extractedVoiceNotes
+                    )
+                    componentDao.insertComponent(remapped)
                 }
 
                 // Reminders
