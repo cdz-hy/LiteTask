@@ -2,7 +2,9 @@ package com.litetask.app.data.ai
 
 import com.litetask.app.data.model.Category
 import com.litetask.app.data.model.Task
+import com.litetask.app.data.model.TaskComponentRegistry
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.data.model.toTaskComponentsSafe
 import com.litetask.app.data.repository.TaskRepositoryImpl
 import org.json.JSONArray
 import org.json.JSONObject
@@ -175,6 +177,7 @@ class AIAgentAssistant @Inject constructor(
                 val taskId = args.optLong("taskId")
                 val tasks = taskRepository.getTaskByIdSync(taskId)
                 if (tasks != null) {
+                    val comps = tasks.components.toTaskComponentsSafe()
                     JSONObject().apply {
                         put("id", tasks.task.id)
                         put("title", tasks.task.title)
@@ -183,6 +186,17 @@ class AIAgentAssistant @Inject constructor(
                         put("startTime", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(tasks.task.startTime)))
                         put("endTime", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(tasks.task.deadline)))
                         put("is_done", tasks.task.isDone)
+                        if (comps.isNotEmpty()) {
+                            val compArr = JSONArray()
+                            comps.forEach { comp ->
+                                TaskComponentRegistry.toAiJsonObject(comp)?.let { gsonObj ->
+                                    compArr.put(JSONObject(gsonObj.toString()))
+                                }
+                            }
+                            if (compArr.length() > 0) {
+                                put("components", compArr)
+                            }
+                        }
                     }.toString()
                 } else {
                     "任务 ID 为 $taskId 的任务不存在。"
@@ -297,6 +311,7 @@ class AIAgentAssistant @Inject constructor(
                         )
                     }
                     task.parsedDestination = destination
+                    AiTaskComponentParser.applyParsedExtras(task, obj.toString())
                     tasks.add(task)
                 }
         } catch (e: Exception) {

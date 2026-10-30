@@ -1,5 +1,6 @@
 package com.litetask.app.data.repository
 
+import android.content.Context
 import com.litetask.app.data.ai.ScheduleAdvicePromptSupport
 import com.litetask.app.data.ai.SubTaskGenerationContext
 import com.litetask.app.data.ai.SubTaskGenerationMode
@@ -8,6 +9,8 @@ import com.litetask.app.data.model.Category
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskComponent
 import com.litetask.app.data.model.sortedByOrder
+import com.litetask.app.util.AttachmentContentReader
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -43,6 +46,7 @@ interface AIRepository {
 
 @Singleton
 class AIRepositoryImpl @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val preferenceManager: com.litetask.app.data.local.PreferenceManager,
     private val aiProviderFactory: com.litetask.app.data.ai.AIProviderFactory,
     private val categoryRepository: CategoryRepository,
@@ -118,12 +122,15 @@ class AIRepositoryImpl @Inject constructor(
                - 多个模糊地址时可多次(或并发)调用 `search_nearby_location`。
                - 分析候选列表类型及距离是否合理；若不符或为空，尝试增大 `radius` 重搜。
                - 若多次不中，直接将地名填入 `destination`。确认后填入。
-            5. **极简调用**: 严禁无目的调用工具。如果当前已有足够信息支持解析，不要为了查询而查询。
-            6. **新增**: ID=0。回复前一句话概述行动，后跟 JSON 数组。
+            5. **组件抽取 (按需附加)**:
+               - 若出现URL/会议号/取件码/车次票务/核销码，可附加 `links` 与 `passes` 数组。
+${com.litetask.app.data.ai.AiTaskComponentParser.PROMPT_COMPONENT_RULES}
+            6. **极简调用**: 严禁无目的调用工具。如果当前已有足够信息支持解析，不要为了查询而查询。
+            7. **新增**: ID=0。回复前一句话概述行动，后跟 JSON 数组。
             
             # JSON Schema:
             概述行动...
-            [{"id": 123, "title": "...", "startTime": "yyyy-MM-dd HH:mm", "endTime": "yyyy-MM-dd HH:mm", "type": "分类名", "description": "...", "destination": "..."}]
+            [{"id": 123, "title": "...", "startTime": "yyyy-MM-dd HH:mm", "endTime": "yyyy-MM-dd HH:mm", "type": "分类名", "description": "...", "destination": "...", ${com.litetask.app.data.ai.AiTaskComponentParser.PROMPT_JSON_FIELDS}}]
         """.trimIndent()
 
         val messages = JSONArray().apply {
@@ -304,10 +311,29 @@ class AIRepositoryImpl @Inject constructor(
                         if (addr != null) "${route.endName}（$addr）" else route.endName
                     }
 
-                val attachmentNames = components
+                val fileAttachments = components
                     .filterIsInstance<TaskComponent.FileComponent>()
-                    .map { it.data.fileName }
+                    .map { it.data }
+                val attachmentNames = fileAttachments
+                    .map { it.effectiveDisplayName() }
                     .filter { it.isNotBlank() }
+
+                val remainingImageSlots = (3 - (imageBases64?.size ?: 0)).coerceAtLeast(0)
+                val (attachmentTextExcerpts, attachmentVisualImages) = if (fileAttachments.isNotEmpty()) {
+                    AttachmentContentReader.extractAiContextFromAttachments(
+                        context = context,
+                        attachments = fileAttachments,
+                        includeVisualMedia = preferenceManager.isMultimodalEnabled(),
+                        maxTextFiles = 4,
+                        maxImages = remainingImageSlots
+                    )
+                } else {
+                    emptyList<Pair<String, String>>() to emptyList<String>()
+                }
+
+                val combinedImages = (imageBases64.orEmpty() + attachmentVisualImages)
+                    .distinct()
+                    .takeIf { it.isNotEmpty() }
 
                 val userProfile = runCatching { userProfileDao.getLatestUserProfile() }.getOrNull()
                 val profileSummary = userProfile?.let {
@@ -321,8 +347,11 @@ class AIRepositoryImpl @Inject constructor(
                     if (!routeDestination.isNullOrBlank()) {
                         add("目的地「$routeDestination」")
                     }
-                    if (!imageBases64.isNullOrEmpty()) {
-                        add("${imageBases64.size}张参考图")
+                    if (attachmentTextExcerpts.isNotEmpty()) {
+                        add("${attachmentTextExcerpts.size}份附件文档")
+                    }
+                    if (!combinedImages.isNullOrEmpty()) {
+                        add("${combinedImages.size}张参考图/PDF页")
                     }
                 }
                 if (contextSummaryParts.isNotEmpty()) {
@@ -335,12 +364,13 @@ class AIRepositoryImpl @Inject constructor(
                     existingSubTasks = existingSubTasks,
                     routeDestination = routeDestination,
                     attachmentNames = attachmentNames,
+                    attachmentTextExcerpts = attachmentTextExcerpts,
                     userProfileSummary = profileSummary,
                     additionalContext = additionalContext,
                     mode = mode,
                     previousGeneratedSteps = previousGeneratedSteps,
                     refinementFeedback = refinementFeedback,
-                    hasImages = !imageBases64.isNullOrEmpty()
+                    hasImages = !combinedImages.isNullOrEmpty()
                 )
 
                 onProgress(
@@ -351,7 +381,7 @@ class AIRepositoryImpl @Inject constructor(
                     }
                 )
 
-                val result = provider.generateSubTasks(apiKey, modelId, generationContext, imageBases64)
+                val result = provider.generateSubTasks(apiKey, modelId, generationContext, combinedImages)
                 result.onSuccess { steps ->
                     onProgress("拆解与去重校验完成（共 ${steps.size} 个步骤）")
                 }

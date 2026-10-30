@@ -7,6 +7,7 @@ import com.google.gson.JsonParser
 import com.litetask.app.data.model.ComponentType
 import com.litetask.app.data.model.FocusSessionEntity
 import com.litetask.app.data.model.TaskComponent
+import com.litetask.app.data.model.TaskComponentRegistry
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.UserLocationEntity
 import com.litetask.app.data.model.UserProfileHistoryEntity
@@ -122,22 +123,7 @@ internal object ScheduleAdvicePromptSupport {
                     add("components", JsonArray().apply {
                         composite.components.forEach { entity ->
                             runCatching { entity.toTaskComponent() }.getOrNull()?.let { comp ->
-                                when (comp) {
-                                    is TaskComponent.AMapComponent -> add(JsonObject().apply {
-                                        addProperty("type", "AMAP_ROUTE")
-                                        addProperty("start_name", comp.data.startName)
-                                        addProperty("end_name", comp.data.endName)
-                                        if (!comp.data.endAddress.isNullOrBlank()) {
-                                            addProperty("end_address", comp.data.endAddress)
-                                        }
-                                        addProperty("end_lng", comp.data.endLng)
-                                        addProperty("end_lat", comp.data.endLat)
-                                    })
-                                    is TaskComponent.FileComponent -> add(JsonObject().apply {
-                                        addProperty("type", "FILE_ATTACHMENT")
-                                        addProperty("file_name", comp.data.fileName)
-                                    })
-                                }
+                                TaskComponentRegistry.toAiJsonObject(comp)?.let { add(it) }
                             }
                         }
                     })
