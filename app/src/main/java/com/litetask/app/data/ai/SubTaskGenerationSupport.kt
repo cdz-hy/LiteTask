@@ -28,6 +28,7 @@ data class SubTaskGenerationContext(
     val existingSubTasks: List<SubTask> = emptyList(),
     val routeDestination: String? = null,
     val attachmentNames: List<String> = emptyList(),
+    val attachmentTextExcerpts: List<Pair<String, String>> = emptyList(),
     val userProfileSummary: String? = null,
     val additionalContext: String = "",
     val mode: SubTaskGenerationMode = SubTaskGenerationMode.APPEND_NEXT,
@@ -155,6 +156,13 @@ internal object SubTaskGenerationSupport {
             if (context.attachmentNames.isNotEmpty()) {
                 appendLine("- 关联附件: ${context.attachmentNames.joinToString("、")}")
             }
+            if (context.attachmentTextExcerpts.isNotEmpty()) {
+                appendLine("- 关联文档正文摘要:")
+                context.attachmentTextExcerpts.forEach { (name, excerpt) ->
+                    appendLine("  【$name】")
+                    appendLine(excerpt.trim().prependIndent("  "))
+                }
+            }
             context.userProfileSummary?.takeIf { it.isNotBlank() }?.let {
                 appendLine("- 用户习惯参考: $it")
             }
@@ -167,7 +175,7 @@ internal object SubTaskGenerationSupport {
                 appendLine("- 用户补充要求: 未填写额外文本，请综合任务详情、时间紧迫度与上下文主动高质量拆解。")
             }
             if (context.hasImages) {
-                append("- 图片参考: 用户同时附带了参考图片，请仔细识别图片中的清单、日程、题目或细节作为拆解核心依据。")
+                append("- 图片/PDF 视觉参考: 用户或任务附件附带了参考图片或 PDF 页面，请结合图片中的清单、日程、表单、题目或细节作为拆解核心依据。")
             }
         }.trimEnd()
 

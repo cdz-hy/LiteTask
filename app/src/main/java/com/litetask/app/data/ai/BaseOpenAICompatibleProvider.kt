@@ -79,10 +79,12 @@ abstract class BaseOpenAICompatibleProvider : AIProvider {
 6. **目的地识别**:
    - 若用户提及明确地点（如“去万达”、“到图书馆”），提取地名放入 `destination` 字段。
    - 若无明确地点，该字段省略或为空字符串。
+7. **附件卡片抽取 (可选)**:
+${AiTaskComponentParser.PROMPT_COMPONENT_RULES}
 
 # Output
 仅返回纯 JSON 数组，无 Markdown。
-[{"title":"精炼标题<20字","startTime":"yyyy-MM-dd HH:mm","endTime":"yyyy-MM-dd HH:mm","type":"分类名称","description":"基于输入的真实任务描述","destination":"明确的地点名称(可选)"}]
+[{"title":"精炼标题<20字","startTime":"yyyy-MM-dd HH:mm","endTime":"yyyy-MM-dd HH:mm","type":"分类名称","description":"基于输入的真实任务描述","destination":"明确的地点名称(可选)",${AiTaskComponentParser.PROMPT_JSON_FIELDS}}]
             """.trimIndent()
 
             val requestBody = JSONObject().apply {
@@ -370,6 +372,7 @@ abstract class BaseOpenAICompatibleProvider : AIProvider {
                     originalVoiceText = originalVoiceText
                 )
                 task.parsedDestination = destination
+                AiTaskComponentParser.applyParsedExtras(task, obj.toString())
                 tasks.add(task)
             }
         } catch (e: org.json.JSONException) {
