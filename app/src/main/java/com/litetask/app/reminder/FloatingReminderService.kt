@@ -34,6 +34,9 @@ import android.widget.TextView
 import com.litetask.app.MainActivity
 import com.litetask.app.R
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.ui.components.copyToClipboard
+import com.litetask.app.ui.components.openAMapNavigation
+import com.litetask.app.ui.components.openLinkBookmark
 
 /**
  * 强提醒悬浮窗服务（类似系统闹钟）
@@ -76,7 +79,8 @@ class FloatingReminderService : Service() {
             taskTitle: String,
             reminderText: String,
             taskType: TaskType,
-            isDeadline: Boolean
+            isDeadline: Boolean,
+            componentExtras: ReminderComponentExtras? = null
         ) {
             if (!canDrawOverlays(context)) {
                 Log.w(TAG, "No overlay permission")
@@ -88,6 +92,7 @@ class FloatingReminderService : Service() {
                 putExtra(EXTRA_REMINDER_TEXT, reminderText)
                 putExtra(EXTRA_TASK_TYPE, taskType.name)
                 putExtra(EXTRA_IS_DEADLINE, isDeadline)
+                componentExtras?.putToIntent(this)
             })
         }
     }
@@ -106,6 +111,7 @@ class FloatingReminderService : Service() {
     private var currentTaskTitle: String = ""
     private var currentReminderText: String = ""
     private var currentTaskType: TaskType = TaskType.WORK
+    private var currentComponentExtras: ReminderComponentExtras? = null
     
     // 标记用户是否已处理提醒（点击了按钮）
     private var userHandled = false
@@ -138,8 +144,9 @@ class FloatingReminderService : Service() {
                 try { TaskType.valueOf(name) } catch (e: Exception) { TaskType.WORK }
             } ?: TaskType.WORK
             val isDeadline = it.getBooleanExtra(EXTRA_IS_DEADLINE, false)
+            val componentExtras = ReminderComponentExtras.fromIntent(it)
 
-            showFloating(taskId, taskTitle, reminderText, taskType, isDeadline)
+            showFloating(taskId, taskTitle, reminderText, taskType, isDeadline, componentExtras)
         }
         return START_NOT_STICKY
     }
@@ -187,7 +194,8 @@ class FloatingReminderService : Service() {
         taskTitle: String,
         reminderText: String,
         taskType: TaskType,
-        isDeadline: Boolean
+        isDeadline: Boolean,
+        componentExtras: ReminderComponentExtras? = null
     ) {
         cleanup()
         
@@ -196,6 +204,7 @@ class FloatingReminderService : Service() {
         currentTaskTitle = taskTitle
         currentReminderText = reminderText
         currentTaskType = taskType
+        currentComponentExtras = componentExtras
         userHandled = false
         
         // 1. 强制亮屏
@@ -203,7 +212,7 @@ class FloatingReminderService : Service() {
         // 2. 尝试解除锁屏
         dismissKeyguard()
 
-        floatingView = createView(taskId, taskTitle, reminderText, taskType, isDeadline)
+        floatingView = createView(taskId, taskTitle, reminderText, taskType, isDeadline, componentExtras)
 
         val params = WindowManager.LayoutParams().apply {
             width = WindowManager.LayoutParams.MATCH_PARENT
@@ -242,7 +251,8 @@ class FloatingReminderService : Service() {
         taskTitle: String,
         reminderText: String,
         taskType: TaskType,
-        isDeadline: Boolean
+        isDeadline: Boolean,
+        componentExtras: ReminderComponentExtras?
     ): View {
         val view = LayoutInflater.from(this).inflate(R.layout.floating_reminder, null)
         val isDark = isDarkMode()
@@ -293,6 +303,8 @@ class FloatingReminderService : Service() {
             setTextColor(primaryColor)
         }
 
+        bindComponentQuickBox(view, componentExtras, primaryColor, onSurface, isDark)
+
         view.findViewById<TextView>(R.id.dismissBtn)?.apply {
             setTextColor(onSurface)
             setOnClickListener { dismissByUser() }
@@ -312,6 +324,75 @@ class FloatingReminderService : Service() {
         }
 
         return view
+    }
+
+    private fun bindComponentQuickBox(
+        view: View,
+        extras: ReminderComponentExtras?,
+        primaryColor: Int,
+        onSurface: Int,
+        isDark: Boolean
+    ) {
+        val quickBox = view.findViewById<LinearLayout>(R.id.componentQuickBox) ?: return
+        if (extras == null || !extras.hasAnyContent) {
+            quickBox.visibility = View.GONE
+            return
+        }
+        quickBox.visibility = View.VISIBLE
+        (quickBox.background?.mutate() as? GradientDrawable)?.setColor(
+            if (isDark) 0xFF2D2D2D.toInt() else 0xFFF5F5F5.toInt()
+        )
+        view.findViewById<TextView>(R.id.componentSummaryText)?.apply {
+            text = extras.highlightLine ?: extras.passCode ?: extras.routeName ?: extras.linkUrl.orEmpty()
+            setTextColor(onSurface)
+        }
+
+        val primaryBtn = view.findViewById<TextView>(R.id.componentPrimaryBtn)
+        val secondaryBtn = view.findViewById<TextView>(R.id.componentSecondaryBtn)
+        primaryBtn?.visibility = View.GONE
+        secondaryBtn?.visibility = View.GONE
+
+        if (extras.hasPass && primaryBtn != null) {
+            val code = extras.passCode!!
+            primaryBtn.visibility = View.VISIBLE
+            primaryBtn.text = "复制号码"
+            primaryBtn.setTextColor(primaryColor)
+            primaryBtn.setOnClickListener {
+                copyToClipboard(this, extras.passTitle ?: "凭证号", code, "已复制：$code")
+            }
+        }
+
+        val route = extras.toAMapRouteData()
+        val link = extras.toLinkBookmarkData()
+        if (route != null && secondaryBtn != null) {
+            secondaryBtn.visibility = View.VISIBLE
+            secondaryBtn.text = "导航去目的地"
+            secondaryBtn.setTextColor(primaryColor)
+            secondaryBtn.setOnClickListener {
+                userHandled = true
+                cleanup()
+                openAMapNavigation(this, route)
+                stopSelf()
+            }
+        } else if (link != null && secondaryBtn != null) {
+            secondaryBtn.visibility = View.VISIBLE
+            secondaryBtn.text = "打开链接"
+            secondaryBtn.setTextColor(primaryColor)
+            secondaryBtn.setOnClickListener {
+                userHandled = true
+                cleanup()
+                openLinkBookmark(this, link)
+                stopSelf()
+            }
+        } else if (!extras.passSecret.isNullOrBlank() && secondaryBtn != null) {
+            val secret = extras.passSecret
+            secondaryBtn.visibility = View.VISIBLE
+            secondaryBtn.text = "复制密码"
+            secondaryBtn.setTextColor(primaryColor)
+            secondaryBtn.setOnClickListener {
+                copyToClipboard(this, "附加密码", secret, "已复制密码：$secret")
+            }
+        }
     }
 
     private fun setupBlurEffect(view: View) {
@@ -432,8 +513,9 @@ class FloatingReminderService : Service() {
                     this,
                     currentTaskId,
                     currentTaskTitle,
-                    "$currentReminderText (未读)", 
-                    currentTaskType
+                    "$currentReminderText (未读)",
+                    currentTaskType,
+                    componentExtras = currentComponentExtras
                 )
             }
         }

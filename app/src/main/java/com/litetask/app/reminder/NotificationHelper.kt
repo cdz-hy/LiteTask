@@ -43,6 +43,9 @@ object NotificationHelper {
     const val EXTRA_CATEGORY_NAME = "category_name"
     const val EXTRA_CATEGORY_COLOR = "category_color"
     const val EXTRA_OPEN_FOCUS = "open_focus"
+    const val EXTRA_COMPONENT_ACTION = "component_action"
+    const val COMPONENT_ACTION_ROUTE = "route"
+    const val COMPONENT_ACTION_LINK = "link"
 
     /**
      * 创建通知渠道（Application 启动时调用）
@@ -99,11 +102,14 @@ object NotificationHelper {
         reminderLabel: String?,
         taskType: TaskType,
         categoryName: String? = null,
-        categoryColor: String? = null
+        categoryColor: String? = null,
+        componentExtras: ReminderComponentExtras? = null
     ) {
         Log.i(TAG, "★ showReminderNotification: $taskTitle")
 
-        val notification = buildReminderNotification(context, taskId, taskTitle, reminderLabel, taskType, categoryName, categoryColor)
+        val notification = buildReminderNotification(
+            context, taskId, taskTitle, reminderLabel, taskType, categoryName, categoryColor, componentExtras
+        )
 
         try {
             NotificationManagerCompat.from(context).notify(taskId.toInt(), notification)
@@ -123,7 +129,8 @@ object NotificationHelper {
         reminderLabel: String?,
         taskType: TaskType,
         categoryName: String?,
-        categoryColor: String?
+        categoryColor: String?,
+        componentExtras: ReminderComponentExtras? = null
     ): Notification {
         val info = parseReminderLabel(reminderLabel)
         val channelId = if (info.isDeadline) CHANNEL_URGENT else CHANNEL_NORMAL
@@ -152,6 +159,7 @@ object NotificationHelper {
             putExtra("is_deadline", info.isDeadline)
             putExtra(EXTRA_CATEGORY_NAME, categoryName)
             putExtra(EXTRA_CATEGORY_COLOR, categoryColor)
+            componentExtras?.putToIntent(this)
         }
         
         val fullScreenPendingIntent = PendingIntent.getActivity(
@@ -160,10 +168,14 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val highlight = componentExtras?.highlightLine?.takeIf { it.isNotBlank() }
+        val contentLine = if (highlight != null) "${info.displayText} · $highlight" else info.displayText
+        val expandedText = if (highlight != null) "${info.displayText}\n$highlight" else info.displayText
+
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(taskTitle)
-            .setContentText(info.displayText)
+            .setContentText(contentLine)
             .setSubText(categoryName ?: getTypeLabel(taskType))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -175,11 +187,93 @@ object NotificationHelper {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText(info.displayText)
+                    .bigText(expandedText)
                     .setBigContentTitle(taskTitle)
             )
 
+        addComponentQuickActions(builder, context, taskId, componentExtras)
+
         return builder.build()
+    }
+
+    private fun addComponentQuickActions(
+        builder: NotificationCompat.Builder,
+        context: Context,
+        taskId: Long,
+        componentExtras: ReminderComponentExtras?
+    ) {
+        if (componentExtras == null || !componentExtras.hasAnyContent) return
+        val baseRequestCode = (taskId.toInt() and 0x03FFFFFF) * 16
+        var actionCount = 0
+
+        if (componentExtras.hasPass) {
+            val code = componentExtras.passCode!!
+            val copyIntent = Intent(context, ReminderQuickActionReceiver::class.java).apply {
+                action = ReminderQuickActionReceiver.ACTION_COPY_TEXT
+                putExtra(ReminderQuickActionReceiver.EXTRA_COPY_LABEL, componentExtras.passTitle ?: "凭证号")
+                putExtra(ReminderQuickActionReceiver.EXTRA_COPY_TEXT, code)
+            }
+            val copyPending = PendingIntent.getBroadcast(
+                context,
+                baseRequestCode + 1,
+                copyIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(0, "复制: $code", copyPending)
+            actionCount++
+        }
+
+        if (componentExtras.hasRoute && actionCount < 2) {
+            val navIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(EXTRA_TASK_ID, taskId)
+                putExtra(EXTRA_FROM_NOTIFICATION, true)
+                putExtra(EXTRA_COMPONENT_ACTION, COMPONENT_ACTION_ROUTE)
+                componentExtras.putToIntent(this)
+            }
+            val navPending = PendingIntent.getActivity(
+                context,
+                baseRequestCode + 2,
+                navIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(0, "导航去目的地", navPending)
+            actionCount++
+        }
+
+        if (componentExtras.hasLink && actionCount < 2) {
+            val linkIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(EXTRA_TASK_ID, taskId)
+                putExtra(EXTRA_FROM_NOTIFICATION, true)
+                putExtra(EXTRA_COMPONENT_ACTION, COMPONENT_ACTION_LINK)
+                componentExtras.putToIntent(this)
+            }
+            val linkPending = PendingIntent.getActivity(
+                context,
+                baseRequestCode + 3,
+                linkIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(0, "打开链接", linkPending)
+            actionCount++
+        }
+
+        val secret = componentExtras.passSecret?.takeIf { it.isNotBlank() }
+        if (secret != null && actionCount < 2) {
+            val copySecretIntent = Intent(context, ReminderQuickActionReceiver::class.java).apply {
+                action = ReminderQuickActionReceiver.ACTION_COPY_TEXT
+                putExtra(ReminderQuickActionReceiver.EXTRA_COPY_LABEL, "密码")
+                putExtra(ReminderQuickActionReceiver.EXTRA_COPY_TEXT, secret)
+            }
+            val secretPending = PendingIntent.getBroadcast(
+                context,
+                baseRequestCode + 4,
+                copySecretIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(0, "复制密码", secretPending)
+        }
     }
 
     /**

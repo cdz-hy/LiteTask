@@ -30,11 +30,26 @@ object WidgetDataProvider {
     suspend fun markTaskDone(context: android.content.Context, taskId: Long): Boolean {
         val identityToken = Binder.clearCallingIdentity()
         return try {
-            val dao = com.litetask.app.data.local.AppDatabase.getInstance(context).taskDao()
+            val db = com.litetask.app.data.local.AppDatabase.getInstance(context)
+            val dao = db.taskDao()
             val task = dao.getTaskById(taskId)
             if (task != null && !task.isDone) {
+                val scheduler = com.litetask.app.reminder.ReminderScheduler(context.applicationContext)
+                val reminders = dao.getRemindersByTaskIdSync(taskId)
+                if (reminders.isNotEmpty()) {
+                    scheduler.cancelRemindersForTask(taskId, reminders.map { it.id })
+                }
                 // 使用新的方法标记完成，自动记录完成时间
                 dao.markTaskCompleted(taskId, System.currentTimeMillis())
+                // 若任务附带周期规则，从小组件勾选完成也自动幂等生成下一期
+                val freshTask = dao.getTaskById(taskId) ?: task
+                com.litetask.app.data.repository.RecurrenceSpawnHelper.spawnNextOccurrenceIfEligible(
+                    taskDao = dao,
+                    taskComponentDao = db.taskComponentDao(),
+                    categoryDao = db.categoryDao(),
+                    reminderScheduler = scheduler,
+                    sourceTask = freshTask
+                )
                 // 记录完成时间到缓存
                 recentlyCompletedTasks[taskId] = System.currentTimeMillis()
                 Log.d(TAG, "Task marked done: $taskId")

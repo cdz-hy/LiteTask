@@ -27,6 +27,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,14 +39,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import com.litetask.app.MainActivity
 import com.litetask.app.R
+import com.litetask.app.data.model.LinkAndPassSupport
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.ui.components.copyToClipboard
+import com.litetask.app.ui.components.openAMapNavigation
+import com.litetask.app.ui.components.openLinkBookmark
 import com.litetask.app.ui.theme.LiteTaskTheme
 import com.litetask.app.ui.theme.LocalExtendedColors
 
@@ -72,7 +83,8 @@ class ReminderActivity : ComponentActivity() {
             taskType: TaskType,
             isDeadline: Boolean,
             categoryName: String? = null,
-            categoryColor: String? = null
+            categoryColor: String? = null,
+            componentExtras: ReminderComponentExtras? = null
         ) {
             val intent = Intent(context, ReminderActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -83,6 +95,7 @@ class ReminderActivity : ComponentActivity() {
                 putExtra(EXTRA_IS_DEADLINE, isDeadline)
                 putExtra(EXTRA_CATEGORY_NAME, categoryName)
                 putExtra(EXTRA_CATEGORY_COLOR, categoryColor)
+                componentExtras?.putToIntent(this)
             }
             context.startActivity(intent)
         }
@@ -98,6 +111,7 @@ class ReminderActivity : ComponentActivity() {
     private var isDeadline: Boolean = false
     private var categoryName: String? = null
     private var categoryColor: String? = null
+    private var componentExtras: ReminderComponentExtras? = null
     
     // 标记用户是否已处理提醒
     private var userHandled = false
@@ -151,6 +165,11 @@ class ReminderActivity : ComponentActivity() {
                         isDeadline = isDeadline,
                         categoryName = categoryName,
                         categoryColor = categoryColor,
+                        componentExtras = componentExtras,
+                        onExternalHandled = {
+                            userHandled = true
+                            finish()
+                        },
                         onDismiss = {
                             userHandled = true
                             finish()
@@ -173,6 +192,8 @@ class ReminderActivity : ComponentActivity() {
         isDeadline: Boolean,
         categoryName: String?,
         categoryColor: String?,
+        componentExtras: ReminderComponentExtras?,
+        onExternalHandled: () -> Unit,
         onDismiss: () -> Unit,
         onAction: () -> Unit
     ) {
@@ -309,7 +330,19 @@ class ReminderActivity : ComponentActivity() {
                     }
                 }
 
-                Spacer(modifier = Modifier.height(40.dp))
+                Spacer(modifier = Modifier.height(20.dp))
+
+                if (componentExtras != null && componentExtras.hasAnyContent) {
+                    ReminderComponentQuickPanel(
+                        extras = componentExtras,
+                        primaryColor = primaryColor,
+                        containerColor = containerColor,
+                        onExternalHandled = onExternalHandled
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                } else {
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
 
                 // 按钮组
                 Row(
@@ -352,6 +385,128 @@ class ReminderActivity : ComponentActivity() {
         }
     }
 
+    @Composable
+    private fun ReminderComponentQuickPanel(
+        extras: ReminderComponentExtras,
+        primaryColor: Color,
+        containerColor: Color,
+        onExternalHandled: () -> Unit
+    ) {
+        val context = LocalContext.current
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = containerColor.copy(alpha = 0.55f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (extras.hasPass) {
+                    val typeLabel = LinkAndPassSupport.AccessPassType.fromCode(extras.passType).label
+                    Text(
+                        text = "${extras.passTitle?.takeIf { it.isNotBlank() } ?: typeLabel}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = extras.passCode.orEmpty(),
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = primaryColor,
+                        textAlign = TextAlign.Center
+                    )
+                } else if (extras.hasRoute) {
+                    Text(
+                        text = "目的地：${extras.routeName}",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else if (extras.hasLink) {
+                    val host = LinkAndPassSupport.extractHostDisplay(extras.linkUrl.orEmpty())
+                    Text(
+                        text = extras.linkTitle?.takeIf { it.isNotBlank() } ?: host,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                ) {
+                    if (extras.hasPass) {
+                        val code = extras.passCode.orEmpty()
+                        FilledTonalButton(
+                            onClick = {
+                                copyToClipboard(context, extras.passTitle ?: "凭证号", code, "已复制：$code")
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("复制号码", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    extras.passSecret?.takeIf { it.isNotBlank() }?.let { secret ->
+                        OutlinedButton(
+                            onClick = {
+                                copyToClipboard(context, "附加密码", secret, "已复制密码：$secret")
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text("复制密码", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    if (extras.hasRoute) {
+                        FilledTonalButton(
+                            onClick = {
+                                extras.toAMapRouteData()?.let { route ->
+                                    openAMapNavigation(context, route)
+                                    onExternalHandled()
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("立即导航", style = MaterialTheme.typography.labelMedium)
+                        }
+                    } else if (extras.hasLink) {
+                        FilledTonalButton(
+                            onClick = {
+                                extras.toLinkBookmarkData()?.let { link ->
+                                    openLinkBookmark(context, link)
+                                    onExternalHandled()
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("打开链接", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private fun setupLockScreenShow() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -381,6 +536,7 @@ class ReminderActivity : ComponentActivity() {
         isDeadline = intent.getBooleanExtra(EXTRA_IS_DEADLINE, false)
         categoryName = intent.getStringExtra(EXTRA_CATEGORY_NAME)
         categoryColor = intent.getStringExtra(EXTRA_CATEGORY_COLOR)
+        componentExtras = ReminderComponentExtras.fromIntent(intent)
     }
 
     private fun startAlertEffects() {
@@ -458,7 +614,8 @@ class ReminderActivity : ComponentActivity() {
                 "$reminderText（未查看）",
                 taskType,
                 categoryName,
-                categoryColor
+                categoryColor,
+                componentExtras
             )
         }
         finish()
