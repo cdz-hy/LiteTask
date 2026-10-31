@@ -132,7 +132,8 @@ object ReminderDisplayStrategy {
         taskType: TaskType,
         isDeadline: Boolean,
         categoryName: String? = null,
-        categoryColor: String? = null
+        categoryColor: String? = null,
+        componentExtras: ReminderComponentExtras? = null
     ) {
         val decision = decideDisplayMethod(context)
         Log.i(TAG, "★ Display decision: ${decision.method} - ${decision.reason}")
@@ -146,7 +147,7 @@ object ReminderDisplayStrategy {
                 // 统一策略：通知 + Activity
                 // 1. 先发送通知（带全屏意图）
                 NotificationHelper.showReminderNotification(
-                    context, taskId, taskTitle, reminderText, taskType, categoryName, categoryColor
+                    context, taskId, taskTitle, reminderText, taskType, categoryName, categoryColor, componentExtras
                 )
                 
                 // 2. 延迟启动 Activity（补充机制）
@@ -154,7 +155,7 @@ object ReminderDisplayStrategy {
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     try {
                         ReminderActivity.start(
-                            context, taskId, taskTitle, reminderText, taskType, isDeadline, categoryName, categoryColor
+                            context, taskId, taskTitle, reminderText, taskType, isDeadline, categoryName, categoryColor, componentExtras
                         )
                         Log.i(TAG, "✓ Activity started")
                     } catch (e: Exception) {

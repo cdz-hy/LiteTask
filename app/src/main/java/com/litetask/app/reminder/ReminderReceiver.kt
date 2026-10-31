@@ -78,9 +78,20 @@ class ReminderReceiver : BroadcastReceiver() {
                 TaskType.WORK 
             }
             val isDeadline = reminderLabel?.contains("截止") == true
+            val componentExtras = loadComponentExtras(context, taskId)
 
             withContext(Dispatchers.Main) {
-                showReminder(context, taskId, taskTitle, reminderLabel ?: "任务提醒", taskType, isDeadline, categoryName, categoryColor)
+                showReminder(
+                    context = context,
+                    taskId = taskId,
+                    taskTitle = taskTitle,
+                    reminderText = reminderLabel ?: "任务提醒",
+                    taskType = taskType,
+                    isDeadline = isDeadline,
+                    categoryName = categoryName,
+                    categoryColor = categoryColor,
+                    componentExtras = componentExtras
+                )
             }
             
             // 更新数据库状态
@@ -120,15 +131,37 @@ class ReminderReceiver : BroadcastReceiver() {
             val isDeadline = label.contains("截止")
             
             val category = taskDetail.category
+            val componentExtras = loadComponentExtras(context, taskId)
             
             withContext(Dispatchers.Main) {
-                showReminder(context, taskId, task.title, label, task.type, isDeadline, category?.name, category?.colorHex)
+                showReminder(
+                    context = context,
+                    taskId = taskId,
+                    taskTitle = task.title,
+                    reminderText = label,
+                    taskType = task.type,
+                    isDeadline = isDeadline,
+                    categoryName = category?.name,
+                    categoryColor = category?.colorHex,
+                    componentExtras = componentExtras
+                )
             }
             
             db.taskDao().updateReminderFired(reminderId, true)
         } catch (e: Exception) {
             Log.e(TAG, "Database query failed: ${e.message}")
         }
+    }
+
+    private suspend fun loadComponentExtras(context: Context, taskId: Long): ReminderComponentExtras? {
+        if (taskId <= 0L) return null
+        return runCatching {
+            val entities = AppDatabase.getInstance(context).taskComponentDao().getComponentsByTaskIdSync(taskId)
+            val components = entities.map { it.toTaskComponent() }
+            ReminderComponentExtras.fromComponents(components)
+        }.onFailure {
+            Log.w(TAG, "Load component extras failed for task=$taskId: ${it.message}")
+        }.getOrNull()
     }
 
     /**
@@ -147,7 +180,8 @@ class ReminderReceiver : BroadcastReceiver() {
         taskType: TaskType,
         isDeadline: Boolean,
         categoryName: String? = null,
-        categoryColor: String? = null
+        categoryColor: String? = null,
+        componentExtras: ReminderComponentExtras? = null
     ) {
         Log.i(TAG, "★ showReminder: $taskTitle")
         
@@ -160,7 +194,8 @@ class ReminderReceiver : BroadcastReceiver() {
             taskType = taskType,
             isDeadline = isDeadline,
             categoryName = categoryName,
-            categoryColor = categoryColor
+            categoryColor = categoryColor,
+            componentExtras = componentExtras
         )
     }
 }
