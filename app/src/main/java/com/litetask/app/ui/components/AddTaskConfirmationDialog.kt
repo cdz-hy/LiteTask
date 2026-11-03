@@ -86,8 +86,11 @@ fun TaskConfirmationSheet(
     onGeocode: (suspend (String) -> com.litetask.app.data.model.AMapRouteData?)? = null,
     onSearchLocations: (suspend (String) -> List<com.litetask.app.data.model.AMapRouteData>)? = null,
     onGetWeather: (suspend (String) -> Pair<String, String>?)? = null,
+    amapRouteActions: AMapRouteActions? = null,
     availableCategories: List<Category> = emptyList(),
-    initialComponents: Map<Int, List<com.litetask.app.data.model.TaskComponent>> = emptyMap()
+    initialComponents: Map<Int, List<com.litetask.app.data.model.TaskComponent>> = emptyMap(),
+    routeCandidates: Map<Int, List<com.litetask.app.data.model.AMapRouteData>> = emptyMap(),
+    onSelectRouteCandidate: ((Int, com.litetask.app.data.model.AMapRouteData) -> Unit)? = null
 ) {
     val extendedColors = LocalExtendedColors.current
     val configuration = LocalConfiguration.current
@@ -256,6 +259,18 @@ fun TaskConfirmationSheet(
                                     SwipeableTaskCard(
                                         task = task,
                                         components = taskComponents[index] ?: emptyList(),
+                                        routeCandidates = routeCandidates[index].orEmpty(),
+                                        onSelectRouteCandidate = { candidate ->
+                                            val updatedList = (taskComponents[index] ?: emptyList()).map { comp ->
+                                                if (comp is com.litetask.app.data.model.TaskComponent.AMapComponent) {
+                                                    comp.copy(data = candidate)
+                                                } else comp
+                                            }
+                                            taskComponents = taskComponents.toMutableMap().apply {
+                                                put(index, updatedList)
+                                            }
+                                            onSelectRouteCandidate?.invoke(index, candidate)
+                                        },
                                         availableCategories = availableCategories,
                                         onEdit = {
                                             editingTaskIndex = index
@@ -349,7 +364,8 @@ fun TaskConfirmationSheet(
             amapKey = amapKey,
             onGeocode = onGeocode,
             onSearchLocations = onSearchLocations,
-            onGetWeather = onGetWeather
+            onGetWeather = onGetWeather,
+            amapRouteActions = amapRouteActions
         )
     }
 }
@@ -492,6 +508,8 @@ private fun OriginalVoiceCard(voiceText: String) {
 private fun SwipeableTaskCard(
     task: Task,
     components: List<com.litetask.app.data.model.TaskComponent> = emptyList(),
+    routeCandidates: List<com.litetask.app.data.model.AMapRouteData> = emptyList(),
+    onSelectRouteCandidate: ((com.litetask.app.data.model.AMapRouteData) -> Unit)? = null,
     availableCategories: List<Category> = emptyList(),
     onEdit: () -> Unit,
     onDelete: () -> Unit
@@ -554,8 +572,10 @@ private fun SwipeableTaskCard(
                 )
         ) {
             AITaskCard(
-                task = task, 
+                task = task,
                 components = components,
+                routeCandidates = routeCandidates,
+                onSelectRouteCandidate = onSelectRouteCandidate,
                 availableCategories = availableCategories
             )
         }
@@ -580,6 +600,8 @@ private fun SwipeActionIcon(icon: ImageVector, color: Color, onClick: () -> Unit
 private fun AITaskCard(
     task: Task,
     components: List<com.litetask.app.data.model.TaskComponent> = emptyList(),
+    routeCandidates: List<com.litetask.app.data.model.AMapRouteData> = emptyList(),
+    onSelectRouteCandidate: ((com.litetask.app.data.model.AMapRouteData) -> Unit)? = null,
     availableCategories: List<Category> = emptyList()
 ) {
     val category = availableCategories.find { it.id == task.categoryId }
@@ -774,41 +796,79 @@ private fun AITaskCard(
 //                    }
 //                }
 
-                // Task Components Tags (Newly added)
+                // Task Components Tags
                 if (components.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        components.forEach { component ->
-                            val (icon, label) = when (component.type) {
-                                com.litetask.app.data.model.ComponentType.AMAP_ROUTE -> Icons.Default.Place to "Route" // Or "Map"
-                                com.litetask.app.data.model.ComponentType.FILE_ATTACHMENT -> Icons.Default.AttachFile to "File"
-                            }
+                    TaskComponentPreviewChipsRow(
+                        components = components,
+                        interactive = false,
+                        maxVisible = Int.MAX_VALUE,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                // AI 识别多候选地点切换栏
+                if (routeCandidates.size > 1 && onSelectRouteCandidate != null) {
+                    var showCandidateMenu by remember { mutableStateOf(false) }
+                    val currentRoute = components
+                        .filterIsInstance<com.litetask.app.data.model.TaskComponent.AMapComponent>()
+                        .firstOrNull()?.data
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box {
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showCandidateMenu = true }
+                        ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .background(
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                        shape = RoundedCornerShape(6.dp)
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Icon(
-                                    imageVector = icon,
-                                    contentDescription = label,
-                                    tint = extendedColors.textSecondary.copy(alpha = 0.8f),
+                                    imageVector = Icons.Default.SwapHoriz,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = label, // 使用简单的标签名，或者根据 component.data 解析更详细的名字
+                                    text = "共 ${routeCandidates.size} 个候选地点 · 点击切换",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = extendedColors.textSecondary.copy(alpha = 0.9f),
-                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                                     fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = showCandidateMenu,
+                            onDismissRequest = { showCandidateMenu = false }
+                        ) {
+                            routeCandidates.forEach { candidate ->
+                                val isSelected = currentRoute?.endName == candidate.endName &&
+                                    currentRoute.endLat == candidate.endLat &&
+                                    currentRoute.endLng == candidate.endLng
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(
+                                                text = if (isSelected) "✓ ${candidate.endName}" else candidate.endName,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                            )
+                                            if (!candidate.endAddress.isNullOrBlank()) {
+                                                Text(
+                                                    text = candidate.endAddress,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        showCandidateMenu = false
+                                        onSelectRouteCandidate(candidate)
+                                    }
                                 )
                             }
                         }

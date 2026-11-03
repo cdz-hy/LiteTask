@@ -48,6 +48,8 @@ import java.util.Date
 @Composable
 fun AddTaskDialog(
     initialTask: Task? = null,
+    initialTitle: String? = null,
+    initialDescription: String? = null,
     initialReminders: List<Reminder> = emptyList(),
     initialReminderConfigs: List<ReminderConfig>? = null,
     initialComponents: List<com.litetask.app.data.model.TaskComponent> = emptyList(),
@@ -59,11 +61,14 @@ fun AddTaskDialog(
     amapKey: String? = null,
     onGeocode: (suspend (String) -> com.litetask.app.data.model.AMapRouteData?)? = null,
     onSearchLocations: (suspend (String) -> List<com.litetask.app.data.model.AMapRouteData>)? = null,
-    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null
+    onGetWeather: (suspend (String) -> Pair<String, String>?)? = null,
+    amapRouteActions: AMapRouteActions? = null,
+    voiceNoteActions: VoiceNoteActions? = null
 ) {
     val extendedColors = LocalExtendedColors.current
-    var title by remember { mutableStateOf(initialTask?.title ?: "") }
-    var description by remember { mutableStateOf(initialTask?.description ?: "") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var title by remember { mutableStateOf(initialTask?.title ?: initialTitle.orEmpty()) }
+    var description by remember { mutableStateOf(initialTask?.description ?: initialDescription.orEmpty()) }
     
     // 初始化选中的分类ID
     var selectedCategoryId by remember { 
@@ -78,6 +83,9 @@ fun AddTaskDialog(
     
     // 组件状态
     var components by remember { mutableStateOf(initialComponents) }
+    DisposableEffect(Unit) {
+        onDispose { com.litetask.app.util.VoiceNotePlayerManager.stop() }
+    }
 
     // 时间初始化
     val initialStart = initialTask?.startTime ?: System.currentTimeMillis()
@@ -389,29 +397,132 @@ fun AddTaskDialog(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // 组件列表区域 (显示在折叠选项之前，方便查看)
+                    // 任务组件区域（始终展示，方便直接添加和查看路线/附件等扩展能力）
+                    Text(
+                        text = "任务组件",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = extendedColors.textPrimary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
                     if (components.isNotEmpty()) {
-                        Text(
-                            text = "任务组件",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = extendedColors.textPrimary,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                        TaskComponentList(
+                            components = components,
+                            onRemove = { component ->
+                                if (component is com.litetask.app.data.model.TaskComponent.FileComponent && component.id < 0L) {
+                                    com.litetask.app.util.AttachmentStorageHelper.deleteManagedFileIfOwned(context, component.data)
+                                } else if (component is com.litetask.app.data.model.TaskComponent.VoiceNoteComponent && component.id < 0L) {
+                                    com.litetask.app.util.AttachmentStorageHelper.deleteManagedVoiceNoteIfOwned(context, component.data)
+                                }
+                                components = components.filter { it != component }
+                            },
+                            amapKey = amapKey,
+                            onGetWeather = onGetWeather,
+                            amapRouteActions = amapRouteActions,
+                            taskId = initialTask?.id ?: 0L,
+                            taskStartTimeMillis = startTimeMillis,
+                            taskDeadlineMillis = deadlineMillis,
+                            onUpdateAMapComponent = { targetComp, updatedData ->
+                                components = components.map { current ->
+                                    if (current == targetComp) targetComp.copy(data = updatedData) else current
+                                }
+                            },
+                            onUpdateFileComponent = { targetComp, updatedData ->
+                                components = components.map { current ->
+                                    if (current == targetComp) targetComp.copy(data = updatedData) else current
+                                }
+                            },
+                            onUpdateLinkComponent = { targetComp, updatedData ->
+                                components = components.map { current ->
+                                    if (current == targetComp) targetComp.copy(data = updatedData) else current
+                                }
+                            },
+                            onUpdateAccessPassComponent = { targetComp, updatedData ->
+                                components = components.map { current ->
+                                    if (current == targetComp) targetComp.copy(data = updatedData) else current
+                                }
+                            },
+                            onUpdateRecurrenceComponent = { targetComp, updatedData ->
+                                components = components.map { current ->
+                                    if (current == targetComp) targetComp.copy(data = updatedData) else current
+                                }
+                            },
+                            onUpdateVoiceNoteComponent = { targetComp, updatedData ->
+                                components = components.map { current ->
+                                    if (current == targetComp) targetComp.copy(data = updatedData) else current
+                                }
+                            },
+                            voiceNoteActions = voiceNoteActions
                         )
-                        
-                            
-                        // 显示已添加的组件
-                            TaskComponentList(
-                                components = components,
-                                onRemove = { component ->
-                                    components = components.filter { it != component }
-                                },
-                                amapKey = amapKey,
-                                onGetWeather = onGetWeather
-                            )
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                     }
+
+                    val currentRecurrence = components
+                        .filterIsInstance<com.litetask.app.data.model.TaskComponent.RecurrenceComponent>()
+                        .firstOrNull()?.data
+
+                    TaskComponentAddBar(
+                        onAddAMap = { data ->
+                            val component = com.litetask.app.data.model.TaskComponent.AMapComponent(
+                                id = com.litetask.app.data.model.TempComponentIdGenerator.nextId(),
+                                taskId = initialTask?.id ?: 0,
+                                data = data
+                            )
+                            components = components + component
+                        },
+                        onAddFile = { data ->
+                            val component = com.litetask.app.data.model.TaskComponent.FileComponent(
+                                id = com.litetask.app.data.model.TempComponentIdGenerator.nextId(),
+                                taskId = initialTask?.id ?: 0,
+                                data = data
+                            )
+                            components = components + component
+                        },
+                        onAddLink = { data ->
+                            val component = com.litetask.app.data.model.TaskComponent.LinkComponent(
+                                id = com.litetask.app.data.model.TempComponentIdGenerator.nextId(),
+                                taskId = initialTask?.id ?: 0,
+                                data = data
+                            )
+                            components = components + component
+                        },
+                        onAddAccessPass = { data ->
+                            val component = com.litetask.app.data.model.TaskComponent.AccessPassComponent(
+                                id = com.litetask.app.data.model.TempComponentIdGenerator.nextId(),
+                                taskId = initialTask?.id ?: 0,
+                                data = data
+                            )
+                            components = components + component
+                        },
+                        onAddRecurrence = { data ->
+                            val component = com.litetask.app.data.model.TaskComponent.RecurrenceComponent(
+                                id = com.litetask.app.data.model.TempComponentIdGenerator.nextId(),
+                                taskId = initialTask?.id ?: 0,
+                                data = data
+                            )
+                            components = components.filterNot {
+                                it is com.litetask.app.data.model.TaskComponent.RecurrenceComponent
+                            } + component
+                        },
+                        onAddVoiceNote = { data ->
+                            val component = com.litetask.app.data.model.TaskComponent.VoiceNoteComponent(
+                                id = com.litetask.app.data.model.TempComponentIdGenerator.nextId(),
+                                taskId = initialTask?.id ?: 0,
+                                data = data
+                            )
+                            components = components + component
+                        },
+                        existingRecurrenceRule = currentRecurrence,
+                        anchorStartTimeMs = startTimeMillis,
+                        anchorDeadlineMs = deadlineMillis,
+                        amapKey = amapKey,
+                        onGeocode = onGeocode,
+                        onSearchLocations = onSearchLocations,
+                        amapRouteActions = amapRouteActions
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // Advanced Options Toggle
                     TextButton(
@@ -434,40 +545,6 @@ fun AddTaskDialog(
                     ) {
                         Column {
                             Spacer(modifier = Modifier.height(8.dp))
-                            
-                            // 组件添加栏
-                            Text(
-                                text = "添加扩展组件",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = extendedColors.textPrimary,
-                                modifier = Modifier.padding(bottom = 12.dp)
-                            )
-                            TaskComponentAddBar(
-                                onAddAMap = { data ->
-                                    val newId = -(System.currentTimeMillis()) // 临时 ID，负数表示未保存
-                                    val component = com.litetask.app.data.model.TaskComponent.AMapComponent(
-                                        id = newId,
-                                        taskId = initialTask?.id ?: 0,
-                                        data = data
-                                    )
-                                    components = components + component
-                                },
-                                onAddFile = { data ->
-                                    val newId = -(System.currentTimeMillis())
-                                    val component = com.litetask.app.data.model.TaskComponent.FileComponent(
-                                        id = newId,
-                                        taskId = initialTask?.id ?: 0,
-                                        data = data
-                                    )
-                                    components = components + component
-                                },
-                                amapKey = amapKey,
-                                onGeocode = onGeocode,
-                                onSearchLocations = onSearchLocations
-                            )
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
                             
                             // 提醒设置
                             ReminderSelector(
