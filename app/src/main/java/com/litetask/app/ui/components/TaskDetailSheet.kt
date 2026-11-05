@@ -151,12 +151,21 @@ fun TaskDetailSheet(
     onDeleteSubTask: (SubTask) -> Unit,
     onGenerateSubTasksWithContext: (Task) -> Unit = {},
     isGeneratingSubTasks: Boolean = false,
+    onAddComponent: ((com.litetask.app.data.model.TaskComponent) -> Unit)? = null,
+    onUpdateComponent: ((com.litetask.app.data.model.TaskComponent) -> Unit)? = null,
     onDeleteComponent: (com.litetask.app.data.model.TaskComponent) -> Unit = {},
     amapKey: String? = null,
     onGetWeather: (suspend (String) -> Pair<String, String>?)? = null,
+    onGeocode: (suspend (String) -> com.litetask.app.data.model.AMapRouteData?)? = null,
+    onSearchLocations: (suspend (String) -> List<com.litetask.app.data.model.AMapRouteData>)? = null,
+    amapRouteActions: AMapRouteActions? = null,
+    voiceNoteActions: VoiceNoteActions? = null,
     onStartFocus: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    DisposableEffect(task.id) {
+        onDispose { com.litetask.app.util.VoiceNotePlayerManager.stop() }
+    }
     val extendedColors = LocalExtendedColors.current
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
@@ -608,14 +617,120 @@ fun TaskDetailSheet(
                             }
 
                             // 3.5 Components
-                            if (components.isNotEmpty()) {
+                            if (components.isNotEmpty() || onAddComponent != null) {
                                 Spacer(modifier = Modifier.height(16.dp))
-                                com.litetask.app.ui.components.TaskComponentList(
-                                    components = components,
-                                    onRemove = { onDeleteComponent(it) },
-                                    amapKey = amapKey,
-                                    onGetWeather = onGetWeather
+                                Text(
+                                    text = "扩展组件",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
+                                if (components.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    TaskComponentList(
+                                        components = components,
+                                        onRemove = { onDeleteComponent(it) },
+                                        amapKey = amapKey,
+                                        onGetWeather = onGetWeather,
+                                        amapRouteActions = amapRouteActions,
+                                        taskId = task.id,
+                                        taskStartTimeMillis = task.startTime,
+                                        taskDeadlineMillis = task.deadline,
+                                        onUpdateAMapComponent = onUpdateComponent?.let { updateFn ->
+                                            { comp, updatedData -> updateFn(comp.copy(data = updatedData)) }
+                                        },
+                                        onUpdateFileComponent = onUpdateComponent?.let { updateFn ->
+                                            { comp, updatedData -> updateFn(comp.copy(data = updatedData)) }
+                                        },
+                                        onUpdateLinkComponent = onUpdateComponent?.let { updateFn ->
+                                            { comp, updatedData -> updateFn(comp.copy(data = updatedData)) }
+                                        },
+                                        onUpdateAccessPassComponent = onUpdateComponent?.let { updateFn ->
+                                            { comp, updatedData -> updateFn(comp.copy(data = updatedData)) }
+                                        },
+                                        onUpdateRecurrenceComponent = onUpdateComponent?.let { updateFn ->
+                                            { comp, updatedData -> updateFn(comp.copy(data = updatedData)) }
+                                        },
+                                        onUpdateVoiceNoteComponent = onUpdateComponent?.let { updateFn ->
+                                            { comp, updatedData -> updateFn(comp.copy(data = updatedData)) }
+                                        },
+                                        voiceNoteActions = voiceNoteActions
+                                    )
+                                }
+                                if (onAddComponent != null) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    val existingRecurrenceComp = components
+                                        .filterIsInstance<com.litetask.app.data.model.TaskComponent.RecurrenceComponent>()
+                                        .firstOrNull()
+                                    TaskComponentAddBar(
+                                        onAddAMap = { data ->
+                                            onAddComponent(
+                                                com.litetask.app.data.model.TaskComponent.AMapComponent(
+                                                    id = 0L,
+                                                    taskId = task.id,
+                                                    data = data
+                                                )
+                                            )
+                                        },
+                                        onAddFile = { data ->
+                                            onAddComponent(
+                                                com.litetask.app.data.model.TaskComponent.FileComponent(
+                                                    id = 0L,
+                                                    taskId = task.id,
+                                                    data = data
+                                                )
+                                            )
+                                        },
+                                        onAddLink = { data ->
+                                            onAddComponent(
+                                                com.litetask.app.data.model.TaskComponent.LinkComponent(
+                                                    id = 0L,
+                                                    taskId = task.id,
+                                                    data = data
+                                                )
+                                            )
+                                        },
+                                        onAddAccessPass = { data ->
+                                            onAddComponent(
+                                                com.litetask.app.data.model.TaskComponent.AccessPassComponent(
+                                                    id = 0L,
+                                                    taskId = task.id,
+                                                    data = data
+                                                )
+                                            )
+                                        },
+                                        onAddRecurrence = { data ->
+                                            if (existingRecurrenceComp != null && onUpdateComponent != null) {
+                                                onUpdateComponent(existingRecurrenceComp.copy(data = data))
+                                            } else {
+                                                onAddComponent(
+                                                    com.litetask.app.data.model.TaskComponent.RecurrenceComponent(
+                                                        id = 0L,
+                                                        taskId = task.id,
+                                                        data = data
+                                                    )
+                                                )
+                                            }
+                                        },
+                                        onAddVoiceNote = { data ->
+                                            onAddComponent(
+                                                com.litetask.app.data.model.TaskComponent.VoiceNoteComponent(
+                                                    id = 0L,
+                                                    taskId = task.id,
+                                                    data = data
+                                                )
+                                            )
+                                        },
+                                        existingRecurrenceRule = existingRecurrenceComp?.data,
+                                        anchorStartTimeMs = task.startTime,
+                                        anchorDeadlineMs = task.deadline,
+                                        amapKey = amapKey,
+                                        onGeocode = onGeocode,
+                                        onSearchLocations = onSearchLocations,
+                                        amapRouteActions = amapRouteActions,
+                                        compact = true
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(24.dp))

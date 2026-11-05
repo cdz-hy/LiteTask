@@ -39,6 +39,7 @@ import com.litetask.app.data.model.Category
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
+import com.litetask.app.data.model.toTaskComponentsSafe
 import com.litetask.app.ui.search.SearchViewModel
 import com.litetask.app.ui.theme.LiteTaskColors
 import com.litetask.app.ui.theme.LocalExtendedColors
@@ -525,6 +526,18 @@ fun DeadlineTaskItem(
                                 fontWeight = if (isUrgent || isOverdue) FontWeight.Bold else FontWeight.Normal,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        val decodedComponents = composite.components.toTaskComponentsSafe()
+                        if (decodedComponents.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            TaskComponentPreviewChipsRow(
+                                components = decodedComponents,
+                                isExpired = isOverdue,
+                                maxVisible = 2,
+                                interactive = true,
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
                     }

@@ -43,6 +43,7 @@ import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
 import com.litetask.app.data.model.TaskType
 import com.litetask.app.data.model.sortedByOrder
+import com.litetask.app.data.model.toTaskComponentsSafe
 import com.litetask.app.ui.home.TimelineItem
 import com.litetask.app.ui.theme.LocalExtendedColors
 import com.litetask.app.ui.util.ColorUtils
@@ -445,24 +446,25 @@ fun HtmlStyleTaskCard(
         border = borderStroke, // 边框逻辑由于涉及 null 比较，暂时保持原样或稍后优化
         modifier = Modifier.fillMaxWidth()
     ) {
-        Box {
-            Row(modifier = Modifier.height(IntrinsicSize.Min)) {
-
-                // 左侧色条
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // 左侧色条（使用 matchParentSize 跟随真实布局高度，避免 IntrinsicSize.Min 误判 FlowRow 多行换行高度导致底部组件被截断）
+            Box(modifier = Modifier.matchParentSize()) {
                 Box(
                     modifier = Modifier
+                        .align(Alignment.CenterStart)
                         .width(8.dp)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
                         .background(animatedPrimaryColor.copy(alpha = if (isDone) 0.3f else if (isExpired) 0.4f else 0.8f))
                 )
+            }
 
-                // 右侧内容
-                Column(
-                    modifier = Modifier
-                        .padding(start = 14.dp, end = 16.dp, top = 16.dp, bottom = 16.dp)
-                        .weight(1f)
-                ) {
+            // 右侧内容（自然高度撑开卡片）
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 22.dp, end = 16.dp, top = 16.dp, bottom = 16.dp)
+            ) {
                     // 标题行
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -633,47 +635,16 @@ fun HtmlStyleTaskCard(
                     }
 
                     // Task Components Tags
-                    if (composite.components.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        @OptIn(ExperimentalLayoutApi::class)
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            composite.components.forEach { component ->
-                                val (icon, label) = when (component.type) {
-                                    ComponentType.AMAP_ROUTE -> Icons.Default.Place to "路线"
-                                    ComponentType.FILE_ATTACHMENT -> Icons.Default.AttachFile to "附件"
-                                }
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .background(
-                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(
-                                                alpha = if (isExpired) 0.3f else 0.5f
-                                            ),
-                                            shape = RoundedCornerShape(6.dp)
-                                        )
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = icon,
-                                        contentDescription = label,
-                                        tint = extendedColors.textSecondary.copy(alpha = 0.8f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = label,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = extendedColors.textSecondary.copy(alpha = 0.9f),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
+                    val decodedComponents = composite.components.toTaskComponentsSafe()
+                    if (decodedComponents.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        TaskComponentPreviewChipsRow(
+                            components = decodedComponents,
+                            isExpired = isExpired,
+                            maxVisible = 3,
+                            interactive = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
 
 
@@ -718,16 +689,14 @@ fun HtmlStyleTaskCard(
                             }
                         }
                     }
-                }
-            }
-            
-            // 状态遮罩
+
+            // 状态遮罩（与卡片内容同处 Box 内并使用 matchParentSize，避免撑歪尺寸或错位）
             when {
                 // 过期置顶任务遮罩
                 isExpired && !isDone && isPinned -> {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .matchParentSize()
                             .background(
                                 primaryColor.copy(alpha = 0.08f),
                                 RoundedCornerShape(24.dp)
@@ -738,13 +707,14 @@ fun HtmlStyleTaskCard(
                 isExpired && !isDone -> {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .matchParentSize()
                             .background(
                                 Color.Gray.copy(alpha = 0.2f),
                                 RoundedCornerShape(24.dp)
                             )
                     )
                 }
+            }
         }
     }
 }
@@ -805,50 +775,55 @@ fun SwipeRevealItem(
                 }
             }
 
-            Row(
-                modifier = Modifier
-                    .width(actionWidth)
-                    .fillMaxHeight()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier.matchParentSize(),
+                contentAlignment = Alignment.CenterEnd
             ) {
-                // 置顶按钮
-                if (canPinTask) {
+                Row(
+                    modifier = Modifier
+                        .width(actionWidth)
+                        .fillMaxHeight()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 置顶按钮
+                    if (canPinTask) {
+                        ActionIcon(
+                            icon = if (task.isPinned) Icons.Outlined.PushPin else Icons.Default.PushPin,
+                            color = extendedColors.deadlineSoon,
+                            onClick = { scope.launch { offsetX.animateTo(0f); onPin() } }
+                        )
+                    }
+                    
+                    // 编辑按钮
                     ActionIcon(
-                        icon = if (task.isPinned) Icons.Outlined.PushPin else Icons.Default.PushPin,
-                        color = extendedColors.deadlineSoon,
-                        onClick = { scope.launch { offsetX.animateTo(0f); onPin() } }
+                        icon = Icons.Default.Edit,
+                        color = MaterialTheme.colorScheme.primary,
+                        onClick = { scope.launch { offsetX.animateTo(0f); onEdit() } }
+                    )
+                    
+                    // 删除按钮
+                    ActionIcon(
+                        icon = if (isDeleteConfirming) Icons.Default.DeleteForever else Icons.Default.Delete,
+                        color = if (isDeleteConfirming) Color.White else extendedColors.deadlineUrgent,
+                        containerColor = if (isDeleteConfirming) extendedColors.deadlineUrgent else extendedColors.deadlineUrgent.copy(alpha = 0.1f),
+                        onClick = { 
+                            if (isDeleteConfirming) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                scope.launch { 
+                                    offsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMedium))
+                                    isDismissed = true
+                                    delay(animationDuration.toLong())
+                                    onDelete() 
+                                }
+                            } else {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isDeleteConfirming = true
+                            }
+                        }
                     )
                 }
-                
-                // 编辑按钮
-                ActionIcon(
-                    icon = Icons.Default.Edit,
-                    color = MaterialTheme.colorScheme.primary,
-                    onClick = { scope.launch { offsetX.animateTo(0f); onEdit() } }
-                )
-                
-                // 删除按钮
-                ActionIcon(
-                    icon = if (isDeleteConfirming) Icons.Default.DeleteForever else Icons.Default.Delete,
-                    color = if (isDeleteConfirming) Color.White else extendedColors.deadlineUrgent,
-                    containerColor = if (isDeleteConfirming) extendedColors.deadlineUrgent else extendedColors.deadlineUrgent.copy(alpha = 0.1f),
-                    onClick = { 
-                        if (isDeleteConfirming) {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            scope.launch { 
-                                offsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMedium))
-                                isDismissed = true
-                                delay(animationDuration.toLong())
-                                onDelete() 
-                            }
-                        } else {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            isDeleteConfirming = true
-                        }
-                    }
-                )
             }
         }
 
