@@ -41,11 +41,8 @@ class DataBackupViewModel @Inject constructor(
     suspend fun exportData(outputStream: OutputStream) {
         _uiState.value = BackupUiState.Loading
         try {
-            val json = backupRepository.createBackupJson()
-            outputStream.use { 
-                it.write(json.toByteArray()) 
-            }
-            _uiState.value = BackupUiState.Success("数据导出成功")
+            backupRepository.exportBackupArchive(outputStream)
+            _uiState.value = BackupUiState.Success("完整备份导出成功（.zip，含本地托管附件）")
         } catch (e: Exception) {
             _uiState.value = BackupUiState.Error(e.message ?: "导出失败")
         }
@@ -54,8 +51,7 @@ class DataBackupViewModel @Inject constructor(
     suspend fun importData(inputStream: InputStream) {
         _uiState.value = BackupUiState.Importing
         try {
-            val json = inputStream.bufferedReader().use { it.readText() }
-            val result = backupRepository.restoreBackup(json)
+            val result = backupRepository.restoreBackupAuto(inputStream)
             when (result) {
                 is RestoreResult.Success -> {
                     _uiState.value = BackupUiState.Success("成功导入 ${result.importedCount} 条数据，跳过 ${result.skippedCount} 条重复数据")

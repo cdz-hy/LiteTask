@@ -35,9 +35,19 @@ fun AgentThinkingOverlay(
     visible: Boolean,
     status: String,
     logs: List<String>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    subtitle: String? = null
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "ThinkingPulse")
+    val shimmerAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.65f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(900),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "SkeletonShimmer"
+    )
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.95f,
         targetValue = 1.05f,
@@ -119,6 +129,17 @@ fun AgentThinkingOverlay(
                     modifier = Modifier.padding(horizontal = 8.dp)
                 )
 
+                if (!subtitle.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // 3. 思维日志流
@@ -140,6 +161,28 @@ fun AgentThinkingOverlay(
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
+                    if (logs.isEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(0.92f, 0.76f, 0.84f, 0.60f).forEach { fraction ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(fraction)
+                                        .height(11.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                alpha = shimmerAlpha * 0.45f
+                                            )
+                                        )
+                                )
+                            }
+                        }
+                    }
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxWidth(),

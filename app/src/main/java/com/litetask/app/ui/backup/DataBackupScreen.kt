@@ -57,9 +57,9 @@ fun DataBackupScreen(
 
     val runWithCalendarPermission = rememberCalendarPermissionRequester(viewModel.calendarSyncStore)
     
-    // 导出文件选择器
+    // 导出文件选择器（.zip 完整包，包含数据库与本地受管附件）
     val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
+        contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
         if (uri != null) {
             scope.launch {
@@ -190,12 +190,12 @@ fun DataBackupScreen(
 
             item {
                 BackupActionCard(
-                    title = "导出完整数据备份",
-                    description = "把全部任务、分类、专注统计、常去地点、个人画像、AI 解析历史与日程建议打包成一份本地备份文件（.json），方便换机或防丢失。",
+                    title = "导出完整数据备份 (.zip)",
+                    description = "把全部任务、受管文件附件、分类、专注统计、常去地点、个人画像、AI 历史与日程建议打包为本地压缩包（.zip），换机也不丢失附件。",
                     icon = Icons.Default.CloudUpload,
                     onClick = {
                         val timestamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())
-                        exportLauncher.launch("LiteTask_Backup_$timestamp.json")
+                        exportLauncher.launch("LiteTask_Backup_$timestamp.zip")
                     }
                 )
             }
@@ -203,10 +203,10 @@ fun DataBackupScreen(
             item {
                 BackupActionCard(
                     title = "从备份文件恢复",
-                    description = "选择之前导出的 LiteTask 备份文件恢复数据，已有任务和常去地点会自动合并去重。",
+                    description = "支持新版 .zip 完整备份包（自动还原附件文件）与旧版 .json 备份文件，已有任务和常去地点会自动合并去重。",
                     icon = Icons.Default.CloudDownload,
                     onClick = {
-                        importLauncher.launch(arrayOf("application/json"))
+                        importLauncher.launch(arrayOf("application/zip", "application/json", "application/octet-stream", "*/*"))
                     }
                 )
             }
