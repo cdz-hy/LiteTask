@@ -59,6 +59,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.litetask.app.R
 import com.litetask.app.data.model.Task
 import com.litetask.app.data.model.TaskDetailComposite
+import com.litetask.app.data.model.toTaskComponentsSafe
 import com.litetask.app.reminder.PermissionHelper
 import com.litetask.app.ui.components.AddTaskDialog
 import com.litetask.app.ui.components.DeadlineView
@@ -76,6 +77,32 @@ import com.litetask.app.ui.theme.Primary
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+/**
+ * 统一的 高德路线增强动作装配器，供 HomeScreen 与 SearchScreenWrapper 共享，避免重复传递回调。
+ */
+@Composable
+fun rememberAMapRouteActions(viewModel: HomeViewModel): com.litetask.app.ui.components.AMapRouteActions {
+    val frequentLocations by viewModel.frequentLocations.collectAsState()
+    return remember(frequentLocations, viewModel) {
+        com.litetask.app.ui.components.AMapRouteActions(
+            frequentLocations = frequentLocations,
+            onSearchLocations = { keyword, biasLocation, city ->
+                viewModel.searchLocationsWithBias(keyword, biasLocation, city)
+            },
+            onGeocode = { address -> viewModel.geocodeLocation(address) },
+            onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) },
+            onGetWeatherForecast = { adcode -> viewModel.getWeatherForecastForAdcode(adcode) },
+            onCalculateRoute = { oLat, oLng, dLat, dLng, mode, strategy ->
+                viewModel.calculateRoute(oLat, oLng, dLat, dLng, mode, strategy)
+            },
+            onResolveCurrentLocation = { viewModel.resolveCurrentOriginOption() },
+            onCreateDepartureReminder = { taskId, triggerAt, label ->
+                viewModel.addDepartureReminder(taskId, triggerAt, label)
+            }
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,12 +129,15 @@ fun HomeScreen(
     onViewHandled: () -> Unit = {},
     openFocusTrigger: Boolean = false,
     onFocusTriggerHandled: () -> Unit = {},
+    initialSharePayload: com.litetask.app.util.IncomingSharePayload? = null,
+    onShareHandled: () -> Unit = {},
     initialAiPrompt: String? = null,
     onAiPromptHandled: () -> Unit = {}
 ) {
     // ViewModel 数据流
     val todayTasks by viewModel.tasks.collectAsState()
     val amapKey by viewModel.amapKey.collectAsState() // Collect AMap Key
+    val amapRouteActions = rememberAMapRouteActions(viewModel)
     val timelineItems by viewModel.timelineItems.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val focusTimerState by viewModel.focusTimerState.collectAsState()
@@ -198,10 +228,22 @@ fun HomeScreen(
     }
 
     var showAddTaskDialog by remember { mutableStateOf(false) }
+    var prefilledAddTitle by remember { mutableStateOf<String?>(null) }
+    var prefilledAddDescription by remember { mutableStateOf<String?>(null) }
+    var prefilledAddComponents by remember { mutableStateOf<List<com.litetask.app.data.model.TaskComponent>>(emptyList()) }
+    var activeSharePayload by remember { mutableStateOf<com.litetask.app.util.IncomingSharePayload?>(null) }
+    var isImportingShare by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showTextInputDialog by remember { mutableStateOf(false) }
     var initialTextForDialog by remember { mutableStateOf("") }
     var selectedTask by remember { mutableStateOf<Task?>(null) }
+
+    LaunchedEffect(initialSharePayload) {
+        if (initialSharePayload != null && !initialSharePayload.isEmpty) {
+            activeSharePayload = initialSharePayload
+            onShareHandled()
+        }
+    }
 
     LaunchedEffect(initialAiPrompt) {
         if (!initialAiPrompt.isNullOrBlank()) {
@@ -770,21 +812,57 @@ fun HomeScreen(
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     shape = CircleShape
                 )
+
+                com.litetask.app.ui.components.RecurrenceSpawnFloatingBanner(
+                    spawn = uiState.recentRecurrenceSpawn,
+                    onViewNext = { nextTaskId ->
+                        selectedTaskId = nextTaskId
+                        viewModel.dismissRecurrenceSpawnBanner()
+                    },
+                    onUndo = { viewModel.undoRecentRecurrenceSpawn() },
+                    onDismiss = { viewModel.dismissRecurrenceSpawnBanner() },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(start = 16.dp, end = 16.dp, bottom = 88.dp)
+                        .zIndex(2f)
+                )
             }
 
             if (showAddTaskDialog) {
                 AddTaskDialog(
-                    onDismiss = { showAddTaskDialog = false },
+                    initialTitle = prefilledAddTitle,
+                    initialDescription = prefilledAddDescription,
+                    initialComponents = prefilledAddComponents,
+                    onDismiss = {
+                        prefilledAddComponents
+                            .filterIsInstance<com.litetask.app.data.model.TaskComponent.FileComponent>()
+                            .forEach {
+                                com.litetask.app.util.AttachmentStorageHelper.deleteManagedFileIfOwned(context, it.data)
+                            }
+                        prefilledAddTitle = null
+                        prefilledAddDescription = null
+                        prefilledAddComponents = emptyList()
+                        showAddTaskDialog = false
+                    },
                     onConfirm = { task ->
                         viewModel.addTask(task)
+                        prefilledAddTitle = null
+                        prefilledAddDescription = null
+                        prefilledAddComponents = emptyList()
                         showAddTaskDialog = false
                     },
                     onConfirmWithReminders = { task, reminderConfigs ->
                         viewModel.addTaskWithReminders(task, reminderConfigs)
+                        prefilledAddTitle = null
+                        prefilledAddDescription = null
+                        prefilledAddComponents = emptyList()
                         showAddTaskDialog = false
                     },
                     onConfirmWithComponents = { task, reminderConfigs, components ->
                         viewModel.addTaskWithComponents(task, reminderConfigs, components)
+                        prefilledAddTitle = null
+                        prefilledAddDescription = null
+                        prefilledAddComponents = emptyList()
                         showAddTaskDialog = false
                     },
 
@@ -792,7 +870,56 @@ fun HomeScreen(
                     amapKey = amapKey,
                     onGeocode = { address -> viewModel.geocodeLocation(address) },
                     onSearchLocations = { keyword -> viewModel.searchLocations(keyword) },
-                    onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) }
+                    onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) },
+                    amapRouteActions = amapRouteActions,
+                    voiceNoteActions = com.litetask.app.ui.components.VoiceNoteActions(
+                        onTranscribe = { viewModel.transcribeVoiceNote(it) }
+                    )
+                )
+            }
+
+            activeSharePayload?.let { sharePayload ->
+                com.litetask.app.ui.components.ShareImportDialog(
+                    payload = sharePayload,
+                    activeTasks = remember(allLoadedTasks) {
+                        allLoadedTasks.map { it.task }.filter { !it.isDone }
+                    },
+                    isBusy = isImportingShare,
+                    onDismiss = {
+                        if (!isImportingShare) activeSharePayload = null
+                    },
+                    onAiCreate = { combinedText, imageUris, extraUris ->
+                        activeSharePayload = null
+                        viewModel.analyzeTextInput(
+                            text = combinedText,
+                            imageUris = imageUris,
+                            extraAttachmentUris = extraUris
+                        )
+                    },
+                    onOpenManualAdd = { suggestedTitle, suggestedDesc, links, passes, uris ->
+                        isImportingShare = true
+                        viewModel.prepareShareForManualAdd(links, passes, uris) { components ->
+                            isImportingShare = false
+                            activeSharePayload = null
+                            prefilledAddTitle = suggestedTitle
+                            prefilledAddDescription = suggestedDesc
+                            prefilledAddComponents = components
+                            showAddTaskDialog = true
+                        }
+                    },
+                    onAttachToTask = { taskId, links, passes, uris ->
+                        isImportingShare = true
+                        viewModel.importShareToExistingTask(taskId, links, passes, uris) { addedCount ->
+                            isImportingShare = false
+                            activeSharePayload = null
+                            Toast.makeText(
+                                context,
+                                if (addedCount > 0) "已挂载 $addedCount 项内容到任务" else "未能识别可挂载内容",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            if (addedCount > 0) selectedTaskId = taskId
+                        }
+                    }
                 )
             }
             
@@ -877,6 +1004,10 @@ fun HomeScreen(
                     onGeocode = { address -> viewModel.geocodeLocation(address) },
                     onSearchLocations = { keyword -> viewModel.searchLocations(keyword) },
                     onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) },
+                    amapRouteActions = amapRouteActions,
+                    voiceNoteActions = com.litetask.app.ui.components.VoiceNoteActions(
+                        onTranscribe = { viewModel.transcribeVoiceNote(it) }
+                    ),
                     onDismiss = {
                         showEditDialog = false
                         taskToEdit = null
@@ -926,11 +1057,23 @@ fun HomeScreen(
                     task = composite.task,
                     subTasks = composite.subTasks,
                     reminders = composite.reminders, // 直接使用复合数据中的提醒
-                    components = composite.components.map { it.toTaskComponent() },
+                    components = composite.components.toTaskComponentsSafe(),
 
                     category = composite.category,
                     amapKey = amapKey,
                     onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) },
+                    onGeocode = { address -> viewModel.geocodeLocation(address) },
+                    onSearchLocations = { keyword -> viewModel.searchLocations(keyword) },
+                    amapRouteActions = amapRouteActions,
+                    voiceNoteActions = com.litetask.app.ui.components.VoiceNoteActions(
+                        onTranscribe = { viewModel.transcribeVoiceNote(it) },
+                        onGenerateSubTasks = { transcript ->
+                            viewModel.generateSubTasksWithContext(
+                                task = composite.task,
+                                additionalContext = "参考语音备忘内容：\n$transcript"
+                            )
+                        }
+                    ),
                     onDismiss = { selectedTaskId = null },
                     onDelete = {
                         viewModel.deleteTask(it)
@@ -956,6 +1099,12 @@ fun HomeScreen(
                         viewModel.showSubTaskInputDialog(task)
                     },
                     isGeneratingSubTasks = uiState.isAnalyzing,
+                    onAddComponent = { component ->
+                        viewModel.addComponentToTask(composite.task.id, component)
+                    },
+                    onUpdateComponent = { component ->
+                        viewModel.updateComponentInTask(component)
+                    },
                     onDeleteComponent = { component ->
                         viewModel.deleteComponent(component)
                     },
@@ -1025,8 +1174,11 @@ fun HomeScreen(
                     onGeocode = { address -> viewModel.geocodeLocation(address) },
                     onSearchLocations = { keyword -> viewModel.searchLocations(keyword) },
                     onGetWeather = { adcode -> viewModel.getWeatherForAdcode(adcode) },
+                    amapRouteActions = amapRouteActions,
                     availableCategories = categories,
-                    initialComponents = uiState.aiParsedComponents
+                    initialComponents = uiState.aiParsedComponents,
+                    routeCandidates = uiState.aiRouteCandidates,
+                    onSelectRouteCandidate = { index, chosen -> viewModel.selectAiRouteCandidate(index, chosen) }
                 )
             }
 

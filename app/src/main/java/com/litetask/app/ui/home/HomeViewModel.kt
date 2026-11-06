@@ -12,10 +12,17 @@ import com.litetask.app.data.ai.SubTaskGenerationMode
 import com.litetask.app.data.ai.SubTaskGenerationSupport
 import com.litetask.app.data.repository.TaskRepositoryImpl
 import com.litetask.app.data.repository.AIRepository
+import com.litetask.app.data.model.AccessPassData
 import com.litetask.app.data.model.Category
+import com.litetask.app.data.model.LinkBookmarkData
 import com.litetask.app.data.model.TaskComponent
+import com.litetask.app.data.model.TaskComponentRegistry
+import com.litetask.app.data.model.TempComponentIdGenerator
 import com.litetask.app.data.model.toEntity
+import com.litetask.app.data.model.toTaskComponentsSafe
 import com.litetask.app.data.repository.CategoryRepository
+import com.litetask.app.util.AttachmentStorageHelper
+import com.litetask.app.util.ShareIntentParser
 import com.litetask.app.widget.WidgetUpdateHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +57,8 @@ class HomeViewModel @Inject constructor(
     private val preferenceManager: com.litetask.app.data.local.PreferenceManager,
     private val aMapRepository: com.litetask.app.data.repository.AMapRepository,
     private val locationTracker: com.litetask.app.data.repository.LocationTracker,
+    private val locationProvider: com.litetask.app.util.LocationProvider,
+    private val userLocationDao: com.litetask.app.data.local.UserLocationDao,
     private val scheduleAdviceDao: com.litetask.app.data.local.DailyScheduleAdviceDao,
     private val scheduleAdviceAssistant: com.litetask.app.data.ai.DailyScheduleAdviceAssistant,
     private val focusTimerManager: com.litetask.app.util.FocusTimerManager
@@ -92,6 +101,7 @@ class HomeViewModel @Inject constructor(
     }
 
     private var scheduleAdviceJob: Job? = null
+    private var recurrenceBannerJob: Job? = null
 
     // ==================== 初始化 ====================
     
@@ -206,10 +216,18 @@ class HomeViewModel @Inject constructor(
     val amapKey: StateFlow<String?> = preferenceManager.amapKeyFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), preferenceManager.getAMapKey())
 
+    val frequentLocations: StateFlow<List<com.litetask.app.data.model.UserLocationEntity>> =
+        userLocationDao.getAllLocationsFlow()
+            .map { list ->
+                list.filter { it.latitude != 0.0 && it.longitude != 0.0 }
+                    .sortedByDescending { it.originCount + it.destinationCount }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     fun updateAMapKey(key: String) {
         preferenceManager.saveAMapKey(key)
     }
-    
+
     /**
      * 简单地理编码实现 (IO线程)
      */
@@ -221,14 +239,208 @@ class HomeViewModel @Inject constructor(
      * 搜索地点建议 (IO线程)
      */
     suspend fun searchLocations(keyword: String): List<com.litetask.app.data.model.AMapRouteData> {
-        return aMapRepository.searchLocations(keyword)
+        return searchLocationsWithBias(keyword, biasLocation = null, city = null)
     }
-    
+
+    /**
+     * 带位置偏向/城市限定的地点建议搜索（若未指定 biasLocation，则自动尝试本地缓存定位或最高频常驻地）
+     */
+    suspend fun searchLocationsWithBias(
+        keyword: String,
+        biasLocation: String? = null,
+        city: String? = null
+    ): List<com.litetask.app.data.model.AMapRouteData> {
+        val resolvedBias = biasLocation?.takeIf { it.contains(",") } ?: resolveDefaultBiasLocationString()
+        return aMapRepository.searchLocations(keyword, biasLocation = resolvedBias, city = city)
+    }
+
     /**
      * 获取实况天气 (IO线程)
      */
     suspend fun getWeatherForAdcode(adcode: String): Pair<String, String>? {
         return aMapRepository.fetchWeather(adcode)
+    }
+
+    /**
+     * 获取多日天气预报（供任务目标日期精确匹配）
+     */
+    suspend fun getWeatherForecastForAdcode(adcode: String): com.litetask.app.data.repository.AMapWeatherReport? {
+        return aMapRepository.fetchWeatherForecast(adcode)
+    }
+
+    /**
+     * 实时路线耗时与距离预估
+     */
+    suspend fun calculateRoute(
+        originLat: Double,
+        originLng: Double,
+        destLat: Double,
+        destLng: Double,
+        mode: String,
+        strategy: Int
+    ): Pair<Int, Int>? {
+        return aMapRepository.calculateRoute(
+            originLng = originLng,
+            originLat = originLat,
+            destLng = destLng,
+            destLat = destLat,
+            mode = mode,
+            strategy = strategy
+        )
+    }
+
+    /**
+     * 解析当前定位作为出发地选项（GCJ-02）
+     */
+    suspend fun resolveCurrentOriginOption(): com.litetask.app.ui.components.OriginOption? {
+        val loc = locationProvider.getCurrentLocation() ?: return null
+        return com.litetask.app.ui.components.OriginOption(
+            name = "当前定位",
+            lat = loc.latitude,
+            lng = loc.longitude
+        )
+    }
+
+    /**
+     * 一键为指定任务添加建议出发提醒
+     */
+    fun addDepartureReminder(taskId: Long, triggerAtMillis: Long, label: String) {
+        viewModelScope.launch {
+            val added = taskRepository.addAndScheduleReminder(taskId, triggerAtMillis, label)
+            withContext(Dispatchers.Main) {
+                val msg = if (added) "已设置出发提醒" else "已有相近时间的提醒，或任务已失效"
+                android.widget.Toast.makeText(application, msg, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private suspend fun resolveDefaultBiasLocationString(): String? {
+        val cached = locationProvider.getCachedLocationOnly()
+        if (cached != null) {
+            return "${cached.longitude},${cached.latitude}"
+        }
+        val topSaved = withContext(Dispatchers.IO) {
+            userLocationDao.getAllLocationsSync()
+                .filter { it.latitude != 0.0 && it.longitude != 0.0 }
+                .maxByOrNull { it.originCount + it.destinationCount }
+        }
+        return topSaved?.let { "${it.longitude},${it.latitude}" }
+    }
+
+    /**
+     * 基于当前定位/常驻地偏向坐标，为 AI 解析的任务批量解析目的地及多候选地点。
+     */
+    /**
+     * 解析 AI 返回任务附带的目的地路线、网页/深链接与凭证号牌草稿
+     */
+    private suspend fun resolveAiParsedComponents(
+        tasks: List<Task>,
+        sourceText: String
+    ): Pair<Map<Int, List<TaskComponent>>, Map<Int, List<com.litetask.app.data.model.AMapRouteData>>> {
+        val tasksWithComponents = mutableMapOf<Int, MutableList<TaskComponent>>()
+        val candidatesMap = mutableMapOf<Int, List<com.litetask.app.data.model.AMapRouteData>>()
+
+        // 1. 解析高德目的地及多候选
+        val amapKey = if (preferenceManager.isAiDestinationEnabled()) preferenceManager.getAMapKey() else null
+        if (!amapKey.isNullOrBlank()) {
+            val biasLocation = resolveDefaultBiasLocationString()
+            tasks.forEachIndexed { index, task ->
+                val destination = task.parsedDestination
+                if (!destination.isNullOrBlank()) {
+                    try {
+                        val results = aMapRepository.searchLocations(
+                            keyword = destination,
+                            biasLocation = biasLocation
+                        ).take(5)
+                        if (results.isNotEmpty()) {
+                            candidatesMap[index] = results
+                            tasksWithComponents.getOrPut(index) { mutableListOf() }.add(
+                                TaskComponent.AMapComponent(
+                                    id = TempComponentIdGenerator.nextId(),
+                                    taskId = 0,
+                                    data = results[0]
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
+
+        // 2. 挂载 AI 抽取或正则兜底的链接书签与凭证/号牌卡
+        val fallbackLinks = if (tasks.size == 1) {
+            com.litetask.app.data.model.LinkAndPassSupport.extractAllLinksFromText(sourceText)
+        } else emptyList()
+        val fallbackPasses = if (tasks.size == 1) {
+            com.litetask.app.data.model.LinkAndPassSupport.extractPassesFallbackFromText(sourceText)
+        } else emptyList()
+
+        tasks.forEachIndexed { index, task ->
+            val list = tasksWithComponents.getOrPut(index) { mutableListOf() }
+
+            val mergedPasses = (task.parsedPasses + if (task.parsedPasses.isEmpty()) fallbackPasses else emptyList())
+                .distinctBy { it.primaryCode.trim().lowercase() }
+            mergedPasses.forEach { passData ->
+                list.add(
+                    TaskComponent.AccessPassComponent(
+                        id = TempComponentIdGenerator.nextId(),
+                        taskId = 0,
+                        data = passData
+                    )
+                )
+            }
+
+            val mergedLinks = (task.parsedLinks + if (task.parsedLinks.isEmpty()) fallbackLinks else emptyList())
+                .distinctBy { it.url.trim().lowercase() }
+            mergedLinks.forEach { linkData ->
+                list.add(
+                    TaskComponent.LinkComponent(
+                        id = TempComponentIdGenerator.nextId(),
+                        taskId = 0,
+                        data = linkData
+                    )
+                )
+            }
+
+            val recData = task.parsedRecurrence ?: if (tasks.size == 1) {
+                com.litetask.app.data.model.RecurrenceEngine.extractFallbackFromText(sourceText, task.startTime)
+            } else null
+            if (recData != null) {
+                list.add(
+                    TaskComponent.RecurrenceComponent(
+                        id = TempComponentIdGenerator.nextId(),
+                        taskId = 0,
+                        data = recData
+                    )
+                )
+            }
+        }
+
+        val cleanedMap = tasksWithComponents
+            .filterValues { it.isNotEmpty() }
+            .mapValues { it.value.toList() }
+        return cleanedMap to candidatesMap
+    }
+
+    fun selectAiRouteCandidate(taskIndex: Int, selected: com.litetask.app.data.model.AMapRouteData) {
+        val currentMap = _uiState.value.aiParsedComponents.toMutableMap()
+        val existingList = currentMap[taskIndex].orEmpty()
+        val hasRoute = existingList.any { it is TaskComponent.AMapComponent }
+        val updatedList = if (hasRoute) {
+            existingList.map { comp ->
+                if (comp is TaskComponent.AMapComponent) comp.copy(data = selected) else comp
+            }
+        } else {
+            existingList + TaskComponent.AMapComponent(
+                id = TempComponentIdGenerator.nextId(),
+                taskId = 0,
+                data = selected
+            )
+        }
+        currentMap[taskIndex] = updatedList
+        _uiState.update { it.copy(aiParsedComponents = currentMap) }
     }
 
     // ==================== 日期筛选（用于日历视图） ====================
@@ -687,37 +899,7 @@ class HomeViewModel @Inject constructor(
             }
             
             result.onSuccess { tasks ->
-                val tasksWithLocations = mutableMapOf<Int, List<com.litetask.app.data.model.TaskComponent>>()
-                
-                // 检查是否开启了 AI 目的地识别
-                if (preferenceManager.isAiDestinationEnabled()) {
-                    val amapKey = preferenceManager.getAMapKey()
-                    if (!amapKey.isNullOrBlank()) {
-                        tasks.forEachIndexed { index, task ->
-                            val destination = task.parsedDestination
-                            if (!destination.isNullOrBlank()) {
-                                try {
-                                    // 搜索目的地
-                                    val results = aMapRepository.searchLocations(destination)
-                                    if (results.isNotEmpty()) {
-                                        // 取第一个结果
-                                        val firstResult = results[0]
-                                        // 创建组件
-                                        val component = com.litetask.app.data.model.TaskComponent.AMapComponent(
-                                            id = -(System.currentTimeMillis() + index), // 临时 ID
-                                            taskId = 0,
-                                            data = firstResult
-                                        )
-                                        tasksWithLocations[index] = listOf(component)
-                                    }
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                    // 忽略单个搜索错误，不影响整体流程
-                                }
-                            }
-                        }
-                    }
-                }
+                val (tasksWithLocations, routeCandidatesMap) = resolveAiParsedComponents(tasks, text)
 
                 // 记录 AI 历史
                 recordAiHistory(
@@ -726,13 +908,14 @@ class HomeViewModel @Inject constructor(
                     parsedCount = tasks.size,
                     isSuccess = true
                 )
-                
+
                 // 无论是否有任务，都显示 TaskConfirmationSheet（空结果会在界面中显示提示）
                 _uiState.value = _uiState.value.copy(
                     isAnalyzing = false,
                     showAiResult = true,
                     aiParsedTasks = tasks,
                     aiParsedComponents = tasksWithLocations,
+                    aiRouteCandidates = routeCandidatesMap,
                     recordingState = com.litetask.app.util.RecordingState.IDLE
                 )
             }.onFailure { error ->
@@ -758,73 +941,87 @@ class HomeViewModel @Inject constructor(
     /**
      * 文字输入分析：直接调用 AI 分析文本
      */
-    fun analyzeTextInput(text: String, imageUris: List<android.net.Uri> = emptyList()) {
+    fun analyzeTextInput(
+        text: String,
+        imageUris: List<android.net.Uri> = emptyList(),
+        extraAttachmentUris: List<android.net.Uri> = emptyList()
+    ) {
         viewModelScope.launch {
+            val allAttachmentUris = (imageUris + extraAttachmentUris).distinct()
+            val extraNames = if (extraAttachmentUris.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    extraAttachmentUris.map { ShareIntentParser.resolveDisplayName(application, it) }
+                }
+            } else {
+                emptyList()
+            }
+            val effectiveText = if (extraNames.isNotEmpty()) {
+                val base = text.trim()
+                val suffix = "（附带分享文件：${extraNames.joinToString("、")}）"
+                if (base.isEmpty()) suffix else "$base\n$suffix"
+            } else {
+                text
+            }
+
             _uiState.value = _uiState.value.copy(
                 isAnalyzing = true,
                 agentStatus = "正在准备分析...",
-                agentLogs = listOf("文本输入: $text" + (if (imageUris.isNotEmpty()) " (含${imageUris.size}张图片)" else ""))
+                agentLogs = listOf("文本输入: $effectiveText" + (if (imageUris.isNotEmpty()) " (含${imageUris.size}张图片)" else ""))
             )
             
             val imageBases64 = imageUris.mapNotNull { uriToBase64(application, it) }.takeIf { it.isNotEmpty() }
             
-            val result = aiRepository.parseTasksFromText("", text, imageBases64) { progress ->
+            val result = aiRepository.parseTasksFromText("", effectiveText, imageBases64) { progress ->
                 _uiState.value = _uiState.value.copy(
                     agentStatus = progress,
                     agentLogs = _uiState.value.agentLogs + progress
                 )
             }
-                        result.onSuccess { tasks ->
-                    // 目的地解析逻辑
-                    val tasksWithLocations = mutableMapOf<Int, List<com.litetask.app.data.model.TaskComponent>>()
-                    
-                    if (preferenceManager.isAiDestinationEnabled()) {
-                        val amapKey = preferenceManager.getAMapKey()
-                        if (!amapKey.isNullOrBlank()) {
-                            // 实际执行搜索
-                            tasks.forEachIndexed { index, task ->
-                                val destination = task.parsedDestination
-                                if (!destination.isNullOrBlank()) {
-                                    try {
-                                        val results = aMapRepository.searchLocations(destination)
-                                        if (results.isNotEmpty()) {
-                                            val firstResult = results[0]
-                                            val component = com.litetask.app.data.model.TaskComponent.AMapComponent(
-                                                id = -(System.currentTimeMillis() + index * 10), 
-                                                taskId = 0,
-                                                data = firstResult
-                                            )
-                                            tasksWithLocations[index] = listOf(component)
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
+            result.onSuccess { tasks ->
+                val (tasksWithLocations, routeCandidatesMap) = resolveAiParsedComponents(tasks, effectiveText)
+                val mergedComponents = tasksWithLocations.mapValues { it.value.toMutableList() }.toMutableMap()
+                if (tasks.isNotEmpty() && allAttachmentUris.isNotEmpty()) {
+                    withContext(Dispatchers.IO) {
+                        tasks.indices.forEach { taskIdx ->
+                            val importedAttachments = allAttachmentUris.mapNotNull { uri ->
+                                AttachmentStorageHelper.importFromUri(application, uri)?.let { data ->
+                                    TaskComponent.FileComponent(
+                                        id = TempComponentIdGenerator.nextId(),
+                                        taskId = 0L,
+                                        data = data
+                                    )
                                 }
+                            }
+                            if (importedAttachments.isNotEmpty()) {
+                                val list = mergedComponents.getOrPut(taskIdx) { mutableListOf() }
+                                list.addAll(importedAttachments)
                             }
                         }
                     }
+                }
 
-                    // 记录成功历史
-                    recordAiHistory(
-                        content = text,
-                        sourceType = com.litetask.app.data.model.AIHistorySource.TEXT,
-                        parsedCount = tasks.size,
-                        isSuccess = true,
-                        imageCount = imageUris.size
-                    )
+                // 记录成功历史
+                recordAiHistory(
+                    content = effectiveText,
+                    sourceType = com.litetask.app.data.model.AIHistorySource.TEXT,
+                    parsedCount = tasks.size,
+                    isSuccess = true,
+                    imageCount = imageUris.size
+                )
 
-                    _uiState.value = _uiState.value.copy(
-                        isAnalyzing = false,
-                        showAiResult = true,
-                        aiParsedTasks = tasks,
-                        aiParsedComponents = tasksWithLocations,
-                        agentStatus = "",
-                        agentLogs = emptyList()
-                    )
-                }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    isAnalyzing = false,
+                    showAiResult = true,
+                    aiParsedTasks = tasks,
+                    aiParsedComponents = mergedComponents,
+                    aiRouteCandidates = routeCandidatesMap,
+                    agentStatus = "",
+                    agentLogs = emptyList()
+                )
+            }.onFailure { error ->
                 val errorMessage = parseAiError(error.message ?: "")
                 recordAiHistory(
-                    content = text,
+                    content = effectiveText,
                     sourceType = com.litetask.app.data.model.AIHistorySource.TEXT,
                     parsedCount = 0,
                     isSuccess = false,
@@ -885,43 +1082,75 @@ class HomeViewModel @Inject constructor(
                         } else null
                     }
                     
-                    // 2. 插入或更新任务和提醒
+                    val hasComponents = components.isNotEmpty()
+
+                    // 2. 插入或更新任务和提醒（若同时包含组件，待组件落库后统一触发日历同步）
                     val finalTaskId = if (task.id != 0L) {
                         if (taskReminders.containsKey(index) && !task.isDone) {
-                            taskRepository.updateTaskWithReminders(task, reminders)
+                            taskRepository.updateTaskWithReminders(
+                                task = task,
+                                reminders = reminders,
+                                syncToCalendar = !hasComponents
+                            )
                         } else {
                             // Agent 修改已有任务但未在确认面板中显式调整提醒时，保留原有提醒不被清空
-                            taskRepository.updateTask(task)
+                            taskRepository.updateTask(
+                                task = task,
+                                syncToCalendar = !hasComponents
+                            )
                         }
                         cleanupTaskFromAdditionalHistory(task.id)
                         task.id
                     } else {
-                        taskRepository.insertTaskWithReminders(task, reminders)
+                        taskRepository.insertTaskWithReminders(
+                            task = task,
+                            reminders = reminders,
+                            syncToCalendar = !hasComponents
+                        )
                     }
-                    
+
                     // 3. 插入组件（更新已有任务时按 type + payload 去重，避免重复追加）
-                    val existingKeys = if (task.id != 0L) {
-                        taskRepository.getComponentsByTaskId(finalTaskId)
-                            .first()
-                            .map { it.type to it.dataJson }
-                            .toMutableSet()
-                    } else {
-                        mutableSetOf()
-                    }
-                    components.forEach { component ->
-                        val entity = when (component) {
-                            is com.litetask.app.data.model.TaskComponent.AMapComponent -> 
-                                component.toEntity(finalTaskId)
-                            is com.litetask.app.data.model.TaskComponent.FileComponent -> 
-                                component.toEntity(finalTaskId)
+                    if (hasComponents) {
+                        val existingKeys = if (task.id != 0L) {
+                            taskRepository.getComponentsByTaskIdSync(finalTaskId)
+                                .map { it.type to it.dataJson }
+                                .toMutableSet()
+                        } else {
+                            mutableSetOf()
                         }
-                        if (existingKeys.add(entity.type to entity.dataJson)) {
-                            taskRepository.insertComponent(entity)
+                        components.forEach { component ->
+                            val entity = component.toEntity(finalTaskId)
+                            if (existingKeys.add(entity.type to entity.dataJson)) {
+                                taskRepository.insertComponent(entity, syncCalendar = false)
+                            }
                         }
+                        taskRepository.triggerCalendarAutoSyncForTask(finalTaskId)
                     }
                 }
             }
-            _uiState.value = _uiState.value.copy(showAiResult = false, aiParsedTasks = emptyList(), aiParsedComponents = emptyMap())
+            val previousPendingComponents = _uiState.value.aiParsedComponents.values.flatten()
+            val retainedPaths = taskComponents.values
+                .flatten()
+                .filterIsInstance<TaskComponent.FileComponent>()
+                .mapNotNull { it.data.managedFilePath }
+                .toSet()
+            val discardedFiles = previousPendingComponents
+                .filterIsInstance<TaskComponent.FileComponent>()
+                .filter { it.data.managedFilePath != null && it.data.managedFilePath !in retainedPaths }
+
+            _uiState.value = _uiState.value.copy(
+                showAiResult = false,
+                aiParsedTasks = emptyList(),
+                aiParsedComponents = emptyMap(),
+                aiRouteCandidates = emptyMap()
+            )
+            if (discardedFiles.isNotEmpty()) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    discardedFiles.forEach {
+                        AttachmentStorageHelper.deleteManagedFileIfOwned(application, it.data)
+                    }
+                }
+            }
             WidgetUpdateHelper.refreshAllWidgets(application)
             if (tasks.isNotEmpty()) {
                 viewModelScope.launch(Dispatchers.IO) {
@@ -952,6 +1181,9 @@ class HomeViewModel @Inject constructor(
     fun deleteAiParsedTask(index: Int) {
         val currentTasks = _uiState.value.aiParsedTasks.toMutableList()
         if (index in currentTasks.indices) {
+            val removedFiles = _uiState.value.aiParsedComponents[index]
+                ?.filterIsInstance<TaskComponent.FileComponent>()
+                .orEmpty()
             currentTasks.removeAt(index)
             val reindexedComponents = _uiState.value.aiParsedComponents.entries
                 .mapNotNull { (k, v) ->
@@ -962,10 +1194,33 @@ class HomeViewModel @Inject constructor(
                     }
                 }
                 .toMap()
+            val reindexedCandidates = _uiState.value.aiRouteCandidates.entries
+                .mapNotNull { (k, v) ->
+                    when {
+                        k < index -> k to v
+                        k > index -> (k - 1) to v
+                        else -> null
+                    }
+                }
+                .toMap()
             _uiState.value = _uiState.value.copy(
                 aiParsedTasks = currentTasks,
-                aiParsedComponents = reindexedComponents
+                aiParsedComponents = reindexedComponents,
+                aiRouteCandidates = reindexedCandidates
             )
+            if (removedFiles.isNotEmpty()) {
+                val retainedPaths = reindexedComponents.values.flatten()
+                    .filterIsInstance<TaskComponent.FileComponent>()
+                    .mapNotNull { it.data.managedFilePath }
+                    .toSet()
+                viewModelScope.launch(Dispatchers.IO) {
+                    removedFiles.forEach {
+                        if (it.data.managedFilePath !in retainedPaths) {
+                            AttachmentStorageHelper.deleteManagedFileIfOwned(application, it.data)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1000,19 +1255,12 @@ class HomeViewModel @Inject constructor(
                 } else null
             }
             
-            // 插入任务和提醒
-            val newTaskId = taskRepository.insertTaskWithRemindersAndReturnId(task, reminders)
-            
-            // 2. 插入组件
-            components.forEach { component ->
-                val entity = when (component) {
-                    is com.litetask.app.data.model.TaskComponent.AMapComponent -> 
-                        component.toEntity(newTaskId)
-                    is com.litetask.app.data.model.TaskComponent.FileComponent -> 
-                        component.toEntity(newTaskId)
-                }
-                taskRepository.insertComponent(entity)
-            }
+            // 插入任务、提醒与组件，并在全部落库后统一触发系统日历同步
+            taskRepository.insertTaskWithComponentsAndReminders(
+                task = task,
+                reminders = reminders,
+                components = components
+            )
             
             WidgetUpdateHelper.refreshAllWidgets(application)
             if (components.any { it is com.litetask.app.data.model.TaskComponent.AMapComponent }) {
@@ -1041,7 +1289,8 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             if (!task.isDone) {
                 // 未完成 -> 已完成
-                taskRepository.markTaskDone(task)
+                val spawned = taskRepository.markTaskDone(task)
+                if (spawned != null) showRecurrenceSpawnBanner(spawned)
                 refreshHistoryAfterCompletion()
             } else {
                 // 已完成 -> 未完成：使用状态跟踪更新，确保数据一致性
@@ -1058,7 +1307,8 @@ class HomeViewModel @Inject constructor(
             if (task.isDone && task.completedAt == null) {
                 // 核心逻辑：只有从未完成变为完成（即 completedAt 为空）时，才触发完成专门处理
                 // 这确保了编辑已完成任务时，原始完成时间不会被“现在”覆盖
-                taskRepository.markTaskDone(task)
+                val spawned = taskRepository.markTaskDone(task)
+                if (spawned != null) showRecurrenceSpawnBanner(spawned)
                 refreshHistoryAfterCompletion()
             } else {
                 // 已完成任务的编辑，或者从未完成到未完成的更新
@@ -1077,7 +1327,8 @@ class HomeViewModel @Inject constructor(
      */
     fun updateTaskWithStatusTracking(oldTask: Task, newTask: Task) {
         viewModelScope.launch {
-            taskRepository.updateTaskWithStatusTracking(oldTask, newTask)
+            val spawned = taskRepository.updateTaskWithStatusTracking(oldTask, newTask)
+            if (spawned != null) showRecurrenceSpawnBanner(spawned)
             
             // 如果任务状态发生变化，更新UI列表
             when {
@@ -1092,6 +1343,34 @@ class HomeViewModel @Inject constructor(
             }
             
             WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+
+    fun dismissRecurrenceSpawnBanner() {
+        recurrenceBannerJob?.cancel()
+        recurrenceBannerJob = null
+        _uiState.update { it.copy(recentRecurrenceSpawn = null) }
+    }
+
+    fun undoRecentRecurrenceSpawn() {
+        val spawn = _uiState.value.recentRecurrenceSpawn ?: return
+        dismissRecurrenceSpawnBanner()
+        viewModelScope.launch {
+            taskRepository.undoGeneratedRecurrence(spawn)
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+
+    private fun showRecurrenceSpawnBanner(spawn: com.litetask.app.data.model.RecurrenceEngine.RecurrenceSpawnResult) {
+        recurrenceBannerJob?.cancel()
+        _uiState.update { it.copy(recentRecurrenceSpawn = spawn) }
+        recurrenceBannerJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(8000L)
+            _uiState.update { state ->
+                if (state.recentRecurrenceSpawn?.nextTask?.id == spawn.nextTask.id) {
+                    state.copy(recentRecurrenceSpawn = null)
+                } else state
+            }
         }
     }
     
@@ -1139,64 +1418,64 @@ class HomeViewModel @Inject constructor(
     fun updateTaskWithComponents(
         task: Task, 
         reminderConfigs: List<com.litetask.app.data.model.ReminderConfig>,
-        components: List<com.litetask.app.data.model.TaskComponent>
+        components: List<TaskComponent>
     ) {
         viewModelScope.launch {
             // 对于已完成任务，只更新任务信息，不处理提醒（已完成任务不需要提醒）
             if (task.isDone) {
-                taskRepository.updateTask(task)
-                // 更新组件 (即使已完成也允许编辑组件)
+                taskRepository.updateTask(task, syncToCalendar = false)
+                // 更新组件 (即使已完成也允许编辑组件，由增量同步统一触发日历同步)
                 updateComponentsForTask(task.id, components)
-                
+
                 WidgetUpdateHelper.refreshAllWidgets(application)
                 return@launch
             }
-            
+
             val reminders = reminderConfigs.mapNotNull { config ->
                 val triggerAt = config.calculateTriggerTime(task.startTime, task.deadline)
                 if (triggerAt > 0 && config.type != com.litetask.app.data.model.ReminderType.NONE) {
                     com.litetask.app.data.model.Reminder(taskId = task.id, triggerAt = triggerAt, label = config.generateLabel())
                 } else null
             }
-            taskRepository.updateTaskWithReminders(task, reminders)
-            
-            // 更新组件
+            taskRepository.updateTaskWithReminders(task, reminders, syncToCalendar = false)
+
+            // 增量同步组件并统一触发系统日历同步
             updateComponentsForTask(task.id, components)
-            
+
             cleanupTaskFromAdditionalHistory(task.id)
             WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
-    
-    private suspend fun updateComponentsForTask(taskId: Long, newComponents: List<com.litetask.app.data.model.TaskComponent>) {
-        // 1. 获取现有组件
-        val oldComponents = taskRepository.getComponentsByTaskId(taskId).first()
-        val oldRouteKeys = oldComponents
-            .filterIsInstance<com.litetask.app.data.model.TaskComponent.AMapComponent>()
-            .map { Triple(it.data.endName, it.data.endLat, it.data.endLng) }
-            .toSet()
-        
-        // 2. 删除所有现有组件
-        oldComponents.forEach { taskRepository.deleteComponent(it) }
-        
-        // 3. 插入新组件
-        newComponents.forEach { component ->
-             val entity = when (component) {
-                is com.litetask.app.data.model.TaskComponent.AMapComponent -> 
-                    component.toEntity(taskId)
-                is com.litetask.app.data.model.TaskComponent.FileComponent -> 
-                    component.toEntity(taskId)
-            }
-            taskRepository.insertComponent(entity)
-        }
 
-        // 4. 仅针对新增或变更的高德目的地组件同步写入足迹（覆盖编辑任务及采纳建议路线）
-        val addedOrChangedRoutes = newComponents
-            .filterIsInstance<com.litetask.app.data.model.TaskComponent.AMapComponent>()
-            .filter { Triple(it.data.endName, it.data.endLat, it.data.endLng) !in oldRouteKeys }
-        if (addedOrChangedRoutes.isNotEmpty()) {
+    /**
+     * 增量同步任务的组件（保留未变更组件 ID 与创建时间，避免覆盖式删除导致引用或历史失效）
+     */
+    private suspend fun updateComponentsForTask(taskId: Long, newComponents: List<TaskComponent>) {
+        val oldComponents = taskRepository.syncTaskComponents(
+            taskId = taskId,
+            newComponents = newComponents,
+            syncCalendar = true
+        )
+        val addedOrChangedRoutes = TaskComponentRegistry.extractAddedOrChangedRoutes(
+            oldComponents = oldComponents,
+            newComponents = newComponents
+        )
+        val remainingFilePaths = newComponents.filterIsInstance<TaskComponent.FileComponent>()
+            .mapNotNull { it.data.managedFilePath }
+            .toSet()
+        val removedManagedFiles = oldComponents.filterIsInstance<TaskComponent.FileComponent>()
+            .filter { it.data.managedFilePath != null && it.data.managedFilePath !in remainingFilePaths }
+        val remainingVoicePaths = newComponents.filterIsInstance<TaskComponent.VoiceNoteComponent>()
+            .map { it.data.filePath }
+            .toSet()
+        val removedVoiceNotes = oldComponents.filterIsInstance<TaskComponent.VoiceNoteComponent>()
+            .filter { it.data.filePath.isNotBlank() && it.data.filePath !in remainingVoicePaths }
+        if (addedOrChangedRoutes.isNotEmpty() || removedManagedFiles.isNotEmpty() || removedVoiceNotes.isNotEmpty()) {
             viewModelScope.launch(Dispatchers.IO) {
-                locationTracker.saveDestinationsFromComponents(addedOrChangedRoutes)
+                if (addedOrChangedRoutes.isNotEmpty()) {
+                    locationTracker.saveDestinationsFromComponents(addedOrChangedRoutes)
+                }
+                (removedManagedFiles + removedVoiceNotes).forEach { cleanupUnusedManagedComponentMedia(it) }
             }
         }
     }
@@ -1270,7 +1549,22 @@ class HomeViewModel @Inject constructor(
 
     fun dismissAiResult() {
         locationTracker.clearPendingOrigin()
-        _uiState.value = _uiState.value.copy(showAiResult = false, aiParsedTasks = emptyList(), aiParsedComponents = emptyMap())
+        val pendingFiles = _uiState.value.aiParsedComponents.values
+            .flatten()
+            .filterIsInstance<TaskComponent.FileComponent>()
+        _uiState.value = _uiState.value.copy(
+            showAiResult = false,
+            aiParsedTasks = emptyList(),
+            aiParsedComponents = emptyMap(),
+            aiRouteCandidates = emptyMap()
+        )
+        if (pendingFiles.isNotEmpty()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                pendingFiles.forEach {
+                    AttachmentStorageHelper.deleteManagedFileIfOwned(application, it.data)
+                }
+            }
+        }
     }
     
     // ==================== AI 子任务生成 ====================
@@ -1588,16 +1882,147 @@ class HomeViewModel @Inject constructor(
         )
     }
 
-    suspend fun getComponentsForTaskSync(taskId: Long): List<com.litetask.app.data.model.TaskComponent> {
-        return taskRepository.getComponentsByTaskId(taskId).map { list -> list.map { it.toTaskComponent() } }.first()
+    suspend fun getComponentsForTaskSync(taskId: Long): List<TaskComponent> {
+        return taskRepository.getComponentsByTaskIdSync(taskId).toTaskComponentsSafe()
+    }
+
+    /**
+     * 为已有任务直接新增单个扩展组件（如详情弹窗快捷添加）
+     */
+    fun addComponentToTask(taskId: Long, component: TaskComponent) {
+        addComponentsToTask(taskId, listOf(component))
+    }
+
+    /**
+     * 批量挂载组件到已有任务（供详情页添加与系统级外部分享落地）
+     */
+    fun addComponentsToTask(taskId: Long, components: List<TaskComponent>) {
+        if (taskId <= 0L || components.isEmpty()) return
+        viewModelScope.launch {
+            val existingKeys = taskRepository.getComponentsByTaskIdSync(taskId)
+                .map { it.type to it.dataJson }
+                .toMutableSet()
+            val addedRoutes = mutableListOf<TaskComponent.AMapComponent>()
+            components.forEach { component ->
+                val entity = component.toEntity(taskId)
+                if (existingKeys.add(entity.type to entity.dataJson)) {
+                    taskRepository.insertComponent(entity, syncCalendar = false)
+                    if (component is TaskComponent.AMapComponent) {
+                        addedRoutes.add(component)
+                    }
+                }
+            }
+            taskRepository.triggerCalendarAutoSyncForTask(taskId)
+            if (addedRoutes.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    locationTracker.saveDestinationsFromComponents(addedRoutes)
+                }
+            }
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+
+    private suspend fun buildShareComponents(
+        taskId: Long,
+        links: List<LinkBookmarkData>,
+        passes: List<AccessPassData>,
+        uris: List<android.net.Uri>
+    ): List<TaskComponent> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<TaskComponent>()
+        links.forEach { link ->
+            result.add(TaskComponent.LinkComponent(TempComponentIdGenerator.nextId(), taskId, link))
+        }
+        passes.forEach { pass ->
+            result.add(TaskComponent.AccessPassComponent(TempComponentIdGenerator.nextId(), taskId, pass))
+        }
+        uris.forEach { uri ->
+            AttachmentStorageHelper.importFromUri(application, uri)?.let { data ->
+                result.add(TaskComponent.FileComponent(TempComponentIdGenerator.nextId(), taskId, data))
+            }
+        }
+        result
+    }
+
+    fun importShareToExistingTask(
+        taskId: Long,
+        links: List<LinkBookmarkData>,
+        passes: List<AccessPassData>,
+        uris: List<android.net.Uri>,
+        onFinished: (Int) -> Unit
+    ) {
+        viewModelScope.launch {
+            val components = buildShareComponents(taskId, links, passes, uris)
+            if (components.isNotEmpty()) {
+                addComponentsToTask(taskId, components)
+            }
+            onFinished(components.size)
+        }
+    }
+
+    fun prepareShareForManualAdd(
+        links: List<LinkBookmarkData>,
+        passes: List<AccessPassData>,
+        uris: List<android.net.Uri>,
+        onReady: (List<TaskComponent>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val components = buildShareComponents(0L, links, passes, uris)
+            onReady(components)
+        }
+    }
+
+    /**
+     * 更新单个已落库的扩展组件
+     */
+    fun updateComponentInTask(component: TaskComponent) {
+        if (component.taskId <= 0L || component.id <= 0L) return
+        viewModelScope.launch {
+            taskRepository.updateComponent(component.toEntity(component.taskId), syncCalendar = true)
+            if (component is TaskComponent.AMapComponent) {
+                withContext(Dispatchers.IO) {
+                    locationTracker.saveDestinationsFromComponents(listOf(component))
+                }
+            }
+            WidgetUpdateHelper.refreshAllWidgets(application)
+        }
+    }
+
+    /**
+     * 对语音备忘录音频文件执行解码与语音转文字。
+     */
+    suspend fun transcribeVoiceNote(data: com.litetask.app.data.model.VoiceNoteData): Result<String> {
+        return speechHelper.transcribeAudioFile(data.filePath)
+    }
+
+    private suspend fun cleanupUnusedManagedComponentMedia(component: TaskComponent) {
+        when (component) {
+            is TaskComponent.FileComponent -> {
+                if (!taskRepository.isManagedFileStillReferenced(component.data.managedFilePath)) {
+                    AttachmentStorageHelper.deleteManagedFileIfOwned(application, component.data)
+                }
+            }
+            is TaskComponent.VoiceNoteComponent -> {
+                if (!taskRepository.isManagedFileStillReferenced(component.data.filePath)) {
+                    AttachmentStorageHelper.deleteManagedVoiceNoteIfOwned(application, component.data)
+                }
+            }
+            else -> Unit
+        }
     }
 
     /**
      * 删除任务组件
      */
-    fun deleteComponent(component: com.litetask.app.data.model.TaskComponent) {
+    fun deleteComponent(component: TaskComponent) {
+        if (component.id <= 0L) return
         viewModelScope.launch {
-            taskRepository.deleteComponent(component.toEntity(component.taskId))
+            taskRepository.deleteComponent(component.toEntity(component.taskId), syncCalendar = true)
+            if (component is TaskComponent.FileComponent || component is TaskComponent.VoiceNoteComponent) {
+                withContext(Dispatchers.IO) {
+                    cleanupUnusedManagedComponentMedia(component)
+                }
+            }
+            WidgetUpdateHelper.refreshAllWidgets(application)
         }
     }
 
@@ -1675,6 +2100,7 @@ data class HomeUiState(
     val speechErrorMessage: String = "",    // 语音识别错误信息
     val aiParsedTasks: List<Task> = emptyList(),
     val aiParsedComponents: Map<Int, List<com.litetask.app.data.model.TaskComponent>> = emptyMap(), // AI 解析生成的组件（如地图）
+    val aiRouteCandidates: Map<Int, List<com.litetask.app.data.model.AMapRouteData>> = emptyMap(), // AI 目的地多候选列表
     val recognizedText: String = "",        // 实时识别的文字
     val finalRecognizedText: String = "",   // 最终识别结果
     val recordingState: com.litetask.app.util.RecordingState = com.litetask.app.util.RecordingState.IDLE,
@@ -1704,7 +2130,10 @@ data class HomeUiState(
 
     // 专注计时弹窗状态
     val showFocusSheet: Boolean = false,
-    val focusTargetTask: Task? = null
+    val focusTargetTask: Task? = null,
+
+    // 周期重复任务自动生成下一期横幅
+    val recentRecurrenceSpawn: com.litetask.app.data.model.RecurrenceEngine.RecurrenceSpawnResult? = null
 )
 
 // 检查 API Key 结果
