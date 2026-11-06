@@ -26,26 +26,33 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.litetask.app.data.model.Task
+import com.litetask.app.data.model.toTaskComponentsSafe
 import com.litetask.app.reminder.FloatingReminderService
 import com.litetask.app.reminder.NotificationHelper
 import com.litetask.app.reminder.PermissionHelper
+import com.litetask.app.reminder.ReminderComponentExtras
 import com.litetask.app.ui.components.AddTaskDialog
 import com.litetask.app.ui.components.SubTaskInputDialog
 import com.litetask.app.ui.components.SubTaskConfirmationDialog
 import com.litetask.app.ui.components.TaskDetailSheet
+import com.litetask.app.ui.components.openAMapNavigation
+import com.litetask.app.ui.components.openLinkBookmark
 import com.litetask.app.ui.home.HomeViewModel
 import com.litetask.app.ui.theme.LiteTaskTheme
+import com.litetask.app.util.IncomingSharePayload
+import com.litetask.app.util.ShareIntentParser
 import com.litetask.app.widget.WidgetUpdateHelper
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     
-    // 用于从外部（如通知或小组件）传递的动作、视图或任务ID
+    // 用于从外部（如通知或小组件）传递的动作、视图、任务ID或分享落地载荷
     private var pendingTaskId = mutableStateOf<Long?>(null)
     private var pendingAction = mutableStateOf<String?>(null)
     private var pendingView = mutableStateOf<String?>(null)
     private var pendingOpenFocus = mutableStateOf(false)
+    private var pendingSharePayload = mutableStateOf<IncomingSharePayload?>(null)
     
     // 通知权限请求
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -81,7 +88,9 @@ class MainActivity : ComponentActivity() {
                         initialExternalView = pendingView.value,
                         onViewHandled = { pendingView.value = null },
                         openFocusTrigger = pendingOpenFocus.value,
-                        onFocusTriggerHandled = { pendingOpenFocus.value = false }
+                        onFocusTriggerHandled = { pendingOpenFocus.value = false },
+                        initialSharePayload = pendingSharePayload.value,
+                        onShareHandled = { pendingSharePayload.value = null }
                     )
                 }
             }
@@ -142,6 +151,23 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra(NotificationHelper.EXTRA_OPEN_FOCUS, false)) {
             pendingOpenFocus.value = true
         }
+
+        // 处理通知快捷动作（导航去目的地 / 打开链接）
+        val componentAction = intent.getStringExtra(NotificationHelper.EXTRA_COMPONENT_ACTION)
+        if (!componentAction.isNullOrBlank()) {
+            val extras = ReminderComponentExtras.fromIntent(intent)
+            when (componentAction) {
+                NotificationHelper.COMPONENT_ACTION_ROUTE -> extras?.toAMapRouteData()?.let { openAMapNavigation(this, it) }
+                NotificationHelper.COMPONENT_ACTION_LINK -> extras?.toLinkBookmarkData()?.let { openLinkBookmark(this, it) }
+            }
+            intent.removeExtra(NotificationHelper.EXTRA_COMPONENT_ACTION)
+        }
+
+        // 处理来自外部应用的系统级分享（ACTION_SEND / ACTION_SEND_MULTIPLE）
+        ShareIntentParser.parseShareIntent(intent)?.let { sharePayload ->
+            ShareIntentParser.markConsumed(intent)
+            pendingSharePayload.value = sharePayload
+        }
     }
     
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -160,7 +186,9 @@ fun AppContent(
     initialExternalView: String? = null,
     onViewHandled: () -> Unit = {},
     openFocusTrigger: Boolean = false,
-    onFocusTriggerHandled: () -> Unit = {}
+    onFocusTriggerHandled: () -> Unit = {},
+    initialSharePayload: IncomingSharePayload? = null,
+    onShareHandled: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     var currentHomeView by remember { mutableStateOf("timeline") } // 记住 HomeScreen 的当前视图
@@ -241,7 +269,9 @@ fun AppContent(
                 initialExternalView = initialExternalView,
                 onViewHandled = onViewHandled,
                 openFocusTrigger = openFocusTrigger,
-                onFocusTriggerHandled = onFocusTriggerHandled
+                onFocusTriggerHandled = onFocusTriggerHandled,
+                initialSharePayload = initialSharePayload,
+                onShareHandled = onShareHandled
             )
         }
         
@@ -326,7 +356,9 @@ private fun HomeScreenWrapper(
     initialExternalView: String? = null,
     onViewHandled: () -> Unit = {},
     openFocusTrigger: Boolean = false,
-    onFocusTriggerHandled: () -> Unit = {}
+    onFocusTriggerHandled: () -> Unit = {},
+    initialSharePayload: IncomingSharePayload? = null,
+    onShareHandled: () -> Unit = {}
 ) {
     val viewModel: HomeViewModel = hiltViewModel()
     val reuseAiPrompt by navController.currentBackStackEntry
@@ -361,6 +393,8 @@ private fun HomeScreenWrapper(
         onViewHandled = onViewHandled,
         openFocusTrigger = openFocusTrigger,
         onFocusTriggerHandled = onFocusTriggerHandled,
+        initialSharePayload = initialSharePayload,
+        onShareHandled = onShareHandled,
         initialAiPrompt = reuseAiPrompt,
         onAiPromptHandled = {
             navController.currentBackStackEntry?.savedStateHandle?.set<String?>("reuse_ai_prompt", null)
@@ -381,6 +415,7 @@ private fun SearchScreenWrapper(
     val homeViewModel: HomeViewModel = hiltViewModel()
     val categories by homeViewModel.categories.collectAsState()
     val amapKey by homeViewModel.amapKey.collectAsState()
+    val amapRouteActions = com.litetask.app.ui.home.rememberAMapRouteActions(homeViewModel)
     val context = LocalContext.current
     
     com.litetask.app.ui.search.SearchScreen(
@@ -427,14 +462,30 @@ private fun SearchScreenWrapper(
                 task = composite.task,
                 subTasks = composite.subTasks,
                 reminders = composite.reminders,
+                components = composite.components.toTaskComponentsSafe(),
+                category = composite.category,
+                amapKey = amapKey,
+                onGetWeather = { adcode -> homeViewModel.getWeatherForAdcode(adcode) },
+                onGeocode = { address -> homeViewModel.geocodeLocation(address) },
+                onSearchLocations = { keyword -> homeViewModel.searchLocations(keyword) },
+                amapRouteActions = amapRouteActions,
+                voiceNoteActions = com.litetask.app.ui.components.VoiceNoteActions(
+                    onTranscribe = { homeViewModel.transcribeVoiceNote(it) },
+                    onGenerateSubTasks = { transcript ->
+                        homeViewModel.generateSubTasksWithContext(
+                            task = composite.task,
+                            additionalContext = "参考语音备忘内容：\n$transcript"
+                        )
+                    }
+                ),
                 onDismiss = { onSelectedTaskIdChange(null) },
-                onDelete = { 
+                onDelete = {
                     homeViewModel.deleteTask(it)
                     onSelectedTaskIdChange(null)
                     Toast.makeText(context, "任务已删除", Toast.LENGTH_SHORT).show()
                 },
                 onUpdateTask = { homeViewModel.updateTaskWithStatusTracking(composite.task, it) },
-                onUpdateSubTask = { sub, isCompleted -> 
+                onUpdateSubTask = { sub, isCompleted ->
                     homeViewModel.updateSubTaskStatus(sub.id, isCompleted)
                 },
                 onUpdateSubTaskContent = { sub, newContent ->
@@ -452,7 +503,16 @@ private fun SearchScreenWrapper(
                 onGenerateSubTasksWithContext = { task ->
                     homeViewModel.showSubTaskInputDialog(task)
                 },
-                isGeneratingSubTasks = uiState.isAnalyzing
+                isGeneratingSubTasks = uiState.isAnalyzing,
+                onAddComponent = { component ->
+                    homeViewModel.addComponentToTask(composite.task.id, component)
+                },
+                onUpdateComponent = { component ->
+                    homeViewModel.updateComponentInTask(component)
+                },
+                onDeleteComponent = { component ->
+                    homeViewModel.deleteComponent(component)
+                }
             )
         }
     }
@@ -483,6 +543,10 @@ private fun SearchScreenWrapper(
             onGeocode = { address -> homeViewModel.geocodeLocation(address) },
             onSearchLocations = { keyword -> homeViewModel.searchLocations(keyword) },
             onGetWeather = { adcode -> homeViewModel.getWeatherForAdcode(adcode) },
+            amapRouteActions = amapRouteActions,
+            voiceNoteActions = com.litetask.app.ui.components.VoiceNoteActions(
+                onTranscribe = { homeViewModel.transcribeVoiceNote(it) }
+            ),
             onDismiss = { 
                 onShowEditDialogChange(false)
                 onTaskToEditChange(null)
