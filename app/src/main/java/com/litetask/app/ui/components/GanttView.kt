@@ -46,6 +46,7 @@ import com.litetask.app.ui.theme.LocalExtendedColors
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 enum class GanttViewMode {
     TODAY,    // 今日视图
@@ -269,6 +270,7 @@ fun GanttView(
                         GanttTasks(
                             taskComposites = visibleTasks,
                             startOfView = startOfView,
+                            endOfView = endOfView,
                             dayWidth = dayWidth,
                             onTaskClick = onTaskClick
                         )
@@ -666,103 +668,158 @@ fun GanttTasks(
     startOfView: Long,
     dayWidth: Dp,
     enabled: Boolean = true,
+    endOfView: Long = startOfView + GanttLayoutSupport.MS_PER_DAY * 30L,
     onTaskClick: (Task) -> Unit
 ) {
-    GanttTasksLayout(taskComposites, startOfView, dayWidth, enabled, onTaskClick)
+    GanttTasksLayout(
+        taskComposites = taskComposites,
+        startOfView = startOfView,
+        endOfView = endOfView,
+        dayWidth = dayWidth,
+        enabled = enabled,
+        onTaskClick = onTaskClick
+    )
 }
 
 @Composable
 fun GanttTasksLayout(
     taskComposites: List<TaskDetailComposite>,
     startOfView: Long,
+    endOfView: Long = startOfView + GanttLayoutSupport.MS_PER_DAY * 30L,
     dayWidth: Dp,
     enabled: Boolean = true,
     onTaskClick: (Task) -> Unit
 ) {
     val density = LocalDensity.current
-    val msPerDay = 24 * 60 * 60 * 1000L
-    
+    val dayWidthPx = with(density) { dayWidth.toPx() }
+    val minHairlinePx = with(density) { 3.5.dp.toPx() }
+    val fullCardMinWidthPx = with(density) { 44.dp.toPx() }
+    val thinBarMaxWidthPx = with(density) { 10.dp.toPx() }
+    val labelGapPx = with(density) { 4.dp.roundToPx() }
+    val rowSlotHeightDp = 56.dp
+
+    val geometries = remember(taskComposites, startOfView, endOfView, dayWidthPx, minHairlinePx, fullCardMinWidthPx) {
+        taskComposites.map { composite ->
+            GanttLayoutSupport.computeBarGeometry(
+                taskStartMs = composite.task.startTime,
+                taskDeadlineMs = composite.task.deadline,
+                startOfViewMs = startOfView,
+                endOfViewMs = endOfView,
+                dayWidthPx = dayWidthPx,
+                minHairlineWidthPx = minHairlinePx,
+                fullCardMinWidthPx = fullCardMinWidthPx
+            )
+        }
+    }
+
     Layout(
         content = {
-            taskComposites.forEach { composite ->
-                GanttTaskCard(
-                    composite = composite, 
-                    enabled = enabled,
-                    onClick = { onTaskClick(composite.task) }
-                )
+            taskComposites.forEachIndexed { index, composite ->
+                val geom = geometries[index]
+                val barIsFullCard = geom.mode == GanttLayoutSupport.BarRenderMode.FULL_CARD
+                val barIsThinMarker = geom.barWidthPx < thinBarMaxWidthPx
+                val barWidthDp = with(density) { geom.barWidthPx.toDp() }
+                if (barIsFullCard) {
+                    GanttTaskCard(
+                        composite = composite,
+                        cardWidthDp = barWidthDp,
+                        enabled = enabled,
+                        onClick = { onTaskClick(composite.task) }
+                    )
+                    // Full card already carries title/time inside; empty spacer slot keeps 2-per-task indexing
+                    Spacer(modifier = Modifier.size(0.dp))
+                } else {
+                    GanttProportionalTaskBar(
+                        composite = composite,
+                        isThinMarker = barIsThinMarker,
+                        enabled = enabled,
+                        onClick = { onTaskClick(composite.task) }
+                    )
+                    GanttExternalTaskLabel(
+                        composite = composite,
+                        alignRight = GanttLayoutSupport.shouldPreferLeftLabel(
+                            geometry = geom,
+                            dayWidthPx = dayWidthPx,
+                            estimatedThresholdPx = with(density) { 84.dp.toPx() }
+                        ),
+                        enabled = enabled,
+                        onClick = { onTaskClick(composite.task) }
+                    )
+                }
             }
         }
     ) { measurables, constraints ->
-        val dayWidthPx = with(density) { dayWidth.toPx() }
-        val msPerPx = msPerDay / dayWidthPx
-        
-        // 1. Measure children with calculated widths
-        val placeables = measurables.mapIndexed { index, measurable ->
-            val task = taskComposites[index].task
-            val startOffsetMs = task.startTime - startOfView
-            val durationMs = task.deadline - task.startTime
-            
-            val originalXPx = (startOffsetMs / msPerPx).toInt()
-            val originalWidthPx = (durationMs / msPerPx).toInt()
-            
-            // Logic from prototype: if starts before view, clip start and reduce width
-            var visibleWidthPx = originalWidthPx
-            if (originalXPx < 0) {
-                visibleWidthPx = originalWidthPx + originalXPx
-            }
-            
-            // 确保窄屏或短时长任务仍保有基本可点击宽度与标题辨识度
-            val minWidthPx = 44.dp.roundToPx()
-            visibleWidthPx = visibleWidthPx.coerceAtLeast(minWidthPx)
-            
-            measurable.measure(
-                androidx.compose.ui.unit.Constraints.fixedWidth(visibleWidthPx)
-            )
+        val totalHeight = (40 + taskComposites.size * 70).dp.roundToPx()
+        val labelMaxWidthPx = 112.dp.roundToPx()
+        val rowHeightPx = rowSlotHeightDp.roundToPx()
+        val totalViewWidthPx = if (endOfView > startOfView) {
+            (((endOfView - startOfView).toDouble() * dayWidthPx) / GanttLayoutSupport.MS_PER_DAY).roundToInt()
+                .coerceAtLeast(constraints.maxWidth)
+        } else {
+            constraints.maxWidth
         }
 
-        // 2. Place them
-        val totalHeight = (40 + taskComposites.size * 70).dp.roundToPx()
-        
-        layout(constraints.maxWidth, totalHeight) {
-            placeables.forEachIndexed { index, placeable ->
-                val task = taskComposites[index].task
-                val startOffsetMs = task.startTime - startOfView
-                val msPerPxVal = msPerDay / dayWidthPx
-                
-                var xPos = (startOffsetMs / msPerPxVal).toInt()
-                
-                // If starts before view, we clamp position to 0 (since we already adjusted width)
-                if (xPos < 0) xPos = 0
-                
-                val yPos = (40 + index * 70).dp.roundToPx()
-                placeable.place(x = xPos, y = yPos)
+        val barPlaceables = ArrayList<androidx.compose.ui.layout.Placeable>(taskComposites.size)
+        val labelPlaceables = ArrayList<androidx.compose.ui.layout.Placeable?>(taskComposites.size)
+
+        for (i in taskComposites.indices) {
+            val geom = geometries[i]
+            val barMeasurable = measurables[i * 2]
+            val labelMeasurable = measurables[i * 2 + 1]
+
+            barPlaceables.add(
+                barMeasurable.measure(
+                    androidx.compose.ui.unit.Constraints.fixed(geom.barWidthPx, rowHeightPx)
+                )
+            )
+            if (geom.mode == GanttLayoutSupport.BarRenderMode.FULL_CARD) {
+                labelPlaceables.add(
+                    labelMeasurable.measure(androidx.compose.ui.unit.Constraints.fixed(0, 0))
+                )
+            } else {
+                labelPlaceables.add(
+                    labelMeasurable.measure(
+                        androidx.compose.ui.unit.Constraints(
+                            minWidth = 0,
+                            maxWidth = labelMaxWidthPx,
+                            minHeight = 0,
+                            maxHeight = rowHeightPx
+                        )
+                    )
+                )
+            }
+        }
+
+        layout(totalViewWidthPx, totalHeight) {
+            for (i in taskComposites.indices) {
+                val geom = geometries[i]
+                val yPos = (40 + i * 70).dp.roundToPx()
+                val barPlaceable = barPlaceables[i]
+                barPlaceable.place(x = geom.barStartPx, y = yPos)
+
+                val labelPlaceable = labelPlaceables[i]
+                if (geom.mode == GanttLayoutSupport.BarRenderMode.PROPORTIONAL_BAR && labelPlaceable != null) {
+                    val placement = GanttLayoutSupport.computeExternalLabelPlacement(
+                        geometry = geom,
+                        labelWidthPx = labelPlaceable.width,
+                        labelGapPx = labelGapPx,
+                        dayWidthPx = dayWidthPx,
+                        totalViewWidthPx = totalViewWidthPx
+                    )
+                    val labelY = yPos + ((rowHeightPx - labelPlaceable.height) / 2).coerceAtLeast(0)
+                    labelPlaceable.place(x = placement.xPx, y = labelY)
+                }
             }
         }
     }
 }
 
 @Composable
-fun GanttTaskCard(
-    composite: TaskDetailComposite,
-    enabled: Boolean = true,
-    onClick: () -> Unit
-) {
+private fun resolveGanttTaskColors(composite: TaskDetailComposite): Quad<Color, Color, Color, Color> {
     val task = composite.task
-    val subTasks = composite.subTasks
     val extendedColors = LocalExtendedColors.current
-    // Calculate Progress
-    val hasSubtasks = subTasks.isNotEmpty()
-    val progress = if (hasSubtasks) {
-        val completed = subTasks.count { it.isCompleted }
-        (completed.toFloat() / subTasks.size.toFloat())
-    } else {
-        0f
-    }
-
-    // Determine Colors using theme - 避免卡片半透明，保持实心背景
-    // Determine Colors using theme - 避免卡片半透明，保持实心背景
     val category = composite.category
-    
+
     val baseColor = if (category != null) {
         ColorUtils.parseColor(category.colorHex)
     } else {
@@ -773,7 +830,7 @@ fun GanttTaskCard(
             TaskType.URGENT -> extendedColors.ganttUrgent
         }
     }
-    
+
     val baseSurface = if (category != null) {
         ColorUtils.getSurfaceColor(baseColor)
     } else {
@@ -785,21 +842,184 @@ fun GanttTaskCard(
         }
     }
 
-    val (bg, border, text, fill) = when {
-        task.isDone -> {
-            // 已完成任务：灰色显示
-            Quad(extendedColors.ganttDoneBackground, extendedColors.ganttDoneText, extendedColors.ganttDoneText, extendedColors.ganttDoneText)
-        }
-        task.isExpired -> {
-            // 已过期任务：使用任务类型颜色但文字透明度降低，背景保持实心
-            Quad(baseSurface, baseColor, baseColor.copy(alpha = 0.7f), baseColor.copy(alpha = 0.7f))
-        }
-        else -> {
-            // 未完成任务：正常显示
-            Quad(baseSurface, baseColor, baseColor, baseColor)
+    return when {
+        task.isDone -> Quad(
+            extendedColors.ganttDoneBackground,
+            extendedColors.ganttDoneText,
+            extendedColors.ganttDoneText,
+            extendedColors.ganttDoneText
+        )
+        task.isExpired -> Quad(
+            baseSurface,
+            baseColor,
+            baseColor.copy(alpha = 0.72f),
+            baseColor.copy(alpha = 0.72f)
+        )
+        else -> Quad(baseSurface, baseColor, baseColor, baseColor)
+    }
+}
+
+/**
+ * 窄时长任务的精确比例时间条：长度严格对应实际起止区间 [startTime, deadline]。
+ */
+@Composable
+private fun GanttProportionalTaskBar(
+    composite: TaskDetailComposite,
+    isThinMarker: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val task = composite.task
+    val subTasks = composite.subTasks
+    val hasSubtasks = subTasks.isNotEmpty()
+    val progress = if (hasSubtasks) {
+        subTasks.count { it.isCompleted }.toFloat() / subTasks.size.toFloat()
+    } else 0f
+    val (bg, border, _, fill) = resolveGanttTaskColors(composite)
+
+    // 保留整行 56dp 触控热区，视觉上居中绘制精致的时间条（避免画成“空心大白框 + 文字掉在外面”）
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isThinMarker) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(22.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(
+                        when {
+                            task.isDone -> fill.copy(alpha = 0.45f)
+                            task.isExpired -> fill.copy(alpha = 0.65f)
+                            else -> fill.copy(alpha = 0.9f)
+                        }
+                    )
+            )
+        } else {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(18.dp),
+                shape = RoundedCornerShape(5.dp),
+                color = if (task.isDone) bg else fill.copy(alpha = 0.22f),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, border)
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (hasSubtasks) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(progress)
+                                .background(fill.copy(alpha = 0.28f))
+                                .align(Alignment.CenterStart)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .height(2.dp)
+                                .fillMaxWidth(progress)
+                                .background(fill)
+                                .align(Alignment.BottomStart)
+                        )
+                    }
+                    if (task.isExpired && !task.isDone) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Gray.copy(alpha = 0.16f))
+                        )
+                    }
+                }
+            }
         }
     }
-    
+}
+
+/**
+ * 窄时间条旁的无边框可读标签：完整展示标题与起止时间，避免短任务名/时间被省略成 `...` 也不额外撑宽时间条。
+ */
+@Composable
+private fun GanttExternalTaskLabel(
+    composite: TaskDetailComposite,
+    alignRight: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val task = composite.task
+    val subTasks = composite.subTasks
+    val hasSubtasks = subTasks.isNotEmpty()
+    val progress = if (hasSubtasks) {
+        (subTasks.count { it.isCompleted } * 100 / subTasks.size)
+    } else 0
+    val (_, _, text, _) = resolveGanttTaskColors(composite)
+    val timeStr = remember(task.startTime, task.deadline) {
+        formatTaskTimeRange(task.startTime, task.deadline)
+    }
+
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 3.dp),
+        horizontalAlignment = if (alignRight) Alignment.End else Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = task.title,
+            style = MaterialTheme.typography.labelMedium,
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Schedule,
+                contentDescription = null,
+                tint = text.copy(alpha = 0.65f),
+                modifier = Modifier.size(9.dp)
+            )
+            Text(
+                text = if (hasSubtasks) "$timeStr · $progress%" else timeStr,
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 9.5.sp,
+                color = text.copy(alpha = 0.85f),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+fun GanttTaskCard(
+    composite: TaskDetailComposite,
+    cardWidthDp: Dp = 120.dp,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val task = composite.task
+    val subTasks = composite.subTasks
+    // Calculate Progress
+    val hasSubtasks = subTasks.isNotEmpty()
+    val progress = if (hasSubtasks) {
+        val completed = subTasks.count { it.isCompleted }
+        (completed.toFloat() / subTasks.size.toFloat())
+    } else {
+        0f
+    }
+
+    val (bg, border, text, fill) = resolveGanttTaskColors(composite)
+    val isUltraCompact = cardWidthDp < 60.dp
+    val isCompact = cardWidthDp < 104.dp
+
     Surface(
         modifier = Modifier
             .height(56.dp)
@@ -824,57 +1044,70 @@ fun GanttTaskCard(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                    .padding(
+                        horizontal = if (isUltraCompact) 4.dp else 6.dp,
+                        vertical = if (isCompact) 5.dp else 6.dp
+                    ),
+                verticalArrangement = if (isUltraCompact) Arrangement.Center else Arrangement.SpaceBetween
             ) {
                 // Title
                 Text(
                     text = task.title,
                     style = MaterialTheme.typography.labelMedium,
+                    fontSize = if (isUltraCompact) 10.5.sp else if (isCompact) 11.5.sp else 12.sp,
+                    lineHeight = if (isUltraCompact) 13.sp else 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = text,
-                    maxLines = 1,
+                    maxLines = if (isUltraCompact) 2 else 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                
-                // Bottom Row: Progress % or Icon + Time
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    // Left: Time
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (!hasSubtasks) {
-                            Icon(
-                                imageVector = Icons.Default.Schedule,
-                                contentDescription = null,
-                                tint = text.copy(alpha = 0.6f),
-                                modifier = Modifier.size(10.dp)
+
+                if (!isUltraCompact) {
+                    // Bottom Row: Progress % or Icon + Time
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
+                            if (!hasSubtasks && !isCompact) {
+                                Icon(
+                                    imageVector = Icons.Default.Schedule,
+                                    contentDescription = null,
+                                    tint = text.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+
+                            val timeStr = if (isCompact) {
+                                formatCompactTaskTimeRange(task.startTime, task.deadline)
+                            } else {
+                                formatTaskTimeRange(task.startTime, task.deadline)
+                            }
+                            Text(
+                                text = timeStr,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                color = text.copy(alpha = 0.8f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
                         }
-                        
-                        val timeStr = formatTaskTimeRange(task.startTime, task.deadline)
-                        Text(
-                            text = timeStr,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.sp,
-                            color = text.copy(alpha = 0.8f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    
-                    // Right: Progress % (if has subtasks)
-                    if (hasSubtasks) {
-                        Text(
-                            text = "${(progress * 100).toInt()}%",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = text.copy(alpha = 0.8f)
-                        )
+
+                        if (hasSubtasks && !isCompact) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "${(progress * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = text.copy(alpha = 0.8f)
+                            )
+                        }
                     }
                 }
             }
@@ -902,6 +1135,22 @@ fun GanttTaskCard(
                 )
             }
         }
+    }
+}
+
+private fun formatCompactTaskTimeRange(start: Long, end: Long): String {
+    val startCal = Calendar.getInstance().apply { timeInMillis = start }
+    val endCal = Calendar.getInstance().apply { timeInMillis = end }
+
+    val sameDay = startCal.get(Calendar.YEAR) == endCal.get(Calendar.YEAR) &&
+        startCal.get(Calendar.DAY_OF_YEAR) == endCal.get(Calendar.DAY_OF_YEAR)
+
+    return if (sameDay) {
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        "${timeFormat.format(Date(start))}-${timeFormat.format(Date(end))}"
+    } else {
+        val dateFormat = SimpleDateFormat("M/d", Locale.getDefault())
+        "${dateFormat.format(Date(start))}-${dateFormat.format(Date(end))}"
     }
 }
 
