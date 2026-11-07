@@ -251,6 +251,7 @@ fun GanttFullscreenView(
                 GanttTasks(
                     taskComposites = visibleTasks,
                     startOfView = startOfView,
+                    endOfView = endOfView,
                     dayWidth = dayWidth,
                     enabled = false,
                     onTaskClick = onTaskClick
