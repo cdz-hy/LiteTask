@@ -1,16 +1,20 @@
 package com.litetask.app.ui.userdata
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -155,19 +159,18 @@ fun UserDataScreen(
         }
     }
     
-    // 画像分析悬浮窗（类似AI任务分析）
-    AnalysisProgressDialog(
+    // 个人画像分析 BottomSheet（与日程规划建议视觉风格统一）
+    ProfileAnalysisSheet(
         visible = uiState.showAnalysisOverlay,
-        onDismiss = { 
-            if (uiState.isAnalyzing) {
-                viewModel.cancelAnalysis()
-            } else {
-                viewModel.dismissAnalysisOverlay()
-            }
-        },
         isAnalyzing = uiState.isAnalyzing,
         status = uiState.agentStatus,
-        logs = uiState.agentLogs
+        logs = uiState.agentLogs,
+        completedProfile = uiState.completedAnalysisResult,
+        previousProfile = uiState.previousProfileBeforeAnalysis,
+        errorMessage = uiState.analysisError,
+        onDismiss = { viewModel.dismissAnalysisOverlay() },
+        onCancel = { viewModel.cancelAnalysis() },
+        onRetry = { viewModel.triggerAnalysis() }
     )
 
     
@@ -186,105 +189,518 @@ fun UserDataScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun AnalysisProgressDialog(
+fun ProfileAnalysisSheet(
     visible: Boolean,
-    onDismiss: () -> Unit,
     isAnalyzing: Boolean,
     status: String,
-    logs: List<String>
+    logs: List<String>,
+    completedProfile: UserProfileHistoryEntity?,
+    previousProfile: UserProfileHistoryEntity?,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit
 ) {
     if (!visible) return
-    
-    androidx.compose.ui.window.Dialog(
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.surfaceContainerLow
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                // 顶部关闭按钮
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 48.dp, end = 24.dp)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh, androidx.compose.foundation.shape.CircleShape)
-                        .size(40.dp)
+            // 统一顶部栏（与日程规划建议一致）
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
                 ) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Rounded.AutoAwesome,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "智能个人画像",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = when {
+                                isAnalyzing -> "多维度行为习惯与专注节律推理中"
+                                completedProfile != null -> "分析完成 · 已同步为最新个人画像"
+                                errorMessage != null -> "分析未能完成，请重试或检查配置"
+                                else -> "AI 画像分析"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                FilledTonalIconButton(onClick = onDismiss) {
                     Icon(
-                        imageVector = Icons.Default.Close,
+                        imageVector = Icons.Rounded.Close,
                         contentDescription = "关闭",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+            ) {
+                AnimatedContent(
+                    targetState = Triple(isAnalyzing, completedProfile?.id, errorMessage),
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(300)) togetherWith
+                            fadeOut(animationSpec = tween(200))
+                    },
+                    label = "ProfileAnalysisState"
+                ) { (analyzing, _, err) ->
+                    when {
+                        analyzing -> {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                AgentThinkingOverlay(
+                                    visible = true,
+                                    status = status,
+                                    logs = logs,
+                                    subtitle = "正在结合任务完成度、出行路线与专注习惯综合建模...",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                OutlinedButton(
+                                    onClick = onCancel,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Text("取消分析")
+                                }
+                            }
+                        }
+
+                        completedProfile != null -> {
+                            ProfileAnalysisSuccessContent(
+                                profile = completedProfile,
+                                previousProfile = previousProfile,
+                                logs = logs,
+                                onRetry = onRetry,
+                                onDone = onDismiss
+                            )
+                        }
+
+                        else -> {
+                            ProfileAnalysisErrorContent(
+                                errorMessage = err ?: "画像分析未返回有效结果，请稍后重试",
+                                logs = logs,
+                                onRetry = onRetry,
+                                onDismiss = onDismiss
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ProfileAnalysisSuccessContent(
+    profile: UserProfileHistoryEntity,
+    previousProfile: UserProfileHistoryEntity?,
+    logs: List<String>,
+    onRetry: () -> Unit,
+    onDone: () -> Unit
+) {
+    var logsExpanded by rememberSaveable(profile.id) { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // 更新成功提示卡片
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "画像已更新",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    val headlineParts = listOfNotNull(
+                        profile.identity?.takeIf { it.isNotBlank() },
+                        profile.industry?.takeIf { it.isNotBlank() }
+                    )
+                    if (headlineParts.isNotEmpty()) {
+                        Text(
+                            text = headlineParts.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 推演特质摘要
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (!profile.personality.isNullOrBlank()) {
+                    Text(
+                        text = profile.personality,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
+                val habitTags = listOfNotNull(
+                    profile.executionRhythm?.takeIf { it.isNotBlank() }?.let { "节奏: $it" },
+                    profile.travelPreference?.takeIf { it.isNotBlank() }?.let { "出行: $it" },
+                    profile.aiTone?.takeIf { it.isNotBlank() }?.let { "语气: $it" },
+                    profile.categoryFocus?.takeIf { it.isNotBlank() }?.let { "重心: $it" }
+                )
+                if (habitTags.isNotEmpty()) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        habitTags.forEach { tag ->
+                            ProfileTraitPill(text = tag)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 三维评分与变化对比
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ProfileDeltaScoreCard(
+                label = "规划能力",
+                score = profile.planAbility,
+                previousScore = previousProfile?.planAbility,
+                description = planAbilityLabel(profile.planAbility),
+                modifier = Modifier.weight(1f)
+            )
+            ProfileDeltaScoreCard(
+                label = "压力指数",
+                score = profile.stressLevel,
+                previousScore = previousProfile?.stressLevel,
+                description = stressLevelLabel(profile.stressLevel),
+                modifier = Modifier.weight(1f)
+            )
+            ProfileDeltaScoreCard(
+                label = "拖延指数",
+                score = profile.delayIndex,
+                previousScore = previousProfile?.delayIndex,
+                description = delayIndexLabel(profile.delayIndex),
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        // 可折叠推理步骤日志
+        if (logs.isNotEmpty()) {
+            AnalysisLogAccordion(
+                logs = logs,
+                expanded = logsExpanded,
+                onToggle = { logsExpanded = !logsExpanded }
+            )
+        }
+
+        // 底部按钮
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedButton(
+                onClick = onRetry,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("重新分析")
+            }
+            Button(
+                onClick = onDone,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("完成查看")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileAnalysisErrorContent(
+    errorMessage: String,
+    logs: List<String>,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var logsExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.ErrorOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "画像分析未能完成",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
+                    )
+                }
+            }
+        }
+
+        if (logs.isNotEmpty()) {
+            AnalysisLogAccordion(
+                logs = logs,
+                expanded = logsExpanded,
+                onToggle = { logsExpanded = !logsExpanded }
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("关闭")
+            }
+            Button(
+                onClick = onRetry,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("立即重试")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileDeltaScoreCard(
+    label: String,
+    score: Int,
+    previousScore: Int?,
+    description: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(14.dp),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = "$score",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "/5",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 2.dp, start = 1.dp)
+                )
+            }
+            Text(
+                text = description,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (previousScore != null && previousScore != score) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = "$previousScore → $score",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnalysisLogAccordion(
+    logs: List<String>,
+    expanded: Boolean,
+    onToggle: () -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggle)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "查看 AI 推理过程（${logs.size} 条）",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            AnimatedVisibility(visible = expanded) {
                 Column(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                        .fillMaxWidth()
+                        .padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // AI 图标
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .background(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                androidx.compose.foundation.shape.CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Text(
-                        text = if (isAnalyzing) "正在智能分析" else "分析完成",
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "深度推演您的用户画像特征...",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 22.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(320.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AgentThinkingOverlay(
-                            visible = true,
-                            status = status,
-                            logs = logs,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                    logs.forEach { log ->
+                        Row(verticalAlignment = Alignment.Top) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 6.dp)
+                                    .size(5.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
+                                        CircleShape
+                                    )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = log,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -1578,41 +1994,190 @@ fun ProfileSliderField(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProfileDisplayFields(profile: UserProfileHistoryEntity?) {
     if (profile == null) {
-        Text(
-            "暂无画像数据，点击上方“编辑”图标或下方“智能生成我的画像”按钮开始",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    } else {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ProfileField("身份", profile.identity ?: "未设置")
-            ProfileField("行业", profile.industry ?: "未设置")
-            ProfileField("性格特征", profile.personality ?: "未分析")
-            ProfileField("出行偏好", profile.travelPreference ?: "未设置")
-            ProfileField("近期重心", profile.categoryFocus ?: "未设置")
-            ProfileField("输入习惯", profile.inputPreference ?: "未设置")
-            ProfileField("执行节奏", profile.executionRhythm ?: "未设置")
-            ProfileField("AI 沟通语气", profile.aiTone ?: "未分析")
-            
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.5f))
-            
-            ProfileField("规划能力", "${profile.planAbility}/5 · ${planAbilityLabel(profile.planAbility)}")
-            ProfileField("当前压力指数", "${profile.stressLevel}/5 · ${stressLevelLabel(profile.stressLevel)}")
-            ProfileField("拖延指数", "${profile.delayIndex}/5 · ${delayIndexLabel(profile.delayIndex)}")
-            ProfileField("总体完成率", "${(profile.completionRate * 100).roundToInt()}%")
-            ProfileField("近30天拖延率", "${(profile.delayedRate * 100).roundToInt()}%")
-            
-            val timeAgo = getTimeAgo(profile.createdAt)
-            val sourceLabel = if (profile.source == UserProfileHistoryEntity.SOURCE_MANUAL) {
-                "手动修订时间"
-            } else {
-                "AI 分析时间"
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Psychology,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "暂无画像数据，点击右上角编辑或上方“智能分析用户画像”开始",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
+        }
+    } else {
+        val isManual = profile.source == UserProfileHistoryEntity.SOURCE_MANUAL
+        val timeAgo = getTimeAgo(profile.createdAt)
+        val sourceLabel = if (isManual) "手动修订时间" else "AI 分析时间"
+
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // 1. 身份与核心性格卡片
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = profile.identity?.takeIf { it.isNotBlank() } ?: "未设置身份",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            val industry = profile.industry?.takeIf { it.isNotBlank() }
+                            if (industry != null) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = industry,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Surface(
+                            color = if (isManual) {
+                                MaterialTheme.colorScheme.tertiaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = if (isManual) "手动修订" else "AI 推演",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Medium,
+                                color = if (isManual) {
+                                    MaterialTheme.colorScheme.onTertiaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = profile.personality?.takeIf { it.isNotBlank() } ?: "暂无性格特征描述",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // 2. 行为习惯标签流
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ProfileTraitPill("出行 · ${profile.travelPreference?.takeIf { it.isNotBlank() } ?: "未设置"}")
+                ProfileTraitPill("节奏 · ${profile.executionRhythm?.takeIf { it.isNotBlank() } ?: "未设置"}")
+                ProfileTraitPill("语气 · ${profile.aiTone?.takeIf { it.isNotBlank() } ?: "未分析"}")
+                ProfileTraitPill("重心 · ${profile.categoryFocus?.takeIf { it.isNotBlank() } ?: "未设置"}")
+                ProfileTraitPill("录入 · ${profile.inputPreference?.takeIf { it.isNotBlank() } ?: "未设置"}")
+            }
+
+            // 3. 三维能力与状态进度条
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    ProfileScoreBar(
+                        label = "规划能力",
+                        score = profile.planAbility,
+                        description = planAbilityLabel(profile.planAbility),
+                        barColor = if (profile.planAbility >= 3) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.tertiary
+                        }
+                    )
+                    ProfileScoreBar(
+                        label = "当前压力指数",
+                        score = profile.stressLevel,
+                        description = stressLevelLabel(profile.stressLevel),
+                        barColor = when {
+                            profile.stressLevel >= 4 -> MaterialTheme.colorScheme.error
+                            profile.stressLevel == 3 -> MaterialTheme.colorScheme.tertiary
+                            else -> MaterialTheme.colorScheme.primary
+                        }
+                    )
+                    ProfileScoreBar(
+                        label = "拖延指数",
+                        score = profile.delayIndex,
+                        description = delayIndexLabel(profile.delayIndex),
+                        barColor = when {
+                            profile.delayIndex >= 4 -> MaterialTheme.colorScheme.error
+                            profile.delayIndex == 3 -> MaterialTheme.colorScheme.tertiary
+                            else -> MaterialTheme.colorScheme.primary
+                        }
+                    )
+                }
+            }
+
+            // 4. 客观统计指标与更新时间
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                ProfileMetricTile(
+                    label = "总体完成率",
+                    value = "${(profile.completionRate * 100).roundToInt()}%",
+                    modifier = Modifier.weight(1f)
+                )
+                ProfileMetricTile(
+                    label = "近30天拖延率",
+                    value = "${(profile.delayedRate * 100).roundToInt()}%",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
             Text(
-                "$sourceLabel：$timeAgo",
+                text = "$sourceLabel：$timeAgo",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1621,28 +2186,91 @@ fun ProfileDisplayFields(profile: UserProfileHistoryEntity?) {
 }
 
 @Composable
-fun ProfileField(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Top
+private fun ProfileTraitPill(text: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(10.dp)
     ) {
         Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.widthIn(min = 80.dp, max = 100.dp)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
         )
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.weight(1f),
-            textAlign = androidx.compose.ui.text.style.TextAlign.End
-        )
+    }
+}
+
+@Composable
+private fun ProfileScoreBar(
+    label: String,
+    score: Int,
+    description: String,
+    barColor: Color
+) {
+    val clamped = score.coerceIn(1, 5)
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "$clamped/5 · $description",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(clamped / 5f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(barColor)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileMetricTile(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
     }
 }
 
@@ -1670,54 +2298,6 @@ fun AnalyzeButton(
             Icon(Icons.Default.Psychology, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
             Text("智能分析用户画像", style = MaterialTheme.typography.titleMedium)
-        }
-    }
-}
-
-@Composable
-fun AnalysisLogsView(logs: List<String>) {
-    val scrollState = rememberScrollState()
-    
-    // 自动滚动到底部
-    LaunchedEffect(logs.size) {
-        scrollState.animateScrollTo(scrollState.maxValue)
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 100.dp, max = 250.dp),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-                .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                "智能分析过程：",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
-            )
-            logs.forEach { log ->
-                Row(verticalAlignment = Alignment.Top) {
-                    Text(
-                        "•",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(end = 6.dp)
-                    )
-                    Text(
-                        text = log,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
         }
     }
 }

@@ -93,6 +93,9 @@ data class UserDataUiState(
     val agentStatus: String = "",
     val agentLogs: List<String> = emptyList(),
     val showAnalysisOverlay: Boolean = false,
+    val previousProfileBeforeAnalysis: UserProfileHistoryEntity? = null,
+    val completedAnalysisResult: UserProfileHistoryEntity? = null,
+    val analysisError: String? = null,
     val error: String? = null
 )
 
@@ -431,80 +434,81 @@ class UserDataViewModel @Inject constructor(
         }
     }
 
+    private fun appendAgentLog(line: String) {
+        val cleanLine = line.trim()
+        if (cleanLine.isEmpty()) return
+        val currentLogs = _uiState.value.agentLogs
+        if (currentLogs.lastOrNull() != cleanLine) {
+            _uiState.value = _uiState.value.copy(agentLogs = currentLogs + cleanLine)
+        }
+    }
+
     fun triggerAnalysis() {
-        analysisJob?.cancel()
+        if (_uiState.value.isAnalyzing) return
         analysisJob = viewModelScope.launch {
             val configError = preferenceManager.getAiConfigError()
             if (configError != null) {
                 _uiState.value = _uiState.value.copy(error = configError)
                 return@launch
             }
-        
+
+            val prevSnapshot = _uiState.value.userProfile
             _uiState.value = _uiState.value.copy(
                 isAnalyzing = true,
                 showAnalysisOverlay = true,
+                previousProfileBeforeAnalysis = prevSnapshot,
+                completedAnalysisResult = null,
+                analysisError = null,
                 error = null,
-                agentStatus = "正在初始化画像分析引擎...",
+                agentStatus = "正在准备画像分析数据...",
                 agentLogs = emptyList()
             )
-            
+
             try {
                 // 调用AI分析，包含实时步骤回调
-                val result = userProfileAnalyzer.analyzeUserProfile() { step ->
+                val result = userProfileAnalyzer.analyzeUserProfile { step ->
                     when (step) {
                         is com.litetask.app.data.ai.AnalysisStep.Thinking -> {
-                            _uiState.value = _uiState.value.copy(
-                                agentStatus = step.message,
-                                agentLogs = _uiState.value.agentLogs + step.message
-                            )
+                            _uiState.value = _uiState.value.copy(agentStatus = step.message)
+                            appendAgentLog(step.message)
                         }
                         is com.litetask.app.data.ai.AnalysisStep.CallingTool -> {
-                            _uiState.value = _uiState.value.copy(
-                                agentStatus = "调用工具: ${step.toolName}",
-                                agentLogs = _uiState.value.agentLogs + "[工具调用] ${step.toolName}: ${step.description}"
-                            )
+                            _uiState.value = _uiState.value.copy(agentStatus = step.description)
+                            appendAgentLog(step.description)
                         }
                         is com.litetask.app.data.ai.AnalysisStep.ToolResult -> {
-                            _uiState.value = _uiState.value.copy(
-                                agentLogs = _uiState.value.agentLogs + "[返回结果] ${step.summary}"
-                            )
+                            appendAgentLog("✓ ${step.summary}")
                         }
                         is com.litetask.app.data.ai.AnalysisStep.Reasoning -> {
-                            _uiState.value = _uiState.value.copy(
-                                agentStatus = "正在分析数据并推理...",
-                                agentLogs = _uiState.value.agentLogs + step.content
-                            )
+                            _uiState.value = _uiState.value.copy(agentStatus = "正在综合推理个人画像...")
+                            appendAgentLog(step.content)
                         }
                         is com.litetask.app.data.ai.AnalysisStep.Complete -> {
-                            _uiState.value = _uiState.value.copy(
-                                agentStatus = "画像分析完成",
-                                agentLogs = _uiState.value.agentLogs + "画像分析完成，正在保存结果..."
-                            )
+                            _uiState.value = _uiState.value.copy(agentStatus = "画像分析完成")
+                            appendAgentLog("✓ 画像分析完成，已同步最新结果")
                         }
                         is com.litetask.app.data.ai.AnalysisStep.Error -> {
-                            _uiState.value = _uiState.value.copy(
-                                agentStatus = "分析出错",
-                                agentLogs = _uiState.value.agentLogs + "错误: ${step.message}"
-                            )
+                            _uiState.value = _uiState.value.copy(agentStatus = "分析中断")
+                            appendAgentLog("× ${step.message}")
                         }
                     }
                 }
-                
+
                 if (result.isSuccess) {
                     val profile = result.getOrNull()!!
                     userProfileDao.insert(profile)
-                    
-                    // 分析完成后，延迟5秒隐藏覆盖层
-                    kotlinx.coroutines.delay(5000)
                     _uiState.value = _uiState.value.copy(
-                        showAnalysisOverlay = false,
-                        agentStatus = "",
-                        agentLogs = emptyList()
+                        isAnalyzing = false,
+                        agentStatus = "画像分析完成",
+                        completedAnalysisResult = profile,
+                        analysisError = null
                     )
                 } else {
+                    val errMsg = result.exceptionOrNull()?.message ?: "AI分析失败"
                     _uiState.value = _uiState.value.copy(
-                        error = result.exceptionOrNull()?.message ?: "AI分析失败",
-                        showAnalysisOverlay = false
+                        isAnalyzing = false,
+                        agentStatus = "分析失败",
+                        analysisError = errMsg
                     )
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -512,21 +516,32 @@ class UserDataViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
-                    error = e.message,
-                    showAnalysisOverlay = false
+                    isAnalyzing = false,
+                    agentStatus = "分析失败",
+                    analysisError = e.message ?: "AI分析失败"
                 )
             } finally {
                 _uiState.value = _uiState.value.copy(isAnalyzing = false)
             }
         }
     }
-    
+
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
     }
-    
+
     fun dismissAnalysisOverlay() {
-        _uiState.value = _uiState.value.copy(showAnalysisOverlay = false)
+        if (_uiState.value.isAnalyzing) {
+            cancelAnalysis()
+            return
+        }
+        _uiState.value = _uiState.value.copy(
+            showAnalysisOverlay = false,
+            completedAnalysisResult = null,
+            analysisError = null,
+            agentStatus = "",
+            agentLogs = emptyList()
+        )
     }
 
     /**
@@ -537,8 +552,10 @@ class UserDataViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             isAnalyzing = false,
             showAnalysisOverlay = false,
-            agentStatus = "分析已取消",
-            agentLogs = _uiState.value.agentLogs + "[系统] 用户中断了分析过程"
+            completedAnalysisResult = null,
+            analysisError = null,
+            agentStatus = "",
+            agentLogs = emptyList()
         )
     }
 }
