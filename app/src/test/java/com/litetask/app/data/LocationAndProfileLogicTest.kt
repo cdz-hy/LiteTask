@@ -194,10 +194,10 @@ class LocationAndProfileLogicTest {
 
     @Test
     fun `buildRouteUrl uses v4 for bicycling and includes city for transit`() {
-        val bikeUrl = AMapRepository.buildRouteUrl(116.3, 39.9, 116.4, 39.95, "bicycling", "k1")
+        val bikeUrl = AMapRepository.buildRouteUrl(116.3, 39.9, 116.4, 39.95, "bicycling", "k1")!!
         assertTrue(bikeUrl.startsWith("https://restapi.amap.com/v4/direction/bicycling"))
 
-        val transitUrl = AMapRepository.buildRouteUrl(121.4, 31.2, 121.5, 31.25, "transit", "k1", city = "上海市")
+        val transitUrl = AMapRepository.buildRouteUrl(121.4, 31.2, 121.5, 31.25, "transit", "k1", city = "上海市")!!
         assertTrue(transitUrl.contains("/v3/direction/transit/integrated"))
         assertTrue(transitUrl.contains("city="))
     }
@@ -520,5 +520,182 @@ class LocationAndProfileLogicTest {
         assertTrue(directPrompt.contains("专注精力节律:"))
         assertTrue(directPrompt.contains("近期天气:"))
         assertTrue(com.litetask.app.util.CalendarSyncPrefsState().scheduleAdviceUseCalendar)
+    }
+
+    @Test
+    fun `profile analyzer summarizes route travelMode short keys and ETA`() {
+        val emptyMsg = com.litetask.app.data.ai.UserProfileAnalyzer.summarizeRoutePreferences(emptyList())
+        assertTrue(emptyMsg.contains("暂未使用"))
+
+        val shortKeyTransit = com.litetask.app.data.model.TaskComponentEntity(
+            id = 1L,
+            taskId = 10L,
+            type = com.litetask.app.data.model.ComponentType.AMAP_ROUTE,
+            dataJson = """{"b":"杭州东站","c":"天城路1号","d":30.29,"e":120.21,"g":2,"j":"transit","k":1800}"""
+        )
+        val drivingRoute = TaskComponent.AMapComponent(
+            id = 2L,
+            taskId = 11L,
+            data = AMapRouteData(
+                endName = "科技园",
+                endAddress = "科苑路10号",
+                endLat = 22.54,
+                endLng = 113.95,
+                strategy = 1,
+                travelMode = "driving",
+                estimatedDurationSec = 1200
+            )
+        ).toEntity(11L)
+
+        val summary = com.litetask.app.data.ai.UserProfileAnalyzer.summarizeRoutePreferences(
+            listOf(shortKeyTransit, drivingRoute)
+        )
+        assertTrue(summary.contains("公交地铁"))
+        assertTrue(summary.contains("驾车"))
+        assertTrue(summary.contains("少收费"))
+        assertTrue(summary.contains("杭州东站"))
+        assertTrue(summary.contains("25分钟"))
+    }
+
+    @Test
+    fun `profile analyzer summarizes component habits across links passes attachments recurrence and voice`() {
+        val now = 1_760_000_000_000L
+        val composite = TaskDetailComposite(
+            task = Task(id = 1L, title = "每周算法复盘", startTime = now, deadline = now + 3_600_000L),
+            subTasks = emptyList(),
+            reminders = emptyList(),
+            category = null,
+            components = listOf(
+                TaskComponent.LinkComponent(
+                    id = 1L,
+                    taskId = 1L,
+                    data = com.litetask.app.data.model.LinkBookmarkData(url = "https://github.com/org/repo", linkCategory = "CODE")
+                ).toEntity(1L),
+                TaskComponent.AccessPassComponent(
+                    id = 2L,
+                    taskId = 1L,
+                    data = com.litetask.app.data.model.AccessPassData(passType = "MEETING", title = "周会", primaryCode = "123456")
+                ).toEntity(1L),
+                TaskComponent.FileComponent(
+                    id = 3L,
+                    taskId = 1L,
+                    data = com.litetask.app.data.model.FileAttachmentData(fileName = "review.pdf", fileUri = "content://doc/1", mimeType = "application/pdf", fileSize = 1024L)
+                ).toEntity(1L),
+                TaskComponent.RecurrenceComponent(
+                    id = 4L,
+                    taskId = 1L,
+                    data = com.litetask.app.data.model.RecurrenceRuleData(freq = "WEEKLY", interval = 1)
+                ).toEntity(1L),
+                TaskComponent.VoiceNoteComponent(
+                    id = 5L,
+                    taskId = 1L,
+                    data = com.litetask.app.data.model.VoiceNoteData(filePath = "/tmp/a.m4a", durationMs = 5000L)
+                ).toEntity(1L)
+            )
+        )
+
+        val emptySummary = com.litetask.app.data.ai.UserProfileAnalyzer.summarizeComponentHabits(emptyList())
+        assertTrue(emptySummary.contains("暂未使用"))
+
+        val summary = com.litetask.app.data.ai.UserProfileAnalyzer.summarizeComponentHabits(listOf(composite))
+        assertTrue(summary.contains("周期重复"))
+        assertTrue(summary.contains("每周"))
+        assertTrue(summary.contains("书签/链接"))
+        assertTrue(summary.contains("GitHub"))
+        assertTrue(summary.contains("凭证/号牌"))
+        assertTrue(summary.contains("会议号"))
+        assertTrue(summary.contains("文件附件"))
+        assertTrue(summary.contains("PDF"))
+        assertTrue(summary.contains("语音备忘"))
+    }
+
+    @Test
+    fun `profile analyzer summarizes 30d rhythm focus energy and validates objective stats count`() {
+        val zone = java.time.ZoneId.of("Asia/Shanghai")
+        val morningInstant = java.time.LocalDateTime.of(2026, 3, 18, 9, 30)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        val now = morningInstant + 2 * 24 * 3_600_000L
+        val oldTime = now - 45L * 24 * 3_600_000L
+
+        val tasks = listOf(
+            Task(id = 1L, title = "近期上午任务1", createdAt = morningInstant, startTime = morningInstant, deadline = morningInstant + 3_600_000L, completedAt = morningInstant + 1_800_000L, isDone = true),
+            Task(id = 2L, title = "近期上午任务2", createdAt = morningInstant + 1_000L, startTime = morningInstant + 1_000L, deadline = morningInstant + 7_200_000L, isDone = false),
+            Task(id = 3L, title = "45天前旧任务", createdAt = oldTime, startTime = oldTime, deadline = oldTime + 3_600_000L, isDone = true)
+        )
+        val sessions = listOf(
+            FocusSessionEntity(taskId = 1L, actualSeconds = 1800L, startedAt = morningInstant),
+            FocusSessionEntity(taskId = 2L, actualSeconds = 20L, startedAt = morningInstant + 60_000L) // < 60s ignored
+        )
+
+        val stats = com.litetask.app.data.ai.UserProfileAnalyzer.computeObjectiveStats(
+            allTasks = tasks,
+            categories = emptyList(),
+            allAiHistories = emptyList(),
+            now = now
+        )
+        assertEquals(2, stats.recentTaskCount)
+
+        val rhythm = com.litetask.app.data.ai.UserProfileAnalyzer.summarizeTimeAndFocusPattern(
+            allTasks = tasks,
+            focusSessions = sessions,
+            now = now,
+            zoneId = zone
+        )
+        assertTrue(rhythm.contains("近30天活跃/新建 2 条任务"))
+        assertTrue(rhythm.contains("工作日"))
+        assertTrue(rhythm.contains("有效专注(>=1分钟) 1 次"))
+        assertTrue(rhythm.contains("黄金高效时段"))
+    }
+
+    @Test
+    fun `profile analyzer parses fenced json sanitizes nulls and clamps scores`() {
+        val raw = """
+            分析如下：
+            ```json
+            {
+              "identity": "软件工程师",
+              "industry": "null",
+              "travel_preference": "",
+              "delay_index": 0,
+              "plan_ability": 9,
+              "stress_level": 4,
+              "execution_rhythm": "上午高效推进",
+              "ai_tone": "理性简洁，直接给行动建议",
+              "personality": "目标导向且注重结构化拆解"
+            }
+            ```
+        """.trimIndent()
+
+        val parsed = com.litetask.app.data.ai.UserProfileAnalyzer.parseProfileJsonToEntity(
+            analysisResult = raw,
+            completionRate = 0.85,
+            delayedRate = 0.12,
+            inputPreference = "语音优先",
+            categoryFocus = "工作",
+            createdAt = 12345L
+        ).getOrThrow()
+
+        assertEquals("软件工程师", parsed.identity)
+        assertEquals("未知领域", parsed.industry)
+        assertEquals("暂无明显偏好", parsed.travelPreference)
+        assertEquals(1, parsed.delayIndex)
+        assertEquals(5, parsed.planAbility)
+        assertEquals(4, parsed.stressLevel)
+        assertEquals("上午高效推进", parsed.executionRhythm)
+        assertEquals(12345L, parsed.createdAt)
+        assertEquals(com.litetask.app.data.model.UserProfileHistoryEntity.SOURCE_AI, parsed.source)
+
+        assertTrue(
+            com.litetask.app.data.ai.UserProfileAnalyzer.parseProfileJsonToEntity(
+                analysisResult = "没有返回JSON格式",
+                completionRate = 0.0,
+                delayedRate = 0.0,
+                inputPreference = "平衡",
+                categoryFocus = "暂无",
+                createdAt = 12345L
+            ).isFailure
+        )
     }
 }
